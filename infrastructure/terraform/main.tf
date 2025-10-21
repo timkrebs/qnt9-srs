@@ -3,10 +3,6 @@
 
 provider "aws" {
   region = var.region
-
-  default_tags {
-    tags = local.common_tags
-  }
 }
 
 # Filter out local zones, which are not currently supported 
@@ -24,32 +20,28 @@ locals {
   # Common tags applied to all resources
   common_tags = {
     # Business Tags
-    CostCenter           = var.cost_center
-    BusinessUnit         = "Investment-Tech"
-    Project              = "Stock-Recommendation"
-    Owner                = var.owner_email
-    BusinessOwner        = var.business_owner_email
+    CostCenter    = var.cost_center
+    BusinessUnit  = "Investment-Tech"
+    Project       = "Stock-Recommendation"
+    Owner         = var.owner_email
+    BusinessOwner = var.business_owner_email
     
     # Technical Tags
-    Environment          = var.environment
-    Application          = "SRS-Platform"
-    ManagedBy            = "Terraform"
-    TerraformWorkspace   = terraform.workspace
+    Environment = var.environment
+    Application = "SRS-Platform"
+    ManagedBy   = "Terraform"
     
     # Operational Tags
-    DataClassification   = var.data_classification
-    Criticality          = var.criticality
+    DataClassification = var.data_classification
+    Criticality        = var.criticality
     
     # Financial Tags
-    ChargebackCode       = "${upper(var.environment)}-SRS-2024"
-    BudgetCode           = var.budget_code
+    ChargebackCode = "${upper(var.environment)}-SRS-2024"
+    BudgetCode     = var.budget_code
     
     # Compliance Tags
-    ComplianceRequirement = var.compliance_requirements
-    DataResidency        = var.data_residency
-    
-    # Lifecycle Tags
-    CreatedDate          = formatdate("YYYY-MM-DD", timestamp())
+    ComplianceReq = var.compliance_requirements
+    DataResidency = var.data_residency
   }
 }
 
@@ -76,17 +68,15 @@ module "vpc" {
 
   public_subnet_tags = {
     "kubernetes.io/role/elb" = 1
-    Component                = "network-public-subnet"
   }
 
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
-    Component                          = "network-private-subnet"
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Component = "network-vpc"
-  }
+  })
 }
 
 module "eks" {
@@ -121,15 +111,6 @@ module "eks" {
       min_size     = 1
       max_size     = 3
       desired_size = 2
-
-      tags = {
-        Component    = "eks-node-group"
-        NodeGroup    = "primary"
-        InstanceType = "t3.small"
-        AutoScaling  = "enabled"
-        MinSize      = "1"
-        MaxSize      = "3"
-      }
     }
 
     two = {
@@ -140,23 +121,12 @@ module "eks" {
       min_size     = 1
       max_size     = 2
       desired_size = 1
-
-      tags = {
-        Component    = "eks-node-group"
-        NodeGroup    = "secondary"
-        InstanceType = "t3.small"
-        AutoScaling  = "enabled"
-        MinSize      = "1"
-        MaxSize      = "2"
-      }
     }
   }
 
-  tags = {
-    Component        = "eks-cluster"
-    KubernetesVersion = "1.29"
-    WorkloadType     = "microservices"
-  }
+  tags = merge(local.common_tags, {
+    Component = "eks-cluster"
+  })
 }
 
 
@@ -175,8 +145,7 @@ module "irsa-ebs-csi" {
   role_policy_arns              = [data.aws_iam_policy.ebs_csi_policy.arn]
   oidc_fully_qualified_subjects = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Component = "iam-role-ebs-csi"
-    Purpose   = "EKS-EBS-CSI-Driver"
-  }
+  })
 }
