@@ -23,7 +23,6 @@ resource "helm_release" "datadog_operator" {
   name       = "datadog-operator"
   repository = "https://helm.datadoghq.com"
   chart      = "datadog-operator"
-  version    = "1.9.0"
   namespace  = "default"
 
   depends_on = [
