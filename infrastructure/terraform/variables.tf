@@ -6,9 +6,3 @@ variable "region" {
   type        = string
   default     = "us-east-2"
 }
-
-variable "datadog_api_key" {
-  description = "Datadog API Key for monitoring"
-  type        = string
-  sensitive   = true
-}
