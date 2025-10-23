@@ -49,25 +49,3 @@ output "db_connection_string" {
   sensitive   = false
 }
 
-# Datadog Monitoring outputs
-output "datadog_operator_install_script" {
-  description = "Path to the Datadog Operator installation script"
-  value       = local_file.datadog_operator_install_script.filename
-}
-
-output "datadog_agent_manifest" {
-  description = "Path to the Datadog Agent manifest"
-  value       = local_file.datadog_agent_manifest.filename
-}
-
-output "datadog_site" {
-  description = "Datadog site URL for monitoring"
-  value       = data.vault_kv_secret_v2.datadog.data["datadog_site"]
-  sensitive   = true
-}
-
-output "datadog_cluster_name" {
-  description = "Cluster name configured in Datadog"
-  value       = module.eks.cluster_name
-}
-

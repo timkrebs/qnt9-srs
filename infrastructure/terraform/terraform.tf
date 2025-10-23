@@ -39,16 +39,6 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.11"
     }
-
-    vault = {
-      source  = "hashicorp/vault"
-      version = "~> 4.0"
-    }
-
-    local = {
-      source  = "hashicorp/local"
-      version = "~> 2.4"
-    }
   }
 
   required_version = "~> 1.3"
@@ -81,13 +71,5 @@ provider "helm" {
     cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), "")
     token                  = try(data.aws_eks_cluster_auth.cluster.token, "")
   }
-}
-
-# Vault Provider Configuration
-# For HCP Vault integration
-provider "vault" {
-  address   = var.vault_url
-  namespace = var.vault_namespace
-  token     = var.vault_token
 }
 
