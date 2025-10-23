@@ -3,29 +3,27 @@
 # ===================================================
 # NOTE: Datadog deployment is skipped during Terraform apply due to
 # HCP Terraform Cloud limitations with the Kubernetes provider.
-# Use the generated script to deploy Datadog after cluster creation.
+# Use the generated scripts to deploy Datadog after cluster creation.
 
-# Generate Datadog installation script
-resource "local_file" "datadog_install_script" {
-  filename = "${path.module}/datadog-install.sh"
-  
+# Generate Datadog Operator installation script
+resource "local_file" "datadog_operator_install_script" {
+  filename = "${path.module}/datadog-operator-install.sh"
+
   content = <<-SCRIPT
 #!/bin/bash
 set -e
 
 echo "════════════════════════════════════════════════════════════════"
-echo "  Installing Datadog on EKS Cluster"
+echo "  Installing Datadog Operator on EKS Cluster"
 echo "════════════════════════════════════════════════════════════════"
 
 # Configuration
 REGION="${var.region}"
 CLUSTER_NAME="${module.eks.cluster_name}"
-DATADOG_SITE="${data.vault_kv_secret_v2.datadog.data["datadog_site"]}"
 DATADOG_API_KEY="${data.vault_kv_secret_v2.datadog.data["datadog_api_key"]}"
 
 echo "Cluster: $CLUSTER_NAME"
 echo "Region: $REGION"
-echo "Datadog Site: $DATADOG_SITE"
 echo ""
 
 # Update kubeconfig
@@ -37,60 +35,26 @@ echo "→ Adding Datadog Helm repository..."
 helm repo add datadog https://helm.datadoghq.com
 helm repo update
 
-# Create namespace
-echo "→ Creating datadog namespace..."
-kubectl create namespace datadog --dry-run=client -o yaml | kubectl apply -f -
+# Install Datadog Operator
+echo "→ Installing Datadog Operator..."
+helm install datadog-operator datadog/datadog-operator
 
-# Create secret
+# Wait for operator to be ready
+echo "→ Waiting for Datadog Operator to be ready..."
+kubectl wait --for=condition=available --timeout=300s deployment/datadog-operator -n default
+
+# Create Datadog secret
 echo "→ Creating Datadog API key secret..."
 kubectl create secret generic datadog-secret \
-  -n datadog \
   --from-literal=api-key="$DATADOG_API_KEY" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Install Datadog
-echo "→ Installing Datadog agent..."
-helm upgrade --install datadog datadog/datadog \
-  --namespace datadog \
-  --version 3.57.0 \
-  --set datadog.apiKeyExistingSecret=datadog-secret \
-  --set datadog.site="$DATADOG_SITE" \
-  --set datadog.clusterName="$(echo $CLUSTER_NAME | tr '[:upper:]' '[:lower:]')" \
-  --set datadog.logs.enabled=true \
-  --set datadog.logs.containerCollectAll=true \
-  --set datadog.apm.portEnabled=true \
-  --set datadog.apm.port=8126 \
-  --set datadog.processAgent.enabled=true \
-  --set datadog.networkMonitoring.enabled=true \
-  --set datadog.serviceMonitoring.enabled=true \
-  --set datadog.otlp.receiver.protocols.grpc.enabled=true \
-  --set datadog.otlp.receiver.protocols.grpc.endpoint="0.0.0.0:4317" \
-  --set datadog.otlp.receiver.protocols.http.enabled=true \
-  --set datadog.otlp.receiver.protocols.http.endpoint="0.0.0.0:4318" \
-  --set datadog.containerLifecycle.enabled=true \
-  --set datadog.kubeStateMetricsCore.enabled=true \
-  --set datadog.clusterChecks.enabled=true \
-  --set datadog.admissionController.enabled=true \
-  --set clusterAgent.enabled=true \
-  --set clusterAgent.replicas=2 \
-  --set clusterAgent.resources.requests.cpu="200m" \
-  --set clusterAgent.resources.requests.memory="256Mi" \
-  --set clusterAgent.resources.limits.cpu="500m" \
-  --set clusterAgent.resources.limits.memory="512Mi" \
-  --set agents.enabled=true \
-  --set agents.resources.requests.cpu="200m" \
-  --set agents.resources.requests.memory="256Mi" \
-  --set agents.resources.limits.cpu="500m" \
-  --set agents.resources.limits.memory="512Mi"
-
 echo ""
-echo "✓ Datadog installation complete!"
+echo "✓ Datadog Operator installation complete!"
 echo ""
-echo "Check status with:"
-echo "  kubectl get pods -n datadog"
+echo "Next step: Deploy the Datadog Agent using:"
+echo "  kubectl apply -f datadog-agent.yaml"
 echo ""
-echo "View in Datadog at:"
-echo "  https://$DATADOG_SITE/infrastructure"
 echo "════════════════════════════════════════════════════════════════"
   SCRIPT
 
@@ -99,20 +63,102 @@ echo "════════════════════════�
   depends_on = [module.eks]
 }
 
+# Generate Datadog Agent manifest
+resource "local_file" "datadog_agent_manifest" {
+  filename = "${path.module}/datadog-agent.yaml"
+
+  content = <<-YAML
+apiVersion: datadoghq.com/v2alpha1
+kind: DatadogAgent
+metadata:
+  name: datadog
+spec:
+  global:
+    site: "${data.vault_kv_secret_v2.datadog.data["datadog_site"]}"
+    clusterName: "${lower(module.eks.cluster_name)}"
+    credentials:
+      apiSecret:
+        secretName: datadog-secret
+        keyName: api-key
+  
+  features:
+    # APM with auto-instrumentation
+    apm:
+      enabled: true
+      instrumentation:
+        enabled: true
+        targets:
+          - name: default-target
+            ddTraceVersions:
+              java: "1"
+              python: "3"
+              js: "5"
+              php: "1"
+              dotnet: "3"
+              ruby: "2"
+    
+    # Log collection
+    logCollection:
+      enabled: true
+      containerCollectAll: true
+    
+    # OpenTelemetry collector
+    otelCollector:
+      enabled: true
+      ports:
+        - containerPort: 4317
+          hostPort: 4317
+          name: otel-grpc
+        - containerPort: 4318
+          hostPort: 4318
+          name: otel-http
+    
+    # Additional monitoring features
+    processDiscovery:
+      enabled: true
+    
+    liveProcessCollection:
+      enabled: true
+    
+    liveContainerCollection:
+      enabled: true
+    
+    networkMonitoring:
+      enabled: true
+    
+    serviceMonitoring:
+      enabled: true
+    
+    orchestratorExplorer:
+      enabled: true
+  YAML
+
+  depends_on = [module.eks]
+}
+
 # Output instructions
 output "datadog_deployment_instructions" {
   description = "Instructions for deploying Datadog monitoring"
-  value = <<-INSTRUCTIONS
+  value       = <<-INSTRUCTIONS
     ════════════════════════════════════════════════════════════════
-    DATADOG MONITORING - POST-DEPLOYMENT STEP
+    DATADOG MONITORING - POST-DEPLOYMENT STEPS
     ════════════════════════════════════════════════════════════════
     
-    Your EKS cluster is ready! To install Datadog monitoring, run:
+    Your EKS cluster is ready! Deploy Datadog in 2 steps:
     
+    STEP 1: Install Datadog Operator
       cd infrastructure/terraform
-      ./datadog-install.sh
+      ./datadog-operator-install.sh
     
-    This will install Datadog with all monitoring features enabled.
+    STEP 2: Deploy Datadog Agent
+      kubectl apply -f datadog-agent.yaml
+    
+    Check status:
+      kubectl get datadogagent
+      kubectl get pods -l app.kubernetes.io/name=datadog
+    
+    View in Datadog:
+      https://${data.vault_kv_secret_v2.datadog.data["datadog_site"]}/infrastructure
     
     ════════════════════════════════════════════════════════════════
   INSTRUCTIONS

@@ -50,9 +50,14 @@ output "db_connection_string" {
 }
 
 # Datadog Monitoring outputs
-output "datadog_install_script" {
-  description = "Path to the Datadog installation script"
-  value       = local_file.datadog_install_script.filename
+output "datadog_operator_install_script" {
+  description = "Path to the Datadog Operator installation script"
+  value       = local_file.datadog_operator_install_script.filename
+}
+
+output "datadog_agent_manifest" {
+  description = "Path to the Datadog Agent manifest"
+  value       = local_file.datadog_agent_manifest.filename
 }
 
 output "datadog_site" {
