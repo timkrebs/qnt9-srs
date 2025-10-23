@@ -45,7 +45,7 @@ resource "helm_release" "datadog_agent" {
       datadog = {
         apiKeyExistingSecret = kubernetes_secret.datadog_api_key.metadata[0].name
         site                 = data.vault_kv_secret_v2.datadog.data["datadog_site"]
-        clusterName          = module.eks.cluster_name
+        clusterName          = lower(module.eks.cluster_name)
 
         # Logging
         logs = {
