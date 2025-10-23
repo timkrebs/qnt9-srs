@@ -29,16 +29,6 @@ terraform {
       source  = "hashicorp/cloudinit"
       version = "~> 2.3.4"
     }
-
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.23"
-    }
-
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.11"
-    }
   }
 
   required_version = "~> 1.3"
@@ -47,29 +37,5 @@ terraform {
 # AWS Provider Configuration
 provider "aws" {
   region = var.region
-}
-
-# Kubernetes Provider Configuration
-# For HCP Terraform Cloud compatibility
-provider "kubernetes" {
-  host                   = try(module.eks.cluster_endpoint, "https://localhost")
-  cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), "")
-  token                  = try(data.aws_eks_cluster_auth.cluster.token, "")
-}
-
-# Get EKS cluster authentication token
-# Uses dummy name if cluster doesn't exist to avoid errors during initial plan
-data "aws_eks_cluster_auth" "cluster" {
-  name = try(module.eks.cluster_name, "placeholder")
-}
-
-# Helm Provider Configuration
-# For HCP Terraform Cloud compatibility
-provider "helm" {
-  kubernetes {
-    host                   = try(module.eks.cluster_endpoint, "https://localhost")
-    cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), "")
-    token                  = try(data.aws_eks_cluster_auth.cluster.token, "")
-  }
 }
 
