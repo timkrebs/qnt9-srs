@@ -4,9 +4,16 @@
 provider "aws" {
   region = var.region
 
-  default_tags {
-    tags = local.common_tags
-  }
+  # Don't use default_tags with modules - causes inconsistent plan errors
+  # Tags are applied explicitly to each resource instead
+}
+
+# HCP Vault Provider Configuration
+provider "vault" {
+  address   = var.vault_url
+  namespace = var.vault_namespace
+  token     = var.vault_token
+  # Authentication via VAULT_TOKEN environment variable
 }
 
 # Filter out local zones, which are not currently supported 
@@ -22,22 +29,22 @@ locals {
   cluster_name = "education-eks-${random_string.suffix.result}"
   
   common_tags = {
-    CostCenter             = var.cost_center
-    BusinessUnit           = "Investment-Tech"
-    Project                = "Stock-Recommendation"
-    Owner                  = var.owner_email
-    BusinessOwner          = var.business_owner_email
-    Environment            = var.environment
-    Application            = "SRS-Platform"
-    ManagedBy              = "Terraform"
-    TerraformWorkspace     = terraform.workspace
-    DataClassification     = var.data_classification
-    Criticality            = var.criticality
-    ChargebackCode         = "${upper(var.environment)}-SRS-2024"
-    BudgetCode             = var.budget_code
-    ComplianceRequirement  = var.compliance_requirements
-    DataResidency          = var.data_residency
-    CreatedDate            = formatdate("YYYY-MM-DD", timestamp())
+    CostCenter            = var.cost_center
+    BusinessUnit          = "Investment-Tech"
+    Project               = "Stock-Recommendation"
+    Owner                 = var.owner_email
+    BusinessOwner         = var.business_owner_email
+    Environment           = var.environment
+    Application           = "SRS-Platform"
+    ManagedBy             = "Terraform"
+    TerraformWorkspace    = terraform.workspace
+    DataClassification    = var.data_classification
+    Criticality           = var.criticality
+    ChargebackCode        = "${upper(var.environment)}-SRS-2024"
+    BudgetCode            = var.budget_code
+    ComplianceGDPR        = contains(split(",", var.compliance_requirements), "GDPR") ? "true" : "false"
+    ComplianceSOC2        = contains(split(",", var.compliance_requirements), "SOC2") ? "true" : "false"
+    DataResidency         = var.data_residency
   }
 }
 
@@ -68,6 +75,12 @@ module "vpc" {
 
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
+  }
+
+  tags = local.common_tags
+  
+  vpc_tags = {
+    Name = "education-vpc"
   }
 }
 
@@ -116,12 +129,11 @@ module "eks" {
     }
   }
 
-  tags = merge(
-    local.common_tags,
-    {
-      Name = local.cluster_name
-    }
-  )
+  tags = local.common_tags
+  
+  cluster_tags = {
+    Name = local.cluster_name
+  }
 }
 
 
@@ -185,35 +197,87 @@ resource "aws_db_subnet_group" "rds" {
   )
 }
 
-# Random password for RDS
+# Random password for RDS master user
 resource "random_password" "db_password" {
-  length  = 32
-  special = true
+  length           = 32
+  special          = true
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
-# AWS Secrets Manager for database credentials
-resource "aws_secretsmanager_secret" "db_credentials" {
-  name_prefix = "srs-db-credentials-"
-  description = "Database credentials for SRS PostgreSQL"
-  
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "srs-db-credentials"
-    }
-  )
+# Vault Database Secrets Engine
+resource "vault_database_secrets_mount" "postgres" {
+  path = "database-${var.environment}"
+
+  postgresql {
+    name              = "srs-postgres"
+    username          = var.db_username
+    password          = random_password.db_password.result
+    connection_url    = "postgresql://{{username}}:{{password}}@${aws_db_instance.postgresql.address}:${aws_db_instance.postgresql.port}/${var.db_name}?sslmode=require"
+    verify_connection = true
+    allowed_roles     = ["fastapi-app", "readonly"]
+
+    # Optional: Configure connection pool
+    max_open_connections     = 4
+    max_idle_connections     = 0
+    max_connection_lifetime  = "0s"
+  }
 }
 
-resource "aws_secretsmanager_secret_version" "db_credentials" {
-  secret_id = aws_secretsmanager_secret.db_credentials.id
-  secret_string = jsonencode({
-    username = var.db_username
-    password = random_password.db_password.result
-    engine   = "postgres"
-    host     = aws_db_instance.postgresql.address
-    port     = aws_db_instance.postgresql.port
-    dbname   = var.db_name
+# Database Role for FastAPI Application (Read/Write)
+resource "vault_database_secret_backend_role" "fastapi_app" {
+  backend             = vault_database_secrets_mount.postgres.path
+  name                = "fastapi-app"
+  db_name             = vault_database_secrets_mount.postgres.postgresql[0].name
+  creation_statements = [
+    "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';",
+    "GRANT CONNECT ON DATABASE ${var.db_name} TO \"{{name}}\";",
+    "GRANT USAGE ON SCHEMA public TO \"{{name}}\";",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"{{name}}\";",
+    "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";",
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO \"{{name}}\";",
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO \"{{name}}\";"
+  ]
+  default_ttl = 3600      # 1 hour
+  max_ttl     = 86400     # 24 hours
+}
+
+# Database Role for Read-Only Access
+resource "vault_database_secret_backend_role" "readonly" {
+  backend             = vault_database_secrets_mount.postgres.path
+  name                = "readonly"
+  db_name             = vault_database_secrets_mount.postgres.postgresql[0].name
+  creation_statements = [
+    "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';",
+    "GRANT CONNECT ON DATABASE ${var.db_name} TO \"{{name}}\";",
+    "GRANT USAGE ON SCHEMA public TO \"{{name}}\";",
+    "GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\";",
+    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO \"{{name}}\";"
+  ]
+  default_ttl = 3600      # 1 hour
+  max_ttl     = 86400     # 24 hours
+}
+
+# Store master credentials in KV for emergency access
+resource "vault_mount" "srs_kv" {
+  path        = "kv-${var.environment}"
+  type        = "kv"
+  options     = { version = "2" }
+  description = "KV v2 secret engine for SRS static secrets"
+}
+
+resource "vault_kv_secret_v2" "db_master_credentials" {
+  mount = vault_mount.srs_kv.path
+  name  = "database/postgres-master"
+  
+  data_json = jsonencode({
+    username          = var.db_username
+    password          = random_password.db_password.result
+    engine            = "postgres"
+    host              = aws_db_instance.postgresql.address
+    port              = aws_db_instance.postgresql.port
+    dbname            = var.db_name
+    connection_string = "postgresql://${var.db_username}:${random_password.db_password.result}@${aws_db_instance.postgresql.address}:${aws_db_instance.postgresql.port}/${var.db_name}?sslmode=require"
+    note              = "Master credentials - use database secrets engine for application access"
   })
 }
 
