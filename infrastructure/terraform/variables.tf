@@ -7,73 +7,91 @@ variable "region" {
   default     = "us-east-2"
 }
 
-# Tagging Variables
-
 variable "environment" {
   description = "Environment name (dev, stg, prd)"
   type        = string
   default     = "prd"
-  
-  validation {
-    condition     = contains(["dev", "stg", "prod"], var.environment)
-    error_message = "Environment must be dev, stg, or prod."
-  }
 }
 
+# Business Tags
 variable "cost_center" {
-  description = "Cost Center code for billing"
+  description = "Cost center for billing"
   type        = string
   default     = "CC-FIN-001"
 }
 
 variable "owner_email" {
-  description = "Technical owner email address"
+  description = "Email of the technical owner"
   type        = string
   default     = "devops@qnt9.com"
 }
 
 variable "business_owner_email" {
-  description = "Business owner email address"
+  description = "Email of the business owner"
   type        = string
   default     = "product@qnt9.com"
 }
 
+# Technical Tags
 variable "data_classification" {
   description = "Data classification level (Public, Internal, Confidential, Restricted)"
   type        = string
   default     = "Confidential"
-  
-  validation {
-    condition     = contains(["Public", "Internal", "Confidential", "Restricted"], var.data_classification)
-    error_message = "Data classification must be Public, Internal, Confidential, or Restricted."
-  }
 }
 
 variable "criticality" {
-  description = "System criticality level (Critical, High, Medium, Low)"
+  description = "System criticality (Critical, High, Medium, Low)"
   type        = string
   default     = "High"
-  
-  validation {
-    condition     = contains(["Critical", "High", "Medium", "Low"], var.criticality)
-    error_message = "Criticality must be Critical, High, Medium, or Low."
-  }
 }
 
+# Financial Tags
 variable "budget_code" {
-  description = "Budget allocation code"
+  description = "Budget code for cost tracking"
   type        = string
   default     = "BDG-2024-Q1-SRS"
 }
 
+# Compliance Tags
 variable "compliance_requirements" {
-  description = "Compliance frameworks (comma-separated)"
+  description = "Compliance requirements (comma-separated)"
   type        = string
   default     = "GDPR,SOC2"
 }
 
 variable "data_residency" {
-  description = "Data residency requirement"
+  description = "Data residency requirements"
   type        = string
   default     = "US"
+}
+
+# Database Configuration
+variable "db_name" {
+  description = "PostgreSQL database name"
+  type        = string
+  default     = "srs_db"
+}
+
+variable "db_username" {
+  description = "PostgreSQL database master username"
+  type        = string
+  default     = "srs_admin"
+}
+
+variable "db_instance_class" {
+  description = "RDS instance class"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "Allocated storage in GB"
+  type        = number
+  default     = 20
+}
+
+variable "db_engine_version" {
+  description = "PostgreSQL engine version"
+  type        = string
+  default     = "15.4"
 }
