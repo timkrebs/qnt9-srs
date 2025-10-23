@@ -48,3 +48,25 @@ output "db_connection_string" {
   value       = "postgresql://${var.db_username}@${aws_db_instance.postgresql.address}:${aws_db_instance.postgresql.port}/${var.db_name}"
   sensitive   = false
 }
+
+# Datadog Monitoring outputs
+output "datadog_namespace" {
+  description = "Kubernetes namespace where Datadog is deployed"
+  value       = kubernetes_namespace.datadog.metadata[0].name
+}
+
+output "datadog_operator_version" {
+  description = "Version of Datadog operator deployed"
+  value       = helm_release.datadog_operator.version
+}
+
+output "datadog_site" {
+  description = "Datadog site URL for monitoring"
+  value       = data.vault_kv_secret_v2.datadog.data["datadog_site"]
+}
+
+output "datadog_cluster_name" {
+  description = "Cluster name configured in Datadog"
+  value       = module.eks.cluster_name
+}
+

@@ -12,24 +12,24 @@ data "aws_availability_zones" "available" {
 
 locals {
   cluster_name = "qnt9-srs-eks-${random_string.suffix.result}"
-  
+
   common_tags = {
-    CostCenter            = var.cost_center
-    BusinessUnit          = "Investment-Tech"
-    Project               = "Stock-Recommendation"
-    Owner                 = var.owner_email
-    BusinessOwner         = var.business_owner_email
-    Environment           = var.environment
-    Application           = "SRS-Platform"
-    ManagedBy             = "Terraform"
-    TerraformWorkspace    = terraform.workspace
-    DataClassification    = var.data_classification
-    Criticality           = var.criticality
-    ChargebackCode        = "${upper(var.environment)}-SRS-2024"
-    BudgetCode            = var.budget_code
-    ComplianceGDPR        = contains(split(",", var.compliance_requirements), "GDPR") ? "true" : "false"
-    ComplianceSOC2        = contains(split(",", var.compliance_requirements), "SOC2") ? "true" : "false"
-    DataResidency         = var.data_residency
+    CostCenter         = var.cost_center
+    BusinessUnit       = "Investment-Tech"
+    Project            = "Stock-Recommendation"
+    Owner              = var.owner_email
+    BusinessOwner      = var.business_owner_email
+    Environment        = var.environment
+    Application        = "SRS-Platform"
+    ManagedBy          = "Terraform"
+    TerraformWorkspace = terraform.workspace
+    DataClassification = var.data_classification
+    Criticality        = var.criticality
+    ChargebackCode     = "${upper(var.environment)}-SRS-2024"
+    BudgetCode         = var.budget_code
+    ComplianceGDPR     = contains(split(",", var.compliance_requirements), "GDPR") ? "true" : "false"
+    ComplianceSOC2     = contains(split(",", var.compliance_requirements), "SOC2") ? "true" : "false"
+    DataResidency      = var.data_residency
   }
 }
 
@@ -63,7 +63,7 @@ module "vpc" {
   }
 
   tags = local.common_tags
-  
+
   vpc_tags = {
     Name = "srs-vpc"
   }
@@ -115,7 +115,7 @@ module "eks" {
   }
 
   tags = local.common_tags
-  
+
   cluster_tags = {
     Name = local.cluster_name
   }
@@ -192,47 +192,47 @@ resource "random_password" "db_password" {
 # RDS PostgreSQL Instance
 resource "aws_db_instance" "postgresql" {
   identifier_prefix = "srs-postgres-"
-  
+
   engine         = "postgres"
   engine_version = var.db_engine_version
   instance_class = var.db_instance_class
-  
+
   allocated_storage     = var.db_allocated_storage
   max_allocated_storage = 100
   storage_type          = "gp3"
   storage_encrypted     = true
-  
+
   db_name  = var.db_name
   username = var.db_username
   password = random_password.db_password.result
   port     = 5432
-  
+
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.rds.name
-  
+
   # Backup configuration
   backup_retention_period = var.environment == "prd" ? 7 : 1
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "mon:04:00-mon:05:00"
-  
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "mon:04:00-mon:05:00"
+
   # High availability for production
   multi_az = var.environment == "prd" ? true : false
-  
+
   # Performance and monitoring
-  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
-  monitoring_interval             = 60
-  monitoring_role_arn            = aws_iam_role.rds_monitoring.arn
-  performance_insights_enabled    = true
+  enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
+  monitoring_interval                   = 60
+  monitoring_role_arn                   = aws_iam_role.rds_monitoring.arn
+  performance_insights_enabled          = true
   performance_insights_retention_period = 7
-  
+
   # Deletion protection for production
-  deletion_protection = var.environment == "prd" ? true : false
-  skip_final_snapshot = var.environment != "prd"
+  deletion_protection       = var.environment == "prd" ? true : false
+  skip_final_snapshot       = var.environment != "prd"
   final_snapshot_identifier = var.environment == "prd" ? "srs-postgres-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
-  
+
   # Auto minor version upgrade
   auto_minor_version_upgrade = true
-  
+
   tags = merge(
     local.common_tags,
     {
@@ -244,7 +244,7 @@ resource "aws_db_instance" "postgresql" {
 # IAM Role for RDS Enhanced Monitoring
 resource "aws_iam_role" "rds_monitoring" {
   name_prefix = "srs-rds-monitoring-"
-  
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -257,7 +257,7 @@ resource "aws_iam_role" "rds_monitoring" {
       }
     ]
   })
-  
+
   tags = local.common_tags
 }
 
