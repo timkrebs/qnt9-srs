@@ -219,7 +219,7 @@ resource "vault_database_secrets_mount" "postgres" {
     # Optional: Configure connection pool
     max_open_connections     = 4
     max_idle_connections     = 0
-    max_connection_lifetime  = "0s"
+    max_connection_lifetime  = 0
   }
 }
 
