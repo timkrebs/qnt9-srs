@@ -168,10 +168,6 @@ venv.bak/
 *.tfstate
 *.tfstate.*
 *.tfvars
-!terraform.tfvars  # Allow terraform.tfvars (contains no secrets)
-*.auto.tfvars
-terraform.tfvars.local
-vault-token-info.txt
 .terraform/
 .terraform.lock.hcl
 crash.log
@@ -179,7 +175,6 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-terraform-token*.json
 
 # Vault Tokens & Secrets
 *token*.json
