@@ -55,40 +55,26 @@ provider "aws" {
 }
 
 # Kubernetes Provider Configuration
-# Uses AWS CLI to get EKS authentication token
+# For HCP Terraform Cloud compatibility, we use data source instead of exec
 provider "kubernetes" {
-  host                   = try(module.eks.cluster_endpoint, "")
-  cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), "")
+  host                   = try(module.eks.cluster_endpoint, null)
+  cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), null)
+  token                  = try(data.aws_eks_cluster_auth.cluster[0].token, null)
+}
 
-  exec {
-    api_version = "client.authentication.k8s.io/v1beta1"
-    command     = "aws"
-    args = [
-      "eks",
-      "get-token",
-      "--cluster-name",
-      try(module.eks.cluster_name, "")
-    ]
-  }
+# Get EKS cluster authentication token (only when cluster exists)
+data "aws_eks_cluster_auth" "cluster" {
+  count = can(module.eks.cluster_name) ? 1 : 0
+  name  = module.eks.cluster_name
 }
 
 # Helm Provider Configuration
-# Uses AWS CLI to get EKS authentication token
+# For HCP Terraform Cloud compatibility
 provider "helm" {
   kubernetes {
-    host                   = try(module.eks.cluster_endpoint, "")
-    cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), "")
-
-    exec {
-      api_version = "client.authentication.k8s.io/v1beta1"
-      command     = "aws"
-      args = [
-        "eks",
-        "get-token",
-        "--cluster-name",
-        try(module.eks.cluster_name, "")
-      ]
-    }
+    host                   = try(module.eks.cluster_endpoint, null)
+    cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), null)
+    token                  = try(data.aws_eks_cluster_auth.cluster[0].token, null)
   }
 }
 
