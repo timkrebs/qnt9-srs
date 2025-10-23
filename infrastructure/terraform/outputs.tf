@@ -42,31 +42,6 @@ output "db_instance_name" {
   value       = aws_db_instance.postgresql.db_name
 }
 
-output "vault_database_path" {
-  description = "Path to Vault database secrets engine"
-  value       = vault_database_secrets_mount.postgres.path
-}
-
-output "vault_database_role_fastapi" {
-  description = "Vault role name for FastAPI application"
-  value       = vault_database_secret_backend_role.fastapi_app.name
-}
-
-output "vault_database_role_readonly" {
-  description = "Vault role name for read-only access"
-  value       = vault_database_secret_backend_role.readonly.name
-}
-
-output "vault_kv_mount_path" {
-  description = "Vault KV mount path for static secrets"
-  value       = vault_mount.srs_kv.path
-}
-
-output "vault_master_credentials_path" {
-  description = "Path to master credentials in Vault KV (emergency access only)"
-  value       = "${vault_mount.srs_kv.path}/data/${vault_kv_secret_v2.db_master_credentials.name}"
-  sensitive   = true
-}
 
 output "db_connection_string" {
   description = "PostgreSQL connection string for FastAPI (without password)"

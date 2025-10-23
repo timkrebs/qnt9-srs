@@ -29,11 +29,6 @@ terraform {
       source  = "hashicorp/cloudinit"
       version = "~> 2.3.4"
     }
-
-    vault = {
-      source  = "hashicorp/vault"
-      version = "~> 4.0"
-    }
   }
 
   required_version = "~> 1.3"
@@ -44,9 +39,3 @@ provider "aws" {
   region = var.region
 }
 
-# HCP Vault Provider Configuration
-provider "vault" {
-  address   = var.vault_url
-  namespace = var.vault_namespace
-  token     = var.vault_token
-}

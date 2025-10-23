@@ -97,24 +97,24 @@ variable "db_engine_version" {
 }
 
 # HCP Vault Configuration
-variable "vault_url" {
-  description = "HCP Vault cluster URL"
-  type        = string
-  default     = ""
-}
-
-variable "vault_namespace" {
-  description = "HCP Vault namespace"
-  type        = string
-  default     = "admin"
-}
-
-variable "vault_token" {
-  description = "HCP Vault token for authentication"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
+#variable "vault_url" {
+#  description = "HCP Vault cluster URL"
+#  type        = string
+#  default     = ""
+#}
+#
+#variable "vault_namespace" {
+#  description = "HCP Vault namespace"
+#  type        = string
+#  default     = "admin"
+#}
+#
+#variable "vault_token" {
+#  description = "HCP Vault token for authentication"
+#  type        = string
+#  sensitive   = true
+#  default     = ""
+#}
 
 # Monitoring Configuration
 variable "datadog_api_key" {
