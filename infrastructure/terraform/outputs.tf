@@ -50,14 +50,9 @@ output "db_connection_string" {
 }
 
 # Datadog Monitoring outputs
-output "datadog_namespace" {
-  description = "Kubernetes namespace where Datadog is deployed"
-  value       = kubernetes_namespace.datadog.metadata[0].name
-}
-
-output "datadog_agent_version" {
-  description = "Version of Datadog agent deployed"
-  value       = helm_release.datadog_agent.version
+output "datadog_install_script" {
+  description = "Path to the Datadog installation script"
+  value       = local_file.datadog_install_script.filename
 }
 
 output "datadog_site" {
