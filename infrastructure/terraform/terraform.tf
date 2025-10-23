@@ -39,3 +39,14 @@ terraform {
   required_version = "~> 1.3"
 }
 
+# AWS Provider Configuration
+provider "aws" {
+  region = var.region
+}
+
+# HCP Vault Provider Configuration
+provider "vault" {
+  address   = var.vault_url
+  namespace = var.vault_namespace
+  token     = var.vault_token
+}

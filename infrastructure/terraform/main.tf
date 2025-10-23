@@ -1,21 +1,6 @@
 # Copyright (c) HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
-provider "aws" {
-  region = var.region
-
-  # Don't use default_tags with modules - causes inconsistent plan errors
-  # Tags are applied explicitly to each resource instead
-}
-
-# HCP Vault Provider Configuration
-provider "vault" {
-  address   = var.vault_url
-  namespace = var.vault_namespace
-  token     = var.vault_token
-  # Authentication via VAULT_TOKEN environment variable
-}
-
 # Filter out local zones, which are not currently supported 
 # with managed node groups
 data "aws_availability_zones" "available" {
@@ -57,7 +42,7 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.8.1"
 
-  name = "education-vpc"
+  name = "srs-vpc"
 
   cidr = "10.0.0.0/16"
   azs  = slice(data.aws_availability_zones.available.names, 0, 3)
@@ -80,7 +65,7 @@ module "vpc" {
   tags = local.common_tags
   
   vpc_tags = {
-    Name = "education-vpc"
+    Name = "srs-vpc"
   }
 }
 
@@ -202,83 +187,6 @@ resource "random_password" "db_password" {
   length           = 32
   special          = true
   override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-# Vault Database Secrets Engine
-resource "vault_database_secrets_mount" "postgres" {
-  path = "database-${var.environment}"
-
-  postgresql {
-    name              = "srs-postgres"
-    username          = var.db_username
-    password          = random_password.db_password.result
-    connection_url    = "postgresql://{{username}}:{{password}}@${aws_db_instance.postgresql.address}:${aws_db_instance.postgresql.port}/${var.db_name}?sslmode=require"
-    verify_connection = true
-    allowed_roles     = ["fastapi-app", "readonly"]
-
-    # Optional: Configure connection pool
-    max_open_connections     = 4
-    max_idle_connections     = 0
-    max_connection_lifetime  = 0
-  }
-}
-
-# Database Role for FastAPI Application (Read/Write)
-resource "vault_database_secret_backend_role" "fastapi_app" {
-  backend             = vault_database_secrets_mount.postgres.path
-  name                = "fastapi-app"
-  db_name             = vault_database_secrets_mount.postgres.postgresql[0].name
-  creation_statements = [
-    "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';",
-    "GRANT CONNECT ON DATABASE ${var.db_name} TO \"{{name}}\";",
-    "GRANT USAGE ON SCHEMA public TO \"{{name}}\";",
-    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO \"{{name}}\";",
-    "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{{name}}\";",
-    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO \"{{name}}\";",
-    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO \"{{name}}\";"
-  ]
-  default_ttl = 3600      # 1 hour
-  max_ttl     = 86400     # 24 hours
-}
-
-# Database Role for Read-Only Access
-resource "vault_database_secret_backend_role" "readonly" {
-  backend             = vault_database_secrets_mount.postgres.path
-  name                = "readonly"
-  db_name             = vault_database_secrets_mount.postgres.postgresql[0].name
-  creation_statements = [
-    "CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';",
-    "GRANT CONNECT ON DATABASE ${var.db_name} TO \"{{name}}\";",
-    "GRANT USAGE ON SCHEMA public TO \"{{name}}\";",
-    "GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{{name}}\";",
-    "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO \"{{name}}\";"
-  ]
-  default_ttl = 3600      # 1 hour
-  max_ttl     = 86400     # 24 hours
-}
-
-# Store master credentials in KV for emergency access
-resource "vault_mount" "srs_kv" {
-  path        = "kv-${var.environment}"
-  type        = "kv"
-  options     = { version = "2" }
-  description = "KV v2 secret engine for SRS static secrets"
-}
-
-resource "vault_kv_secret_v2" "db_master_credentials" {
-  mount = vault_mount.srs_kv.path
-  name  = "database/postgres-master"
-  
-  data_json = jsonencode({
-    username          = var.db_username
-    password          = random_password.db_password.result
-    engine            = "postgres"
-    host              = aws_db_instance.postgresql.address
-    port              = aws_db_instance.postgresql.port
-    dbname            = var.db_name
-    connection_string = "postgresql://${var.db_username}:${random_password.db_password.result}@${aws_db_instance.postgresql.address}:${aws_db_instance.postgresql.port}/${var.db_name}?sslmode=require"
-    note              = "Master credentials - use database secrets engine for application access"
-  })
 }
 
 # RDS PostgreSQL Instance
