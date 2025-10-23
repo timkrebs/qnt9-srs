@@ -3,6 +3,10 @@
 
 provider "aws" {
   region = var.region
+
+  default_tags {
+    tags = local.common_tags
+  }
 }
 
 # Filter out local zones, which are not currently supported 
@@ -15,33 +19,25 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  cluster_name = "qnt9-srs-eks-${random_string.suffix.result}"
+  cluster_name = "education-eks-${random_string.suffix.result}"
   
-  # Common tags applied to all resources
   common_tags = {
-    # Business Tags
-    CostCenter    = var.cost_center
-    BusinessUnit  = "Investment-Tech"
-    Project       = "Stock-Recommendation"
-    Owner         = var.owner_email
-    BusinessOwner = var.business_owner_email
-    
-    # Technical Tags
-    Environment = var.environment
-    Application = "SRS-Platform"
-    ManagedBy   = "Terraform"
-    
-    # Operational Tags
-    DataClassification = var.data_classification
-    Criticality        = var.criticality
-    
-    # Financial Tags
-    ChargebackCode = "${upper(var.environment)}-SRS-2024"
-    BudgetCode     = var.budget_code
-    
-    # Compliance Tags
-    ComplianceReq = var.compliance_requirements
-    DataResidency = var.data_residency
+    CostCenter             = var.cost_center
+    BusinessUnit           = "Investment-Tech"
+    Project                = "Stock-Recommendation"
+    Owner                  = var.owner_email
+    BusinessOwner          = var.business_owner_email
+    Environment            = var.environment
+    Application            = "SRS-Platform"
+    ManagedBy              = "Terraform"
+    TerraformWorkspace     = terraform.workspace
+    DataClassification     = var.data_classification
+    Criticality            = var.criticality
+    ChargebackCode         = "${upper(var.environment)}-SRS-2024"
+    BudgetCode             = var.budget_code
+    ComplianceRequirement  = var.compliance_requirements
+    DataResidency          = var.data_residency
+    CreatedDate            = formatdate("YYYY-MM-DD", timestamp())
   }
 }
 
@@ -54,7 +50,7 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.8.1"
 
-  name = "qnt9-srs-vpc"
+  name = "education-vpc"
 
   cidr = "10.0.0.0/16"
   azs  = slice(data.aws_availability_zones.available.names, 0, 3)
@@ -73,10 +69,6 @@ module "vpc" {
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb" = 1
   }
-
-  tags = merge(local.common_tags, {
-    Component = "network-vpc"
-  })
 }
 
 module "eks" {
@@ -124,9 +116,12 @@ module "eks" {
     }
   }
 
-  tags = merge(local.common_tags, {
-    Component = "eks-cluster"
-  })
+  tags = merge(
+    local.common_tags,
+    {
+      Name = local.cluster_name
+    }
+  )
 }
 
 
@@ -144,8 +139,157 @@ module "irsa-ebs-csi" {
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [data.aws_iam_policy.ebs_csi_policy.arn]
   oidc_fully_qualified_subjects = ["system:serviceaccount:kube-system:ebs-csi-controller-sa"]
+}
 
-  tags = merge(local.common_tags, {
-    Component = "iam-role-ebs-csi"
+# Security Group for RDS
+resource "aws_security_group" "rds" {
+  name_prefix = "srs-rds-"
+  description = "Security group for SRS PostgreSQL RDS instance"
+  vpc_id      = module.vpc.vpc_id
+
+  ingress {
+    description = "PostgreSQL from EKS"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [module.vpc.vpc_cidr_block]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "srs-rds-sg"
+    }
+  )
+}
+
+# DB Subnet Group
+resource "aws_db_subnet_group" "rds" {
+  name_prefix = "srs-db-subnet-"
+  description = "Database subnet group for SRS RDS"
+  subnet_ids  = module.vpc.private_subnets
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "srs-db-subnet-group"
+    }
+  )
+}
+
+# Random password for RDS
+resource "random_password" "db_password" {
+  length  = 32
+  special = true
+  override_special = "!#$%&*()-_=+[]{}<>:?"
+}
+
+# AWS Secrets Manager for database credentials
+resource "aws_secretsmanager_secret" "db_credentials" {
+  name_prefix = "srs-db-credentials-"
+  description = "Database credentials for SRS PostgreSQL"
+  
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "srs-db-credentials"
+    }
+  )
+}
+
+resource "aws_secretsmanager_secret_version" "db_credentials" {
+  secret_id = aws_secretsmanager_secret.db_credentials.id
+  secret_string = jsonencode({
+    username = var.db_username
+    password = random_password.db_password.result
+    engine   = "postgres"
+    host     = aws_db_instance.postgresql.address
+    port     = aws_db_instance.postgresql.port
+    dbname   = var.db_name
   })
+}
+
+# RDS PostgreSQL Instance
+resource "aws_db_instance" "postgresql" {
+  identifier_prefix = "srs-postgres-"
+  
+  engine         = "postgres"
+  engine_version = var.db_engine_version
+  instance_class = var.db_instance_class
+  
+  allocated_storage     = var.db_allocated_storage
+  max_allocated_storage = 100
+  storage_type          = "gp3"
+  storage_encrypted     = true
+  
+  db_name  = var.db_name
+  username = var.db_username
+  password = random_password.db_password.result
+  port     = 5432
+  
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  db_subnet_group_name   = aws_db_subnet_group.rds.name
+  
+  # Backup configuration
+  backup_retention_period = var.environment == "prd" ? 7 : 1
+  backup_window          = "03:00-04:00"
+  maintenance_window     = "mon:04:00-mon:05:00"
+  
+  # High availability for production
+  multi_az = var.environment == "prd" ? true : false
+  
+  # Performance and monitoring
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  monitoring_interval             = 60
+  monitoring_role_arn            = aws_iam_role.rds_monitoring.arn
+  performance_insights_enabled    = true
+  performance_insights_retention_period = 7
+  
+  # Deletion protection for production
+  deletion_protection = var.environment == "prd" ? true : false
+  skip_final_snapshot = var.environment != "prd"
+  final_snapshot_identifier = var.environment == "prd" ? "srs-postgres-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
+  
+  # Auto minor version upgrade
+  auto_minor_version_upgrade = true
+  
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "srs-postgresql"
+    }
+  )
+}
+
+# IAM Role for RDS Enhanced Monitoring
+resource "aws_iam_role" "rds_monitoring" {
+  name_prefix = "srs-rds-monitoring-"
+  
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "monitoring.rds.amazonaws.com"
+        }
+      }
+    ]
+  })
+  
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "rds_monitoring" {
+  role       = aws_iam_role.rds_monitoring.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
 }
