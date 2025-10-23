@@ -20,3 +20,36 @@ output "cluster_name" {
   description = "Kubernetes Cluster Name"
   value       = module.eks.cluster_name
 }
+
+# Database outputs
+output "db_instance_endpoint" {
+  description = "The connection endpoint for the RDS instance"
+  value       = aws_db_instance.postgresql.endpoint
+}
+
+output "db_instance_address" {
+  description = "The address of the RDS instance"
+  value       = aws_db_instance.postgresql.address
+}
+
+output "db_instance_port" {
+  description = "The port of the RDS instance"
+  value       = aws_db_instance.postgresql.port
+}
+
+output "db_instance_name" {
+  description = "The database name"
+  value       = aws_db_instance.postgresql.db_name
+}
+
+output "db_secret_arn" {
+  description = "ARN of the secret containing database credentials"
+  value       = aws_secretsmanager_secret.db_credentials.arn
+  sensitive   = true
+}
+
+output "db_connection_string" {
+  description = "PostgreSQL connection string for FastAPI (without password)"
+  value       = "postgresql://${var.db_username}@${aws_db_instance.postgresql.address}:${aws_db_instance.postgresql.port}/${var.db_name}"
+  sensitive   = true
+}
