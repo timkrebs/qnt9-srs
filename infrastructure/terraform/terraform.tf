@@ -3,11 +3,12 @@
 
 terraform {
 
-  # cloud {
-  #   workspaces {
-  #     name = "learn-terraform-eks"
-  #   }
-  # }
+  #cloud {
+  #  organization = "tim-krebs-org"  # Your HCP Terraform organization
+  #  workspaces {
+  #    name = "qnt9-srs-prod"  # Your workspace name
+  #  }
+  #}
 
   required_providers {
     aws = {
@@ -29,6 +30,20 @@ terraform {
       source  = "hashicorp/cloudinit"
       version = "~> 2.3.4"
     }
+
+    datadog = {
+      source = "DataDog/datadog"
+    }
+
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.4.0"
+    }
+
+    vault = {
+      source  = "hashicorp/vault"
+      version = "~> 4.0.0"
+    }
   }
 
   required_version = "~> 1.3"
@@ -39,3 +54,13 @@ provider "aws" {
   region = var.region
 }
 
+provider "datadog" {
+  api_key = local.datadog_api_key
+}
+
+# HCP Vault Provider Configuration
+provider "vault" {
+  address   = var.vault_address
+  namespace = var.vault_namespace
+  token     = var.vault_token
+}

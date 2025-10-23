@@ -95,3 +95,31 @@ variable "db_engine_version" {
   type        = string
   default     = "16.3"
 }
+
+
+variable "datadog_api_key" {
+  description = "Datadog API Key (will be replaced by Vault)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+# HCP Vault Configuration
+variable "vault_address" {
+  description = "HCP Vault cluster address"
+  type        = string
+  default     = "https://qnt9-srs-vault-cluster-public-vault-9a23dacc.10ab1e04.z1.hashicorp.cloud:8200"
+}
+
+variable "vault_namespace" {
+  description = "HCP Vault namespace"
+  type        = string
+  default     = "admin"
+}
+
+variable "vault_token" {
+  description = "HCP Vault token (will be provided via environment variable or workspace variable)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
