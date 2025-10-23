@@ -55,26 +55,26 @@ provider "aws" {
 }
 
 # Kubernetes Provider Configuration
-# For HCP Terraform Cloud compatibility, we use data source instead of exec
+# For HCP Terraform Cloud compatibility
 provider "kubernetes" {
-  host                   = try(module.eks.cluster_endpoint, null)
-  cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), null)
-  token                  = try(data.aws_eks_cluster_auth.cluster[0].token, null)
+  host                   = try(module.eks.cluster_endpoint, "https://localhost")
+  cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), "")
+  token                  = try(data.aws_eks_cluster_auth.cluster.token, "")
 }
 
-# Get EKS cluster authentication token (only when cluster exists)
+# Get EKS cluster authentication token
+# Uses dummy name if cluster doesn't exist to avoid errors during initial plan
 data "aws_eks_cluster_auth" "cluster" {
-  count = can(module.eks.cluster_name) ? 1 : 0
-  name  = module.eks.cluster_name
+  name = try(module.eks.cluster_name, "placeholder")
 }
 
 # Helm Provider Configuration
 # For HCP Terraform Cloud compatibility
 provider "helm" {
   kubernetes {
-    host                   = try(module.eks.cluster_endpoint, null)
-    cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), null)
-    token                  = try(data.aws_eks_cluster_auth.cluster[0].token, null)
+    host                   = try(module.eks.cluster_endpoint, "https://localhost")
+    cluster_ca_certificate = try(base64decode(module.eks.cluster_certificate_authority_data), "")
+    token                  = try(data.aws_eks_cluster_auth.cluster.token, "")
   }
 }
 
