@@ -55,14 +55,15 @@ output "datadog_namespace" {
   value       = kubernetes_namespace.datadog.metadata[0].name
 }
 
-output "datadog_operator_version" {
-  description = "Version of Datadog operator deployed"
-  value       = helm_release.datadog_operator.version
+output "datadog_agent_version" {
+  description = "Version of Datadog agent deployed"
+  value       = helm_release.datadog_agent.version
 }
 
 output "datadog_site" {
   description = "Datadog site URL for monitoring"
   value       = data.vault_kv_secret_v2.datadog.data["datadog_site"]
+  sensitive   = true
 }
 
 output "datadog_cluster_name" {

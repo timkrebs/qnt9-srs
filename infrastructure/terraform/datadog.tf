@@ -31,71 +31,50 @@ resource "kubernetes_secret" "datadog_api_key" {
   depends_on = [kubernetes_namespace.datadog]
 }
 
-# Install Datadog Operator via Helm
-resource "helm_release" "datadog_operator" {
-  name       = "datadog-operator"
+# Deploy Datadog Agent via Helm Chart (Simplified Approach)
+# Using the official Datadog Helm chart instead of Operator + CRDs
+resource "helm_release" "datadog_agent" {
+  name       = "datadog"
   repository = "https://helm.datadoghq.com"
-  chart      = "datadog-operator"
+  chart      = "datadog"
   namespace  = kubernetes_namespace.datadog.metadata[0].name
-  version    = "1.4.0"
+  version    = "3.57.0"
 
   values = [
     yamlencode({
-      image = {
-        tag = "1.4.0"
-      }
-    })
-  ]
+      datadog = {
+        apiKeyExistingSecret = kubernetes_secret.datadog_api_key.metadata[0].name
+        site                 = data.vault_kv_secret_v2.datadog.data["datadog_site"]
+        clusterName          = module.eks.cluster_name
 
-  depends_on = [kubernetes_namespace.datadog]
-}
-
-# Deploy Datadog Agent via CRD
-resource "kubernetes_manifest" "datadog_agent" {
-  manifest = {
-    apiVersion = "datadoghq.com/v2alpha1"
-    kind       = "DatadogAgent"
-
-    metadata = {
-      name      = "datadog"
-      namespace = kubernetes_namespace.datadog.metadata[0].name
-    }
-
-    spec = {
-      global = {
-        site        = data.vault_kv_secret_v2.datadog.data["datadog_site"]
-        clusterName = module.eks.cluster_name
-
-        credentials = {
-          apiSecret = {
-            secretName = kubernetes_secret.datadog_api_key.metadata[0].name
-            keyName    = "api-key"
-          }
+        # Logging
+        logs = {
+          enabled             = true
+          containerCollectAll = true
         }
 
-        kubelet = {
-          tlsVerify = false
-        }
-      }
-
-      features = {
-        # Enable APM (Application Performance Monitoring)
+        # APM
         apm = {
+          portEnabled = true
+          port        = 8126
+        }
+
+        # Process monitoring
+        processAgent = {
           enabled = true
-          hostPortConfig = {
-            enabled  = true
-            hostPort = 8126
-          }
         }
 
-        # Enable Log Collection
-        logCollection = {
-          enabled                    = true
-          containerCollectAll        = true
-          containerCollectUsingFiles = true
+        # Network Performance Monitoring
+        networkMonitoring = {
+          enabled = true
         }
 
-        # Enable OpenTelemetry Collector
+        # Universal Service Monitoring
+        serviceMonitoring = {
+          enabled = true
+        }
+
+        # OpenTelemetry
         otlp = {
           receiver = {
             protocols = {
@@ -111,71 +90,64 @@ resource "kubernetes_manifest" "datadog_agent" {
           }
         }
 
-        # Enable Live Container Monitoring
-        liveContainerCollection = {
+        # Container lifecycle events
+        containerLifecycle = {
           enabled = true
         }
 
-        # Enable Network Performance Monitoring
-        npm = {
-          enabled = true
-        }
-
-        # Enable Universal Service Monitoring
-        usm = {
-          enabled = true
-        }
-
-        # Enable Cluster Checks
-        clusterChecks = {
-          enabled = true
-        }
-
-        # Enable Kubernetes State Metrics Core
+        # Kubernetes State Metrics Core
         kubeStateMetricsCore = {
           enabled = true
         }
 
-        # Enable Admission Controller
+        # Cluster checks
+        clusterChecks = {
+          enabled = true
+        }
+
+        # Admission Controller
         admissionController = {
           enabled = true
         }
       }
 
-      override = {
-        clusterAgent = {
-          replicas = 2
+      # Cluster Agent configuration
+      clusterAgent = {
+        enabled  = true
+        replicas = 2
 
-          resources = {
-            requests = {
-              cpu    = "200m"
-              memory = "256Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
+        resources = {
+          requests = {
+            cpu    = "200m"
+            memory = "256Mi"
           }
-        }
-
-        nodeAgent = {
-          resources = {
-            requests = {
-              cpu    = "200m"
-              memory = "256Mi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
+          limits = {
+            cpu    = "500m"
+            memory = "512Mi"
           }
         }
       }
-    }
-  }
+
+      # Agent configuration (node agent)
+      agents = {
+        enabled = true
+
+        resources = {
+          requests = {
+            cpu    = "200m"
+            memory = "256Mi"
+          }
+          limits = {
+            cpu    = "500m"
+            memory = "512Mi"
+          }
+        }
+      }
+    })
+  ]
 
   depends_on = [
-    helm_release.datadog_operator,
-    kubernetes_secret.datadog_api_key
+    kubernetes_secret.datadog_api_key,
+    kubernetes_namespace.datadog
   ]
 }
