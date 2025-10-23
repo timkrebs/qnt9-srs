@@ -46,5 +46,5 @@ output "db_instance_name" {
 output "db_connection_string" {
   description = "PostgreSQL connection string for FastAPI (without password)"
   value       = "postgresql://${var.db_username}@${aws_db_instance.postgresql.address}:${aws_db_instance.postgresql.port}/${var.db_name}"
-  sensitive   = true
+  sensitive   = false
 }

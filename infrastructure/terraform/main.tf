@@ -11,7 +11,7 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  cluster_name = "education-eks-${random_string.suffix.result}"
+  cluster_name = "qnt9-srs-eks-${random_string.suffix.result}"
   
   common_tags = {
     CostCenter            = var.cost_center
