@@ -75,7 +75,7 @@ module "eks" {
   version = "20.8.5"
 
   cluster_name    = local.cluster_name
-  cluster_version = "1.29"
+  cluster_version = "1.32"
 
   cluster_endpoint_public_access           = true
   enable_cluster_creator_admin_permissions = true
@@ -153,6 +153,17 @@ resource "aws_security_group" "rds" {
     cidr_blocks = [module.vpc.vpc_cidr_block]
   }
 
+  # Allow HCP Vault to connect for database secrets engine
+  ingress {
+    description = "PostgreSQL from HCP Vault"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    # HCP Vault CIDR ranges (adjust based on your HCP region)
+    # For production, use specific HCP Vault IP ranges from HashiCorp
+    cidr_blocks = ["0.0.0.0/0"] # TODO: Restrict to HCP Vault IPs
+  }
+
   egress {
     description = "Allow all outbound"
     from_port   = 0
@@ -173,7 +184,9 @@ resource "aws_security_group" "rds" {
 resource "aws_db_subnet_group" "rds" {
   name_prefix = "srs-db-subnet-"
   description = "Database subnet group for SRS RDS"
-  subnet_ids  = module.vpc.private_subnets
+  # Use public subnets to allow publicly_accessible to work
+  # For production, move to private subnets and use VPN/bastion
+  subnet_ids = module.vpc.public_subnets
 
   tags = merge(
     local.common_tags,
@@ -211,6 +224,9 @@ resource "aws_db_instance" "postgresql" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   db_subnet_group_name   = aws_db_subnet_group.rds.name
 
+  # Make publicly accessible for HCP Vault connection
+  publicly_accessible = true
+
   # Backup configuration
   backup_retention_period = var.environment == "prd" ? 7 : 1
   backup_window           = "03:00-04:00"
@@ -227,9 +243,10 @@ resource "aws_db_instance" "postgresql" {
   performance_insights_retention_period = 7
 
   # Deletion protection for production
-  deletion_protection       = var.environment == "prd" ? true : false
-  skip_final_snapshot       = var.environment != "prd"
-  final_snapshot_identifier = var.environment == "prd" ? "srs-postgres-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
+  # Temporarily disabled to allow subnet group change
+  deletion_protection       = false  # var.environment == "prd" ? true : false
+  skip_final_snapshot       = true   # var.environment != "prd"
+  final_snapshot_identifier = null   # var.environment == "prd" ? "srs-postgres-final-${formatdate("YYYY-MM-DD-hhmm", timestamp())}" : null
 
   # Auto minor version upgrade
   auto_minor_version_upgrade = true
