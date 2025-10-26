@@ -2,27 +2,13 @@
 # SPDX-License-Identifier: MPL-2.0
 
 # Azure Configuration Variables
-
-variable "azure_client_id" {
-  description = "Azure Client ID"
-  type        = string
-}
-
-variable "azure_client_secret" {
-  description = "Azure Client Secret"
-  type        = string
-  sensitive   = true
-}
-
-variable "azure_subscription_id" {
-  description = "Azure Subscription ID"
-  type        = string
-}
-
-variable "azure_tenant_id" {
-  description = "Azure Tenant ID"
-  type        = string
-}
+# Note: Azure authentication uses ARM_* environment variables
+# No need to define azure_client_id, azure_client_secret, etc.
+# The azurerm provider will automatically use:
+# - ARM_CLIENT_ID
+# - ARM_CLIENT_SECRET
+# - ARM_SUBSCRIPTION_ID
+# - ARM_TENANT_ID
 
 variable "location" {
   description = "Azure region"

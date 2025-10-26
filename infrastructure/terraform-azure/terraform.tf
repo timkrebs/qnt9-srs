@@ -43,6 +43,8 @@ terraform {
 }
 
 # Azure Provider Configuration
+# Uses ARM_* environment variables for authentication
+# No need to explicitly set credentials here
 provider "azurerm" {
   features {
     resource_group {
@@ -55,13 +57,11 @@ provider "azurerm" {
     }
   }
   
-  # These will be set via environment variables in HCP Terraform:
-  # ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_SUBSCRIPTION_ID, ARM_TENANT_ID
-  # Or you can set them explicitly (not recommended for production):
-  subscription_id = var.azure_subscription_id
-  client_id       = var.azure_client_id
-  client_secret   = var.azure_client_secret
-  tenant_id       = var.azure_tenant_id
+  # Authentication via environment variables (set in HCP Terraform):
+  # - ARM_CLIENT_ID
+  # - ARM_CLIENT_SECRET
+  # - ARM_SUBSCRIPTION_ID
+  # - ARM_TENANT_ID
 }
 
 provider "datadog" {
