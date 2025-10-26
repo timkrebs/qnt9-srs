@@ -102,14 +102,12 @@ resource "azurerm_kubernetes_cluster" "main" {
   kubernetes_version  = var.aks_kubernetes_version
 
   default_node_pool {
-    name               = "default"
-    vm_size            = var.aks_vm_size
-    vnet_subnet_id     = azurerm_subnet.aks.id
-    auto_scaling_enabled = true
-    min_count          = 1
-    max_count          = 5
-    node_count         = null  # Required when auto_scaling_enabled is true
-    os_disk_size_gb    = 30
+    name            = "default"
+    vm_size         = var.aks_vm_size
+    vnet_subnet_id  = azurerm_subnet.aks.id
+    min_count       = 1
+    max_count       = 5
+    os_disk_size_gb = 30
     
     tags = local.common_tags
   }
