@@ -106,7 +106,7 @@ variable "db_storage_mb" {
 variable "db_version" {
   description = "PostgreSQL version"
   type        = string
-  default     = "16"
+  default     = "15"
 }
 
 # AKS Configuration
