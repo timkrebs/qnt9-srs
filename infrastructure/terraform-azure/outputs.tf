@@ -21,6 +21,7 @@ output "cluster_name" {
 output "cluster_endpoint" {
   description = "Endpoint for AKS control plane"
   value       = azurerm_kubernetes_cluster.main.kube_config[0].host
+  sensitive   = true
 }
 
 output "cluster_id" {
