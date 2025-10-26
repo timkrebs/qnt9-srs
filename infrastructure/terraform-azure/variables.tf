@@ -17,7 +17,7 @@ variable "password" {
 variable "location" {
   description = "Azure region"
   type        = string
-  default     = "West Europe"
+  default     = "West US 2"  # Changed for better availability
 }
 
 variable "environment" {
