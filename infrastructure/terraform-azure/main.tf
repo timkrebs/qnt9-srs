@@ -12,23 +12,17 @@ locals {
   cluster_name = "qnt9-srs-aks-${random_string.suffix.result}"
   resource_group_name = "rg-srs-${var.environment}-${random_string.suffix.result}"
 
+  # Azure allows max 15 tags - reduced from original set
   common_tags = {
-    CostCenter         = var.cost_center
-    BusinessUnit       = "Investment-Tech"
-    Project            = "Stock-Recommendation"
-    Owner              = var.owner_email
-    BusinessOwner      = var.business_owner_email
     Environment        = var.environment
     Application        = "SRS-Platform"
     ManagedBy          = "Terraform"
-    TerraformWorkspace = terraform.workspace
-    DataClassification = var.data_classification
-    Criticality        = var.criticality
-    ChargebackCode     = "${upper(var.environment)}-SRS-2024"
+    Project            = "Stock-Recommendation"
+    Owner              = var.owner_email
+    CostCenter         = var.cost_center
     BudgetCode         = var.budget_code
-    ComplianceGDPR     = contains(split(",", var.compliance_requirements), "GDPR") ? "true" : "false"
-    ComplianceSOC2     = contains(split(",", var.compliance_requirements), "SOC2") ? "true" : "false"
-    DataResidency      = var.data_residency
+    Criticality        = var.criticality
+    DataClassification = var.data_classification
   }
 }
 
@@ -108,6 +102,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     min_count       = 1
     max_count       = 5
     os_disk_size_gb = 30
+    type            = "VirtualMachineScaleSets"
     
     tags = local.common_tags
   }
