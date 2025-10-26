@@ -96,13 +96,9 @@ resource "azurerm_kubernetes_cluster" "main" {
   kubernetes_version  = var.aks_kubernetes_version
 
   default_node_pool {
-    name            = "default"
-    vm_size         = var.aks_vm_size
-    vnet_subnet_id  = azurerm_subnet.aks.id
-    min_count       = 1
-    max_count       = 5
-    os_disk_size_gb = 30
-    type            = "VirtualMachineScaleSets"
+    name       = "default"
+    node_count = 2
+    vm_size    = var.aks_vm_size
     
     tags = local.common_tags
   }
@@ -115,15 +111,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     network_plugin    = "azure"
     network_policy    = "azure"
     load_balancer_sku = "standard"
-    service_cidr      = "10.1.0.0/16"
-    dns_service_ip    = "10.1.0.10"
   }
-
-  oms_agent {
-    log_analytics_workspace_id = azurerm_log_analytics_workspace.main.id
-  }
-
-  azure_policy_enabled = true
 
   tags = local.common_tags
 }
@@ -164,9 +152,12 @@ resource "azurerm_postgresql_flexible_server" "main" {
   backup_retention_days        = var.environment == "prd" ? 7 : 7
   geo_redundant_backup_enabled = var.environment == "prd" ? true : false
 
-  high_availability {
-    mode = var.environment == "prd" ? "ZoneRedundant" : "Disabled"
-  }
+  # High availability is NOT supported for Burstable SKU
+  # Only available for GeneralPurpose and MemoryOptimized tiers
+  # Commenting out for cost-effective burstable tier
+  # high_availability {
+  #   mode = var.environment == "prd" ? "ZoneRedundant" : "Disabled"
+  # }
 
   maintenance_window {
     day_of_week  = 0
