@@ -3,12 +3,16 @@
 
 # Azure Configuration Variables
 # Note: Azure authentication uses ARM_* environment variables
-# No need to define azure_client_id, azure_client_secret, etc.
-# The azurerm provider will automatically use:
-# - ARM_CLIENT_ID
-# - ARM_CLIENT_SECRET
-# - ARM_SUBSCRIPTION_ID
-# - ARM_TENANT_ID
+variable "appId" {
+    description = "Azure Application (Client) ID"
+    type        = string
+}
+
+variable "password" {
+    description = "Azure Client Secret"
+    type        = string
+    sensitive   = true
+}
 
 variable "location" {
   description = "Azure region"
@@ -121,7 +125,7 @@ variable "aks_vm_size" {
 variable "aks_kubernetes_version" {
   description = "Kubernetes version for AKS"
   type        = string
-  default     = "1.28.5"
+  default     = "1.30"
 }
 
 # Vault Configuration

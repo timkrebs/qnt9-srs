@@ -96,16 +96,18 @@ resource "azurerm_kubernetes_cluster" "main" {
   kubernetes_version  = var.aks_kubernetes_version
 
   default_node_pool {
-    name       = "default"
-    node_count = 2
-    vm_size    = var.aks_vm_size
-    
-    tags = local.common_tags
+    name            = "default"
+    node_count      = 2
+    vm_size         = "Standard_D2_v2"
+    os_disk_size_gb = 30
   }
 
-  identity {
-    type = "SystemAssigned"
+  service_principal {
+    client_id     = var.appId
+    client_secret = var.password
   }
+
+  role_based_access_control_enabled = true
 
   network_profile {
     network_plugin    = "azure"
