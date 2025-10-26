@@ -93,26 +93,16 @@ resource "azurerm_kubernetes_cluster" "main" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   dns_prefix          = "srs-${var.environment}"
-  kubernetes_version  = var.aks_kubernetes_version
 
   default_node_pool {
-    name            = "default"
-    node_count      = 2
-    vm_size         = "Standard_D2_v2"
+    name       = "default"
+    node_count = 2
+    vm_size    = var.aks_vm_size
     os_disk_size_gb = 30
   }
 
-  service_principal {
-    client_id     = var.appId
-    client_secret = var.password
-  }
-
-  role_based_access_control_enabled = true
-
-  network_profile {
-    network_plugin    = "azure"
-    network_policy    = "azure"
-    load_balancer_sku = "standard"
+  identity {
+    type = "SystemAssigned"
   }
 
   tags = local.common_tags
