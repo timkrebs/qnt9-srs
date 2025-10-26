@@ -1,15 +1,16 @@
 # HCP Vault Integration for Azure
 # This configuration reads secrets from HCP Vault and configures database secret engine
 
-# Read Datadog credentials from Vault
+# Read Datadog credentials from Vault (optional)
 data "vault_kv_secret_v2" "datadog" {
+  count = var.datadog_api_key == "" ? 1 : 0
   mount = "kv"
   name  = "datadog"
 }
 
 locals {
-  datadog_api_key = var.datadog_api_key != "" ? var.datadog_api_key : data.vault_kv_secret_v2.datadog.data["api_key"]
-  datadog_site    = var.datadog_site != "" ? var.datadog_site : data.vault_kv_secret_v2.datadog.data["site"]
+  datadog_api_key = var.datadog_api_key != "" ? var.datadog_api_key : try(data.vault_kv_secret_v2.datadog[0].data["api_key"], "")
+  datadog_site    = var.datadog_site != "" ? var.datadog_site : try(data.vault_kv_secret_v2.datadog[0].data["site"], "datadoghq.com")
 }
 
 # Store PostgreSQL root credentials in Vault KV
