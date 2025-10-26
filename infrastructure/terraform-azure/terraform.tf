@@ -46,6 +46,10 @@ terraform {
 # Uses ARM_* environment variables for authentication
 # No need to explicitly set credentials here
 provider "azurerm" {
+  # Skip automatic provider registration to avoid permission issues
+  # We only use: Compute, Network, DBforPostgreSQL, ContainerService, Storage
+  skip_provider_registration = true
+  
   features {
     resource_group {
       prevent_deletion_if_contains_resources = false
