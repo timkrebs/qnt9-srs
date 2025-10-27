@@ -296,18 +296,28 @@ stock-recommendation-system/
 
 ## Implementierungs-Roadmap (Agile Sprints)
 
+### **✅ Sprint 0: Infrastructure Migration** (COMPLETED)
+- [x] Azure Infrastructure Setup
+- [x] AKS Cluster Deployment
+- [x] Azure Container Registry
+- [x] PostgreSQL Flexible Server
+- [x] HCP Vault Integration
+- [x] Datadog Monitoring Setup
+- [x] Cost Optimization (45% reduction vs AWS)
+- [x] Documentation (Migration Guide, Cost Analysis)
+
 ### **Sprint 1-2: Foundation** (2 Wochen)
-- [ ] Repository Setup
-- [ ] Docker & Kubernetes Setup
-- [ ] CI/CD Pipeline Grundgerüst
+- [x] Repository Setup
+- [x] Docker & Kubernetes Setup (Azure AKS)
+- [ ] CI/CD Pipeline Grundgerüst (Azure DevOps/GitHub Actions)
 - [ ] Auth Service (MVP)
 - [ ] User Service (MVP)
 
 ### **Sprint 3-4: Data Layer** (2 Wochen)
 - [ ] Data Ingestion Service
 - [ ] Datenbank Schema Design
-- [ ] Message Broker Integration
-- [ ] API Gateway Setup
+- [ ] Message Broker Integration (Azure Service Bus/Event Hubs)
+- [ ] API Gateway Setup (Azure API Management or Kong)
 
 ### **Sprint 5-6: Core Analysis** (2 Wochen)
 - [ ] Analysis Service (Buffett Tenets)
