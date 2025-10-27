@@ -163,7 +163,6 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-docs/
 
 # Terraform
 *.tfstate
