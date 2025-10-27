@@ -1,0 +1,2 @@
+[![Datadog Software Composition Analysis](https://github.com/timkrebs/qnt9-srs/actions/workflows/datadog-sca.yml/badge.svg)](https://github.com/timkrebs/qnt9-srs/actions/workflows/datadog-sca.yml)
+[![Datadog Static Code Analysis](https://github.com/timkrebs/qnt9-srs/actions/workflows/datadog-static-analysis.yml/badge.svg)](https://github.com/timkrebs/qnt9-srs/actions/workflows/datadog-static-analysis.yml)
