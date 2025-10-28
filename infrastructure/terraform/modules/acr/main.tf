@@ -45,10 +45,11 @@ resource "azurerm_container_registry" "acr" {
 }
 
 # Role assignment for AKS to pull images from ACR
-# Using count instead of for_each to handle computed values from AKS module
+# This resource is created unconditionally when aks_principal_id is provided
+# Terraform will handle the dependency automatically through the reference
 resource "azurerm_role_assignment" "aks_acr_pull" {
-  count                = var.aks_principal_id != "" ? 1 : 0
-  principal_id         = var.aks_principal_id
-  role_definition_name = "AcrPull"
-  scope                = azurerm_container_registry.acr.id
+  principal_id                     = var.aks_principal_id
+  role_definition_name             = "AcrPull"
+  scope                            = azurerm_container_registry.acr.id
+  skip_service_principal_aad_check = true
 }
