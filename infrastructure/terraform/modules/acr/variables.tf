@@ -60,7 +60,7 @@ variable "georeplications" {
 variable "aks_principal_id" {
   description = "Principal ID of AKS for ACR pull role assignment"
   type        = string
-  default     = null
+  default     = ""
 }
 
 variable "tags" {

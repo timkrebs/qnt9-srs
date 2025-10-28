@@ -46,7 +46,7 @@ resource "azurerm_container_registry" "acr" {
 
 # Role assignment for AKS to pull images from ACR
 resource "azurerm_role_assignment" "aks_acr_pull" {
-  for_each = (var.aks_principal_id != null && var.aks_principal_id != "") ? toset([var.aks_principal_id]) : toset([])
+  for_each             = var.aks_principal_id != "" ? toset([var.aks_principal_id]) : toset([])
   principal_id         = each.value
   role_definition_name = "AcrPull"
   scope                = azurerm_container_registry.acr.id
