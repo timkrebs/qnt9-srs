@@ -46,8 +46,8 @@ resource "azurerm_container_registry" "acr" {
 
 # Role assignment for AKS to pull images from ACR
 resource "azurerm_role_assignment" "aks_acr_pull" {
-  count                = var.aks_principal_id != null ? 1 : 0
-  principal_id         = var.aks_principal_id
+  for_each             = var.aks_principal_id != null ? { id = var.aks_principal_id } : {}
+  principal_id         = each.value.id
   role_definition_name = "AcrPull"
   scope                = azurerm_container_registry.acr.id
 }
