@@ -1,18 +1,21 @@
 # Azure Container Registry Module
+# Manages Docker container images for microservices
 
-resource "azurerm_container_registry" "main" {
-  name                = "acr${var.project_name}${var.environment}"
+resource "azurerm_container_registry" "acr" {
+  name                = var.acr_name
   resource_group_name = var.resource_group_name
   location            = var.location
   sku                 = var.sku
-  admin_enabled       = var.admin_enabled
 
-  # Enable public network access
-  public_network_access_enabled = true
+  # Enable admin user for basic authentication (needed for GitHub Actions)
+  admin_enabled = var.admin_enabled
 
-  # Network rule set for production
+  # Public network access
+  public_network_access_enabled = var.public_network_access_enabled
+
+  # Network rule set for additional security
   dynamic "network_rule_set" {
-    for_each = var.environment == "prd" ? [1] : []
+    for_each = var.network_rule_set_enabled ? [1] : []
     content {
       default_action = "Deny"
 
@@ -23,9 +26,9 @@ resource "azurerm_container_registry" "main" {
     }
   }
 
-  # Geo-replication for production
+  # Enable georeplications for production
   dynamic "georeplications" {
-    for_each = var.environment == "prd" && var.sku == "Premium" ? var.georeplications : []
+    for_each = var.georeplications
     content {
       location                = georeplications.value.location
       zone_redundancy_enabled = georeplications.value.zone_redundancy_enabled
@@ -33,68 +36,18 @@ resource "azurerm_container_registry" "main" {
     }
   }
 
-  # Encryption for production
-  dynamic "encryption" {
-    for_each = var.enable_encryption ? [1] : []
-    content {
-      enabled            = true
-      key_vault_key_id   = var.encryption_key_vault_key_id
-      identity_client_id = var.encryption_identity_client_id
-    }
+  # Identity for managed identity scenarios
+  identity {
+    type = "SystemAssigned"
   }
 
-  # Retention policy
-  dynamic "retention_policy" {
-    for_each = var.enable_retention_policy ? [1] : []
-    content {
-      days    = var.retention_days
-      enabled = true
-    }
-  }
-
-  # Trust policy for content trust
-  dynamic "trust_policy" {
-    for_each = var.enable_trust_policy ? [1] : []
-    content {
-      enabled = true
-    }
-  }
-
-  tags = merge(
-    var.tags,
-    {
-      Name        = "acr-${var.project_name}-${var.environment}"
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-    }
-  )
+  tags = var.tags
 }
 
-# Role assignment for AKS to pull from ACR
+# Role assignment for AKS to pull images from ACR
 resource "azurerm_role_assignment" "aks_acr_pull" {
   count                = var.aks_principal_id != null ? 1 : 0
   principal_id         = var.aks_principal_id
   role_definition_name = "AcrPull"
-  scope                = azurerm_container_registry.main.id
-}
-
-# Diagnostic settings
-resource "azurerm_monitor_diagnostic_setting" "acr" {
-  count                      = var.log_analytics_workspace_id != null ? 1 : 0
-  name                       = "acr-${var.environment}-diagnostics"
-  target_resource_id         = azurerm_container_registry.main.id
-  log_analytics_workspace_id = var.log_analytics_workspace_id
-
-  enabled_log {
-    category = "ContainerRegistryRepositoryEvents"
-  }
-
-  enabled_log {
-    category = "ContainerRegistryLoginEvents"
-  }
-
-  metric {
-    category = "AllMetrics"
-    enabled  = true
-  }
+  scope                = azurerm_container_registry.acr.id
 }

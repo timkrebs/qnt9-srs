@@ -109,18 +109,18 @@ output "acr_name" {
 }
 
 output "acr_login_server" {
-  description = "Login server URL for the Azure Container Registry"
+  description = "Login server URL for ACR"
   value       = module.acr.acr_login_server
 }
 
 output "acr_admin_username" {
-  description = "Admin username for ACR (for GitHub Actions)"
+  description = "ACR admin username for authentication"
   value       = module.acr.acr_admin_username
   sensitive   = true
 }
 
 output "acr_admin_password" {
-  description = "Admin password for ACR (for GitHub Actions)"
+  description = "ACR admin password for authentication"
   value       = module.acr.acr_admin_password
   sensitive   = true
 }
@@ -154,5 +154,7 @@ output "quick_start_commands" {
     configure_kubectl = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
     view_function_app = "az functionapp show --name ${module.function_app.function_app_name} --resource-group ${azurerm_resource_group.main.name}"
     list_secrets      = "az keyvault secret list --vault-name ${module.key_vault.key_vault_name}"
+    acr_login         = "az acr login --name ${module.acr.acr_name}"
+    docker_login      = "docker login ${module.acr.acr_login_server} -u ${module.acr.acr_admin_username}"
   }
 }

@@ -146,28 +146,22 @@ module "aks" {
 module "acr" {
   source = "./modules/acr"
 
-  project_name        = "qnt9srs"
-  environment         = var.environment
+  acr_name            = "acr${local.project_name}${var.environment}${local.unique_suffix}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-
-  # SKU based on environment
-  sku = var.environment == "prd" ? "Standard" : "Basic"
-
-  # Enable admin user for GitHub Actions push
+  
+  # Use Basic SKU for dev, Standard for staging/prod
+  sku = var.environment == "dev" ? "Basic" : "Standard"
+  
+  # Enable admin for GitHub Actions authentication
   admin_enabled = true
-
-  # Grant AKS pull access to ACR
+  
+  # Allow AKS to pull images
   aks_principal_id = module.aks.kubelet_identity_object_id
 
-  # Enable diagnostics for production
-  log_analytics_workspace_id = var.environment == "prd" ? module.app_insights.log_analytics_workspace_id : null
-
-  # Retention policy for staging and production
-  enable_retention_policy = var.environment != "dev"
-  retention_days          = 7
-
-  tags = local.common_tags
+  tags = merge(local.common_tags, {
+    Purpose = "Container Registry for Microservices"
+  })
 }
 
 # Application Insights module
