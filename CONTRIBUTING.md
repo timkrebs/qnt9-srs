@@ -336,11 +336,11 @@ Brief description of changes
 
 Pull requests must pass:
 
-✅ All linting checks
-✅ All unit tests (Python 3.11 & 3.12)
-✅ Security scans
-✅ Code coverage ≥ 80%
-✅ No merge conflicts
+All linting checks
+All unit tests (Python 3.11 & 3.12)
+Security scans
+Code coverage ≥ 80%
+No merge conflicts
 
 ### 4. Code Review
 
@@ -359,26 +359,26 @@ Pull requests must pass:
 
 ### `develop` Branch
 
-- ✅ Require pull request before merging
-- ✅ Require 1 approval
-- ✅ Require status checks to pass:
+- Require pull request before merging
+- Require 1 approval
+- Require status checks to pass:
   - Lint Python Code
   - Run Tests (Python 3.11)
   - Run Tests (Python 3.12)
   - Security Scan
-- ✅ Require branches to be up to date
-- ✅ Do not allow force pushes
-- ✅ Do not allow deletions
+- Require branches to be up to date
+- Do not allow force pushes
+- Do not allow deletions
 
 ### `main` Branch
 
-- ✅ Require pull request before merging
-- ✅ Require 2 approvals
-- ✅ Require status checks to pass (same as develop)
-- ✅ Require deployments to succeed before merge
-- ✅ Do not allow bypassing the above settings
-- ✅ Do not allow force pushes
-- ✅ Do not allow deletions
+- Require pull request before merging
+- Require 2 approvals
+- Require status checks to pass (same as develop)
+- Require deployments to succeed before merge
+- Do not allow bypassing the above settings
+- Do not allow force pushes
+- Do not allow deletions
 
 ## Deployment Process
 
