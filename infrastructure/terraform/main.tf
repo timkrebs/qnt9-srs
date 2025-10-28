@@ -154,7 +154,7 @@ module "aks" {
 module "acr" {
   source = "./modules/acr"
 
-  acr_name            = "acr${local.project_name}${var.environment}${local.unique_suffix}"
+  acr_name            = "acr${replace(local.project_name, "-", "")}${var.environment}${local.unique_suffix}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
   
