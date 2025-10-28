@@ -2,77 +2,198 @@ name: "Terraform Plan"
 
 on:
   pull_request:
+    branches:
+      - develop
+      - main
+    paths:
+      - 'infrastructure/terraform/**'
+      - '.github/workflows/terraform-plan.yml'
 
 env:
-  TF_CLOUD_ORGANIZATION: "${{ secrets.TF_CLOUD_ORGANIZATION }}"
-  TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
-  TF_WORKSPACE: "${{ secrets.TF_WORKSPACE }}"
+  TF_VERSION: '1.5.0'
   CONFIG_DIRECTORY: "./infrastructure/terraform"
+  ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
 
 jobs:
-  terraform:
-    if: github.repository != 'timkrebs/qnt9-srs'
-    name: "Terraform Plan"
+  # Validate Terraform syntax and formatting
+  validate:
+    name: Validate Terraform
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.CONFIG_DIRECTORY }}
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: ${{ env.CONFIG_DIRECTORY }}
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ${{ env.CONFIG_DIRECTORY }}
+
+  # Security scan with tfsec
+  security-scan:
+    name: Security Scan (tfsec)
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: ${{ env.CONFIG_DIRECTORY }}
+          soft_fail: true
+
+  # Plan for Development Environment
+  plan-dev:
+    name: Plan - Development
+    runs-on: ubuntu-latest
+    needs: [validate, security-scan]
+    if: github.event.pull_request.base.ref == 'develop'
     permissions:
-      # so GitHub can check out this repo using the default github.token
       contents: read
       pull-requests: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Upload Configuration
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
-        id: plan-upload
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
-          workspace: ${{ env.TF_WORKSPACE }}
-          directory: ${{ env.CONFIG_DIRECTORY }}
-          speculative: true
+          terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Create Plan Run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
-        id: plan-run
+      - name: Azure Login
+        uses: azure/login@v1
         with:
-          workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version: ${{ steps.plan-upload.outputs.configuration_version_id }}
-          plan_only: true
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
 
-      - name: Get Plan Output
-        uses: hashicorp/tfc-workflows-github/actions/plan-output@v1.0.0
-        id: plan-output
-        with:
-          plan: ${{ fromJSON(steps.plan-run.outputs.payload).data.relationships.plan.data.id }}
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.CONFIG_DIRECTORY }}
+        env:
+          TF_VAR_vault_address: ${{ secrets.VAULT_ADDR }}
+          TF_VAR_vault_token: ${{ secrets.VAULT_TOKEN }}
+          TF_VAR_vault_namespace: ${{ secrets.VAULT_NAMESPACE }}
 
-      - name: Update PR
-        uses: actions/github-script@v6
-        id: plan-comment
+      - name: Terraform Plan - Dev
+        id: plan-dev
+        run: |
+          terraform plan -var-file="environments/dev.tfvars" -out=tfplan-dev -no-color
+        working-directory: ${{ env.CONFIG_DIRECTORY }}
+        env:
+          TF_VAR_vault_address: ${{ secrets.VAULT_ADDR }}
+          TF_VAR_vault_token: ${{ secrets.VAULT_TOKEN }}
+          TF_VAR_vault_namespace: ${{ secrets.VAULT_NAMESPACE }}
+        continue-on-error: true
+
+      - name: Update PR with Dev Plan
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan-dev.outputs.stdout }}"
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // 1. Retrieve existing bot comments for the PR
-            const { data: comments } = await github.rest.issues.listComments({
+            const output = `#### Terraform Plan - Development Environment
+            <details><summary>Show Plan</summary>
+            
+            \`\`\`terraform
+            ${process.env.PLAN}
+            \`\`\`
+            
+            </details>
+            
+            **Environment**: Development (Fake Data)
+            **Trigger**: PR to develop branch
+            **Status**: ${{ steps.plan-dev.outcome }}
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              body: output
             });
-            const botComment = comments.find(comment => {
-              return comment.user.type === 'Bot' && comment.body.includes('Terraform Cloud Plan Output')
-            });
-            const output = `#### Terraform Cloud Plan Output
-               \`\`\`
-               Plan: ${{ steps.plan-output.outputs.add }} to add, ${{ steps.plan-output.outputs.change }} to change, ${{ steps.plan-output.outputs.destroy }} to destroy.
-               \`\`\`
-               [Terraform Cloud Plan](${{ steps.plan-run.outputs.run_link }})
-               `;
-            // 3. Delete previous comment so PR timeline makes sense
-            if (botComment) {
-              github.rest.issues.deleteComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-              });
-            }
+
+  # Plan for Staging/Test Environment
+  plan-staging:
+    name: Plan - Staging/Test
+    runs-on: ubuntu-latest
+    needs: [validate, security-scan]
+    if: github.event.pull_request.base.ref == 'main'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ${{ env.CONFIG_DIRECTORY }}
+        env:
+          TF_VAR_vault_address: ${{ secrets.VAULT_ADDR }}
+          TF_VAR_vault_token: ${{ secrets.VAULT_TOKEN }}
+          TF_VAR_vault_namespace: ${{ secrets.VAULT_NAMESPACE }}
+
+      - name: Terraform Plan - Staging
+        id: plan-staging
+        run: |
+          terraform plan -var-file="environments/staging.tfvars" -out=tfplan-staging -no-color
+        working-directory: ${{ env.CONFIG_DIRECTORY }}
+        env:
+          TF_VAR_vault_address: ${{ secrets.VAULT_ADDR }}
+          TF_VAR_vault_token: ${{ secrets.VAULT_TOKEN }}
+          TF_VAR_vault_namespace: ${{ secrets.VAULT_NAMESPACE }}
+        continue-on-error: true
+
+      - name: Update PR with Staging Plan
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan-staging.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Plan - Staging/Test Environment
+            <details><summary>Show Plan</summary>
+            
+            \`\`\`terraform
+            ${process.env.PLAN}
+            \`\`\`
+            
+            </details>
+            
+            **Environment**: Staging/Test (Pre-Production Data)
+            **Trigger**: PR to main branch
+            **Features**: Azure Load Testing enabled
+            **Status**: ${{ steps.plan-staging.outcome }}
+            `;
+            
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
