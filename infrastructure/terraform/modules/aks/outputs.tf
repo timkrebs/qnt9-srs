@@ -24,6 +24,11 @@ output "kubelet_identity" {
   value       = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id
 }
 
+output "kubelet_identity_object_id" {
+  description = "Object ID of the kubelet managed identity (for ACR access)"
+  value       = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id
+}
+
 output "principal_id" {
   description = "Principal ID of the system-assigned identity"
   value       = azurerm_kubernetes_cluster.main.identity[0].principal_id

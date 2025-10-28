@@ -142,6 +142,34 @@ module "aks" {
   tags = local.common_tags
 }
 
+# Azure Container Registry module
+module "acr" {
+  source = "./modules/acr"
+
+  project_name        = "qnt9srs"
+  environment         = var.environment
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+
+  # SKU based on environment
+  sku = var.environment == "prd" ? "Standard" : "Basic"
+
+  # Enable admin user for GitHub Actions push
+  admin_enabled = true
+
+  # Grant AKS pull access to ACR
+  aks_principal_id = module.aks.kubelet_identity_object_id
+
+  # Enable diagnostics for production
+  log_analytics_workspace_id = var.environment == "prd" ? module.app_insights.log_analytics_workspace_id : null
+
+  # Retention policy for staging and production
+  enable_retention_policy = var.environment != "dev"
+  retention_days          = 7
+
+  tags = local.common_tags
+}
+
 # Application Insights module
 module "app_insights" {
   source = "./modules/app-insights"

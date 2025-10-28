@@ -102,6 +102,29 @@ output "key_vault_uri" {
   value       = module.key_vault.key_vault_uri
 }
 
+# Azure Container Registry
+output "acr_name" {
+  description = "Name of the Azure Container Registry"
+  value       = module.acr.acr_name
+}
+
+output "acr_login_server" {
+  description = "Login server URL for the Azure Container Registry"
+  value       = module.acr.acr_login_server
+}
+
+output "acr_admin_username" {
+  description = "Admin username for ACR (for GitHub Actions)"
+  value       = module.acr.acr_admin_username
+  sensitive   = true
+}
+
+output "acr_admin_password" {
+  description = "Admin password for ACR (for GitHub Actions)"
+  value       = module.acr.acr_admin_password
+  sensitive   = true
+}
+
 # Environment Information
 output "environment" {
   description = "Current environment"
