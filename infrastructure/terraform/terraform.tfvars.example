@@ -1,0 +1,21 @@
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars.secret and fill in your actual values
+# NEVER commit terraform.tfvars.secret to version control
+
+# HCP Vault Configuration
+# Get these values from your HCP Vault cluster
+vault_address   = "https://your-vault-cluster.vault.hashicorp.cloud:8200"
+vault_namespace = "admin"
+vault_token     = "your-vault-root-token-here"
+
+# SendGrid Configuration (optional)
+# Get this from your SendGrid account
+sendgrid_api_key = "SG.your-sendgrid-api-key-here"
+
+# Datadog Configuration (optional)
+# Get these from your Datadog account
+datadog_api_key = "your-datadog-api-key-here"
+datadog_site    = "datadoghq.com"
+
+# Note: Most other variables are defined in environment-specific files
+# See environments/dev.tfvars, environments/staging.tfvars, environments/prd.tfvars
