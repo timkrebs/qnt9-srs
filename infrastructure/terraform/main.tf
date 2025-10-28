@@ -18,6 +18,14 @@ terraform {
       version = "~> 3.0"
     }
   }
+
+  cloud {
+    organization = "${var.tfc_organization}"
+
+    workspaces {
+      name = "${var.tfc_workspace}"
+    }
+  }
 }
 
 # Local variables for resource naming and tagging
