@@ -19,13 +19,9 @@ terraform {
     }
   }
 
-  cloud {
-    organization = "${var.tfc_organization}"
-
-    workspaces {
-      name = "${var.tfc_workspace}"
-    }
-  }
+  # Cloud block is configured via CLI or environment variables
+  # The organization and workspace are set in the HCP Terraform workspace settings
+  # and passed via the GitHub Actions workflow
 }
 
 # Local variables for resource naming and tagging

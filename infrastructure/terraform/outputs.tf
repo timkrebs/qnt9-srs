@@ -155,6 +155,8 @@ output "quick_start_commands" {
     view_function_app = "az functionapp show --name ${module.function_app.function_app_name} --resource-group ${azurerm_resource_group.main.name}"
     list_secrets      = "az keyvault secret list --vault-name ${module.key_vault.key_vault_name}"
     acr_login         = "az acr login --name ${module.acr.acr_name}"
-    docker_login      = "docker login ${module.acr.acr_login_server} -u ${module.acr.acr_admin_username}"
+    # Note: Use 'az acr login' or retrieve credentials from Key Vault for docker login
   }
+  # Mark as sensitive since it contains resource names that might be considered sensitive
+  sensitive = true
 }

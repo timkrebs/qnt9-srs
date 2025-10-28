@@ -1,14 +1,3 @@
-# HCP Terraform Variables
-variable "tfc_organization" {
-  description = "Terraform Cloud organization name"
-  type        = string
-}
-
-variable "tfc_workspace" {
-  description = "Terraform Cloud workspace name"
-  type        = string
-}
-
 # Core Azure Configuration
 variable "location" {
   description = "Azure region where resources will be deployed"

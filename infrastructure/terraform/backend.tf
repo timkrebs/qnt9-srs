@@ -1,17 +1,23 @@
 # Backend configuration for Terraform state storage
 # State is stored in HCP Terraform (Terraform Cloud) for secure remote backend
 
-#terraform {
-#  backend "remote" {
-#    organization = "qnt9"
-#    
-#    workspaces {
-#      prefix = "qnt9-srs-"
-#    }
-#  }
-#}
+# The cloud block is configured in main.tf or via CLI:
+# - Organization and workspace are set via TF_CLOUD_ORGANIZATION and TF_WORKSPACE env vars
+# - Or configured in HCP Terraform workspace settings
+# - The GitHub Actions workflow handles this configuration automatically
 
-# Alternative: Azure Blob Storage backend (uncomment if not using HCP Terraform)
+# For local development, you can create a backend_override.tf file:
+# terraform {
+#   cloud {
+#     organization = "qnt9"
+#     workspaces {
+#       name = "qnt9-srs-dev-main"
+#     }
+#   }
+# }
+
+# Alternative: Azure Blob Storage backend (currently not used)
+# Uncomment if migrating from HCP Terraform to Azure backend
 # terraform {
 #   backend "azurerm" {
 #     resource_group_name  = "qnt9-srs-tfstate-rg"
