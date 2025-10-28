@@ -45,9 +45,10 @@ resource "azurerm_container_registry" "acr" {
 }
 
 # Role assignment for AKS to pull images from ACR
+# Using count instead of for_each to handle computed values from AKS module
 resource "azurerm_role_assignment" "aks_acr_pull" {
-  for_each             = var.aks_principal_id != "" ? toset([var.aks_principal_id]) : toset([])
-  principal_id         = each.value
+  count                = var.aks_principal_id != "" ? 1 : 0
+  principal_id         = var.aks_principal_id
   role_definition_name = "AcrPull"
   scope                = azurerm_container_registry.acr.id
 }
