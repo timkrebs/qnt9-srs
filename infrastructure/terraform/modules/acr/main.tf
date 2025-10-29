@@ -45,9 +45,11 @@ resource "azurerm_container_registry" "acr" {
 }
 
 # Role assignment for AKS to pull images from ACR
-# This resource is created unconditionally when aks_principal_id is provided
-# Terraform will handle the dependency automatically through the reference
+# NOTE: This requires the Service Principal to have 'User Access Administrator' or 'Owner' role
+# If disabled, you must manually grant AKS the AcrPull role using:
+# az role assignment create --assignee <aks-kubelet-identity> --role AcrPull --scope <acr-id>
 resource "azurerm_role_assignment" "aks_acr_pull" {
+  count                            = var.enable_aks_role_assignment && var.aks_principal_id != "" ? 1 : 0
   principal_id                     = var.aks_principal_id
   role_definition_name             = "AcrPull"
   scope                            = azurerm_container_registry.acr.id

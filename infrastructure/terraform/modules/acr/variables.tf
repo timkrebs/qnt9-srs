@@ -63,6 +63,12 @@ variable "aks_principal_id" {
   default     = ""
 }
 
+variable "enable_aks_role_assignment" {
+  description = "Enable automatic role assignment for AKS to pull from ACR. Requires elevated permissions (User Access Administrator or Owner role)"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to ACR"
   type        = map(string)
