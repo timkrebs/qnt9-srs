@@ -29,6 +29,11 @@ output "principal_id" {
   value       = azurerm_kubernetes_cluster.main.identity[0].principal_id
 }
 
+output "kubelet_identity_object_id" {
+  description = "Object ID of the kubelet managed identity (for ACR access)"
+  value       = azurerm_kubernetes_cluster.main.kubelet_identity[0].object_id
+}
+
 output "log_analytics_workspace_id" {
   description = "ID of the Log Analytics workspace"
   value       = azurerm_log_analytics_workspace.aks.id

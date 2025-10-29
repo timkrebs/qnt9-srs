@@ -18,6 +18,10 @@ terraform {
       version = "~> 3.0"
     }
   }
+
+  # Cloud block is configured via CLI or environment variables
+  # The organization and workspace are set in the HCP Terraform workspace settings
+  # and passed via the GitHub Actions workflow
 }
 
 # Local variables for resource naming and tagging
@@ -140,6 +144,28 @@ module "aks" {
   kubernetes_version = var.aks_kubernetes_version
 
   tags = local.common_tags
+}
+
+# Azure Container Registry module
+module "acr" {
+  source = "./modules/acr"
+
+  acr_name            = "acr${replace(local.project_name, "-", "")}${var.environment}${local.unique_suffix}"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  
+  # Use Basic SKU for dev, Standard for staging/prod
+  sku = var.environment == "dev" ? "Basic" : "Standard"
+  
+  # Enable admin for GitHub Actions authentication
+  admin_enabled = true
+  
+  # Allow AKS to pull images
+  aks_principal_id = module.aks.kubelet_identity_object_id
+
+  tags = merge(local.common_tags, {
+    Purpose = "Container Registry for Microservices"
+  })
 }
 
 # Application Insights module

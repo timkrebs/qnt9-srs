@@ -102,6 +102,29 @@ output "key_vault_uri" {
   value       = module.key_vault.key_vault_uri
 }
 
+# Azure Container Registry
+output "acr_name" {
+  description = "Name of the Azure Container Registry"
+  value       = module.acr.acr_name
+}
+
+output "acr_login_server" {
+  description = "Login server URL for ACR"
+  value       = module.acr.acr_login_server
+}
+
+output "acr_admin_username" {
+  description = "ACR admin username for authentication"
+  value       = module.acr.acr_admin_username
+  sensitive   = true
+}
+
+output "acr_admin_password" {
+  description = "ACR admin password for authentication"
+  value       = module.acr.acr_admin_password
+  sensitive   = true
+}
+
 # Environment Information
 output "environment" {
   description = "Current environment"
@@ -131,5 +154,9 @@ output "quick_start_commands" {
     configure_kubectl = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
     view_function_app = "az functionapp show --name ${module.function_app.function_app_name} --resource-group ${azurerm_resource_group.main.name}"
     list_secrets      = "az keyvault secret list --vault-name ${module.key_vault.key_vault_name}"
+    acr_login         = "az acr login --name ${module.acr.acr_name}"
+    # Note: Use 'az acr login' or retrieve credentials from Key Vault for docker login
   }
+  # Mark as sensitive since it contains resource names that might be considered sensitive
+  sensitive = true
 }
