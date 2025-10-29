@@ -29,3 +29,8 @@ output "acr_identity_principal_id" {
   description = "Principal ID of the ACR managed identity"
   value       = azurerm_container_registry.acr.identity[0].principal_id
 }
+
+output "manual_role_assignment_command" {
+  description = "Command to manually assign AcrPull role to AKS (use if automatic assignment is disabled)"
+  value       = var.enable_aks_role_assignment ? "Role assignment managed by Terraform" : "az role assignment create --assignee ${var.aks_principal_id} --role AcrPull --scope ${azurerm_container_registry.acr.id}"
+}
