@@ -30,9 +30,8 @@ jobs:
       fail-fast: false
       matrix:
         service:
-          - auth-service
           - search-service
-          - frontend-service
+          - data-ingestion-service
         python-version: ["3.11", "3.14"]
 
     steps:
