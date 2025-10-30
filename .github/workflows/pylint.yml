@@ -1,0 +1,81 @@
+name: Pylint
+
+on:
+  push:
+    branches: ["main", "develop", "staging"]
+    paths:
+      - 'services/**/*.py'
+      - 'services/**/requirements.txt'
+      - '.pylintrc'
+  pull_request:
+    branches: ["main", "develop", "staging"]
+    paths:
+      - 'services/**/*.py'
+      - 'services/**/requirements.txt'
+      - '.pylintrc'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint:
+    name: Pylint ${{ matrix.service }} (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-service
+          - search-service
+          - data-ingestion-service
+        python-version: ["3.11", "3.14"]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: 'services/${{ matrix.service }}/requirements.txt'
+    
+    - name: Install dependencies
+      working-directory: services/${{ matrix.service }}
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint
+        if [ -f requirements.txt ]; then 
+            pip install -r requirements.txt
+        fi
+    
+    - name: Analysing the code with pylint
+      working-directory: services/${{ matrix.service }}
+      run: |
+        pylint app/ \
+          --exit-zero \
+          --rcfile=../../.pylintrc \
+          --output-format=colorized \
+          --reports=y \
+          --score=y
+      continue-on-error: true
+    
+    - name: Generate pylint JSON report
+      if: matrix.python-version == '3.14'
+      working-directory: services/${{ matrix.service }}
+      run: |
+        pylint app/ \
+          --exit-zero \
+          --rcfile=../../.pylintrc \
+          --output-format=json \
+          > pylint-report.json || true
+    
+    - name: Upload pylint report
+      if: matrix.python-version == '3.14'
+      uses: actions/upload-artifact@v4
+      with:
+        name: pylint-report-${{ matrix.service }}
+        path: services/${{ matrix.service }}/pylint-report.json
+        retention-days: 30
