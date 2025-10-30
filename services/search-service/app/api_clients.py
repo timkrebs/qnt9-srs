@@ -2,6 +2,7 @@
 External API clients for stock data retrieval
 Implements Yahoo Finance and Alpha Vantage integration with rate limiting
 """
+
 import logging
 import os
 from datetime import datetime, timedelta

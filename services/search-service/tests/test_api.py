@@ -1,6 +1,7 @@
 """
 Integration tests for the search API endpoints
 """
+
 from unittest.mock import patch
 
 

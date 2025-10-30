@@ -3,6 +3,7 @@ Vault KV Integration for Search Service - Static Database Credentials
 This module handles authentication with Vault and retrieval of static database credentials from KV v2.
 Adapted from auth-service pattern for search-service.
 """
+
 import logging
 import os
 from typing import Dict, Optional
@@ -45,7 +46,10 @@ class VaultKVClient:
 
         print(f"Initializing Vault client: {self.vault_addr}")
         self.client = hvac.Client(
-            url=self.vault_addr, token=self.vault_token, namespace=self.vault_namespace, timeout=10
+            url=self.vault_addr,
+            token=self.vault_token,
+            namespace=self.vault_namespace,
+            timeout=10,
         )
 
         print("Verifying Vault authentication...")
@@ -78,7 +82,8 @@ class VaultKVClient:
             print(f"Reading from Vault KV path: {self.kv_path}")
             logger.debug(f"Attempting to read credentials from path: {self.kv_path}")
             response = self.client.secrets.kv.v2.read_secret_version(
-                path=self.kv_path.replace("kv/data/", "").replace("kv/", ""), mount_point="kv"
+                path=self.kv_path.replace("kv/data/", "").replace("kv/", ""),
+                mount_point="kv",
             )
 
             print("Successfully read secret from Vault")

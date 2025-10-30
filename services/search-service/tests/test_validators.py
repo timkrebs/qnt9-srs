@@ -1,6 +1,7 @@
 """
 Unit tests for validators module
 """
+
 import pytest
 from pydantic import ValidationError
 

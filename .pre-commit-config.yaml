@@ -31,4 +31,16 @@ repos:
     rev: v1.6.1
     hooks:
     -   id: mypy
-        args: [--ignore-missing-imports]
+        name: mypy (search-service)
+        files: ^services/search-service/
+        args: [--ignore-missing-imports, --explicit-package-bases]
+        pass_filenames: false
+        additional_dependencies: []
+        entry: bash -c 'cd services/search-service && mypy app/ tests/ --ignore-missing-imports'
+    -   id: mypy
+        name: mypy (frontend-service)
+        files: ^services/frontend-service/
+        args: [--ignore-missing-imports, --explicit-package-bases]
+        pass_filenames: false
+        additional_dependencies: []
+        entry: bash -c 'cd services/frontend-service && mypy app/ tests/ --ignore-missing-imports'

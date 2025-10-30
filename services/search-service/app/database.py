@@ -2,6 +2,7 @@
 Database configuration and connection management for search service
 Implements Vault → Environment Variable → SQLite fallback pattern
 """
+
 import logging
 import os
 
@@ -19,7 +20,8 @@ USE_LOCAL_DB = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
 if USE_LOCAL_DB:
     print("LOCAL DEVELOPMENT MODE - Using local database")
     db_url = os.getenv(
-        "DATABASE_URL", "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db"
+        "DATABASE_URL",
+        "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db",
     )
     print(f"Using local database: {db_url.split('@')[0] if '@' in db_url else db_url}")
 else:
@@ -38,14 +40,16 @@ else:
             print("   Falling back to environment variables...")
             # Fallback to environment variables or SQLite for development
             db_url = os.getenv(
-                "DATABASE_URL", "sqlite:///./search_service.db"  # Default to SQLite for local dev
+                "DATABASE_URL",
+                "sqlite:///./search_service.db",  # Default to SQLite for local dev
             )
             print(f"Using database URL: {db_url.split('@')[0] if '@' in db_url else db_url}")
     except ImportError as e:
         print(f"Vault module not available: {e}")
         # Fallback to environment variables or SQLite for development
         db_url = os.getenv(
-            "DATABASE_URL", "sqlite:///./search_service.db"  # Default to SQLite for local dev
+            "DATABASE_URL",
+            "sqlite:///./search_service.db",  # Default to SQLite for local dev
         )
         print(f"Using database URL: {db_url.split('@')[0] if '@' in db_url else db_url}")
 

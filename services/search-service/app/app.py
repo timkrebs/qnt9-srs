@@ -2,6 +2,7 @@
 Search Service - Main FastAPI Application
 Provides stock search functionality using ISIN, WKN, or symbol codes
 """
+
 import logging
 import time
 from contextlib import asynccontextmanager

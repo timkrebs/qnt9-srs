@@ -2,6 +2,7 @@
 Cache management for stock data
 Implements PostgreSQL-based caching with 5-minute TTL
 """
+
 import json
 import logging
 from datetime import datetime, timedelta

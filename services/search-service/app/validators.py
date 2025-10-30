@@ -1,6 +1,7 @@
 """
 Input validation and Pydantic models for stock search
 """
+
 import re
 from typing import Literal, Optional
 
@@ -11,7 +12,10 @@ class SearchQuery(BaseModel):
     """Request model for stock search"""
 
     query: str = Field(
-        ..., min_length=1, max_length=20, description="ISIN, WKN, or stock symbol to search"
+        ...,
+        min_length=1,
+        max_length=20,
+        description="ISIN, WKN, or stock symbol to search",
     )
 
     @field_validator("query")
