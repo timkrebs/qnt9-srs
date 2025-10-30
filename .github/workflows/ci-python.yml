@@ -230,16 +230,19 @@ jobs:
             -w /app \
             $image_tag \
             sh -c "
-              pip install --user pytest pytest-cov pytest-asyncio pytest-xdist &&
+              pip install --user pytest pytest-cov pytest-asyncio &&
               export PATH=\"\$PATH:\$HOME/.local/bin\" &&
+              mkdir -p /tmp/coverage && \
               pytest -v \
                 --cov=app \
-                --cov-report=xml:coverage.xml \
+                --cov-report=xml:/tmp/coverage/coverage.xml \
                 --cov-report=term-missing \
-                --cov-report=html:htmlcov \
-                --junitxml=pytest-report.xml \
-                --maxfail=10 \
-                -n auto
+                --cov-report=html:/tmp/coverage/htmlcov \
+                --junitxml=/tmp/coverage/pytest-report.xml \
+                --maxfail=10 && \
+              cp /tmp/coverage/coverage.xml /app/ && \
+              cp /tmp/coverage/pytest-report.xml /app/ && \
+              cp -r /tmp/coverage/htmlcov /app/ || true
             "
       
       - name: Extract coverage from container
