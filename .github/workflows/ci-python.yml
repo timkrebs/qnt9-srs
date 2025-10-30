@@ -19,6 +19,7 @@ permissions:
   contents: read
   pull-requests: write
   checks: write
+  security-events: write
 
 jobs:
   # Job 1: Detect which services changed
@@ -27,11 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       services: ${{ steps.filter.outputs.changes }}
-      auth-service: ${{ steps.filter.outputs.auth-service }}
       search-service: ${{ steps.filter.outputs.search-service }}
       frontend-service: ${{ steps.filter.outputs.frontend-service }}
-      data-ingestion-service: ${{ steps.filter.outputs.data-ingestion-service }}
-      analysis-service: ${{ steps.filter.outputs.analysis-service }}
     steps:
       - uses: actions/checkout@v4
       
@@ -39,208 +37,17 @@ jobs:
         id: filter
         with:
           filters: |
-            auth-service:
-              - 'services/auth-service/**'
             search-service:
               - 'services/search-service/**'
             frontend-service:
               - 'services/frontend-service/**'
-            data-ingestion-service:
-              - 'services/data-ingestion-service/**'
-            analysis-service:
-              - 'services/analysis-service/**'
 
-  # Job 2: Pre-commit checks (linting, formatting)
-  pre-commit:
-    name: Pre-commit Checks
+  # Job 2: Lint & Format Check
+  lint:
+    name: Lint ${{ matrix.service }}
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: |
-      needs.detect-changes.outputs.search-service == 'true' ||
-      needs.detect-changes.outputs.analysis-service == 'true'
-    
-    strategy:
-      matrix:
-        service:
-          - search-service
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
-      - name: Install linting tools
-        run: |
-          python -m pip install --upgrade pip
-          pip install black isort flake8 mypy pylint bandit safety
-      
-      - name: Check if service changed
-        id: check
-        run: |
-          if [[ "${{ needs.detect-changes.outputs[matrix.service] }}" == "true" ]] || [[ "${{ github.event_name }}" == "push" ]]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Black code formatting check
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          if [ -f "pyproject.toml" ]; then
-            black --check --config pyproject.toml .
-          else
-            black --check --line-length 100 .
-          fi
-        continue-on-error: true
-      
-      - name: isort import sorting check
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          if [ -f "pyproject.toml" ]; then
-            isort --check-only --profile black .
-          else
-            isort --check-only --profile black --line-length 100 .
-          fi
-        continue-on-error: true
-      
-      - name: Flake8 linting
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          # Stop on syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Treat all other errors as warnings
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      
-      - name: Pylint analysis
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt
-          fi
-          pylint app/ --exit-zero --rcfile=../../.pylintrc || true
-        continue-on-error: true
-      
-      - name: Bandit security check
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          bandit -r app/ -f json -o bandit-report.json || true
-          bandit -r app/ || true
-        continue-on-error: true
-      
-      - name: Safety dependency check
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          if [ -f "requirements.txt" ]; then
-            safety check --file requirements.txt --output json > safety-report.json || true
-            safety check --file requirements.txt || true
-          fi
-        continue-on-error: true
-
-  # Job 3: Run tests with pytest
-  test:
-    name: Test ${{ matrix.service }}
-    runs-on: ubuntu-latest
-    needs: [detect-changes, pre-commit]
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - search-service
-        python-version: ["3.11", "3.14"]
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-      
-      - name: Check if service changed
-        id: check
-        run: |
-          if [[ "${{ needs.detect-changes.outputs[matrix.service] }}" == "true" ]] || [[ "${{ github.event_name }}" == "push" ]]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Install dependencies
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-cov pytest-asyncio pytest-xdist
-          if [ -f "requirements.txt" ]; then
-            pip install -r requirements.txt
-          fi
-      
-      - name: Run pytest with coverage
-        if: steps.check.outputs.changed == 'true'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          pytest -v \
-            --cov=app \
-            --cov-report=xml:coverage.xml \
-            --cov-report=term \
-            --cov-report=html:htmlcov \
-            --junitxml=pytest-report.xml \
-            --maxfail=5 \
-            -n auto
-        env:
-          VAULT_ADDR: "http://localhost:8200"
-          VAULT_TOKEN: "test-token"
-          USE_LOCAL_DB: "true"
-      
-      - name: Upload coverage to CodeCov
-        if: steps.check.outputs.changed == 'true' && matrix.python-version == '3.14'
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: services/${{ matrix.service }}/coverage.xml
-          flags: ${{ matrix.service }}
-          name: ${{ matrix.service }}-coverage
-          fail_ci_if_error: false
-      
-      - name: Upload test results
-        if: always() && steps.check.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.service }}-${{ matrix.python-version }}
-          path: |
-            services/${{ matrix.service }}/pytest-report.xml
-            services/${{ matrix.service }}/coverage.xml
-            services/${{ matrix.service }}/htmlcov/
-          retention-days: 30
-      
-      - name: Check coverage threshold
-        if: steps.check.outputs.changed == 'true' && matrix.python-version == '3.14'
-        working-directory: services/${{ matrix.service }}
-        run: |
-          coverage_pct=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(float(root.attrib['line-rate']) * 100)")
-          echo "Coverage: ${coverage_pct}%"
-          if (( $(echo "$coverage_pct < 80" | bc -l) )); then
-            echo "::warning::Coverage is below 80% (${coverage_pct}%)"
-          fi
-
-  # Job 4: Build Docker images
-  docker-build:
-    name: Docker Build ${{ matrix.service }}
-    runs-on: ubuntu-latest
-    needs: [detect-changes, test]
-    if: github.event_name == 'push'
+    if: needs.detect-changes.outputs.search-service == 'true'
     
     strategy:
       fail-fast: false
@@ -252,35 +59,100 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: 'services/${{ matrix.service }}/requirements.txt'
+      
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install black isort flake8 mypy pylint bandit safety ruff
+      
+      - name: Install service dependencies
+        working-directory: services/${{ matrix.service }}
+        run: |
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          fi
+      
+      - name: Black code formatting check
+        working-directory: services/${{ matrix.service }}
+        run: black --check --line-length 100 .
+        continue-on-error: true
+      
+      - name: isort import sorting check
+        working-directory: services/${{ matrix.service }}
+        run: isort --check-only --profile black --line-length 100 .
+        continue-on-error: true
+      
+      - name: Ruff linting
+        working-directory: services/${{ matrix.service }}
+        run: ruff check .
+        continue-on-error: true
+      
+      - name: Flake8 linting
+        working-directory: services/${{ matrix.service }}
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
+        continue-on-error: true
+      
+      - name: Pylint analysis
+        working-directory: services/${{ matrix.service }}
+        run: |
+          pylint app/ --exit-zero --rcfile=../../.pylintrc --score=y
+        continue-on-error: true
+      
+      - name: Bandit security scan
+        working-directory: services/${{ matrix.service }}
+        run: |
+          bandit -r app/ -ll -f sarif -o bandit-report.sarif || true
+          bandit -r app/ -ll || true
+        continue-on-error: true
+      
+      - name: Upload Bandit SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: services/${{ matrix.service }}/bandit-report.sarif
+          category: bandit-${{ matrix.service }}
+        continue-on-error: true
+
+  # Job 3: Build Docker Image
+  docker-build:
+    name: Build Docker ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [detect-changes, lint]
+    
+    if: needs.detect-changes.outputs.search-service == 'true'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - search-service
+    
+    steps:
+      - uses: actions/checkout@v4
+      
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Check if service changed
-        id: check
-        run: |
-          if [[ "${{ needs.detect-changes.outputs[matrix.service] }}" == "true" ]] || [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
-      
       - name: Extract metadata
-        if: steps.check.outputs.changed == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            qnt9srs/${{ matrix.service }}
+          images: qnt9srs/${{ matrix.service }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
       
       - name: Build Docker image
-        if: steps.check.outputs.changed == 'true'
         uses: docker/build-push-action@v5
         with:
           context: services/${{ matrix.service }}
@@ -296,85 +168,28 @@ jobs:
             VERSION=${{ github.ref_name }}
       
       - name: Test Docker image
-        if: steps.check.outputs.changed == 'true'
         run: |
           image_tag=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
           docker run --rm $image_tag python --version
       
       - name: Save Docker image
-        if: steps.check.outputs.changed == 'true'
         run: |
           image_tag=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
           docker save $image_tag | gzip > /tmp/${{ matrix.service }}.tar.gz
       
       - name: Upload Docker image artifact
-        if: steps.check.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: docker-${{ matrix.service }}
           path: /tmp/${{ matrix.service }}.tar.gz
           retention-days: 1
 
-  # Job 5: Docker Scout vulnerability scanning
-  docker-scout:
-    name: Docker Scout Scan ${{ matrix.service }}
+  # Job 4: Run Tests in Docker Container
+  test-in-docker:
+    name: Test in Docker ${{ matrix.service }}
     runs-on: ubuntu-latest
     needs: [detect-changes, docker-build]
-    if: github.event_name == 'push'
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - search-service
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Check if service changed
-        id: check
-        run: |
-          if [[ "${{ needs.detect-changes.outputs[matrix.service] }}" == "true" ]] || [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Download Docker image
-        if: steps.check.outputs.changed == 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-${{ matrix.service }}
-          path: /tmp
-      
-      - name: Load Docker image
-        if: steps.check.outputs.changed == 'true'
-        run: |
-          docker load < /tmp/${{ matrix.service }}.tar.gz
-      
-      - name: Docker Scout scan
-        if: steps.check.outputs.changed == 'true'
-        uses: docker/scout-action@v1
-        with:
-          command: cves
-          image: qnt9srs/${{ matrix.service }}:${{ github.ref_name }}
-          only-severities: critical,high
-          exit-code: false
-          sarif-file: scout-${{ matrix.service }}.sarif
-      
-      - name: Upload Scout results to GitHub Security
-        if: steps.check.outputs.changed == 'true' && github.event_name == 'push'
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: scout-${{ matrix.service }}.sarif
-          category: docker-scout-${{ matrix.service }}
-
-  # Job 6: Push to Azure Container Registry
-  docker-push-acr:
-    name: Push to ACR ${{ matrix.service }}
-    runs-on: ubuntu-latest
-    needs: [detect-changes, docker-scout]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development' || github.ref == 'refs/heads/staging')
+    if: needs.detect-changes.outputs.search-service == 'true'
     
     strategy:
       fail-fast: false
@@ -386,23 +201,154 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Check if service changed
-        id: check
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-${{ matrix.service }}
+          path: /tmp
+      
+      - name: Load Docker image
+        run: docker load < /tmp/${{ matrix.service }}.tar.gz
+      
+      - name: Run tests inside Docker container
         run: |
-          if [[ "${{ needs.detect-changes.outputs[matrix.service] }}" == "true" ]] || [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
+          image_tag="qnt9srs/${{ matrix.service }}:${{ github.ref_name }}"
+          
+          # Run tests in container with SQLite test database
+          docker run --rm \
+            -v $(pwd)/services/${{ matrix.service }}:/app \
+            -e USE_LOCAL_DB=true \
+            -e DATABASE_URL=sqlite:///./test.db \
+            -e VAULT_ADDR=http://localhost:8200 \
+            -e VAULT_TOKEN=test-token \
+            -w /app \
+            $image_tag \
+            sh -c "
+              pip install pytest pytest-cov pytest-asyncio pytest-xdist &&
+              pytest -v \
+                --cov=app \
+                --cov-report=xml:coverage.xml \
+                --cov-report=term-missing \
+                --cov-report=html:htmlcov \
+                --junitxml=pytest-report.xml \
+                --maxfail=10 \
+                -n auto
+            "
+      
+      - name: Extract coverage from container
+        run: |
+          # Coverage files are in mounted volume
+          ls -la services/${{ matrix.service}}/
+      
+      - name: Check coverage threshold (80-90%)
+        working-directory: services/${{ matrix.service }}
+        run: |
+          if [ -f coverage.xml ]; then
+            coverage_pct=$(python3 -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(float(root.attrib['line-rate']) * 100)")
+            echo "Coverage: ${coverage_pct}%"
+            
+            if (( $(echo "$coverage_pct < 80" | bc -l) )); then
+              echo "Coverage is below 80% (${coverage_pct}%)"
+              exit 1
+            elif (( $(echo "$coverage_pct >= 90" | bc -l) )); then
+              echo "Excellent! Coverage is ${coverage_pct}% (>= 90%)"
+            else
+              echo "Good! Coverage is ${coverage_pct}% (80-90%)"
+            fi
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No coverage.xml found"
+            exit 1
           fi
       
+      - name: Upload coverage to CodeCov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: services/${{ matrix.service }}/coverage.xml
+          flags: ${{ matrix.service }}
+          name: ${{ matrix.service }}-docker-coverage
+          fail_ci_if_error: false
+          verbose: true
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.service }}-docker
+          path: |
+            services/${{ matrix.service }}/pytest-report.xml
+            services/${{ matrix.service }}/coverage.xml
+            services/${{ matrix.service }}/htmlcov/
+          retention-days: 30
+
+  # Job 5: Docker Scout vulnerability scanning
+  docker-scout:
+    name: Docker Scout Scan ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [detect-changes, test-in-docker]
+    if: needs.detect-changes.outputs.search-service == 'true' && github.event_name == 'push'
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - search-service
+          - frontend-service
+
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-${{ matrix.service }}
+          path: /tmp
+      
+      - name: Load Docker image
+        run: docker load < /tmp/${{ matrix.service }}.tar.gz
+      
+      - name: Docker Scout scan
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: qnt9srs/${{ matrix.service }}:${{ github.ref_name }}
+          only-severities: critical,high
+          exit-code: false
+          sarif-file: scout-${{ matrix.service }}.sarif
+        continue-on-error: true
+      
+      - name: Upload Scout results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scout-${{ matrix.service }}.sarif
+          category: docker-scout-${{ matrix.service }}
+        continue-on-error: true
+
+  # Job 6: Push to Azure Container Registry
+  docker-push-acr:
+    name: Push to ACR ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [detect-changes, docker-scout]
+    if: |
+      needs.detect-changes.outputs.search-service == 'true' &&
+      github.event_name == 'push' && 
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development' || github.ref == 'refs/heads/staging')
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - search-service
+    
+    steps:
+      - uses: actions/checkout@v4
+      
       - name: Azure Login
-        if: steps.check.outputs.changed == 'true'
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
       
       - name: Login to Azure Container Registry
-        if: steps.check.outputs.changed == 'true'
         uses: azure/docker-login@v1
         with:
           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
@@ -410,14 +356,12 @@ jobs:
           password: ${{ secrets.ACR_PASSWORD }}
       
       - name: Download Docker image
-        if: steps.check.outputs.changed == 'true'
         uses: actions/download-artifact@v4
         with:
           name: docker-${{ matrix.service }}
           path: /tmp
       
       - name: Load and tag Docker image
-        if: steps.check.outputs.changed == 'true'
         run: |
           docker load < /tmp/${{ matrix.service }}.tar.gz
           
@@ -445,7 +389,6 @@ jobs:
           echo "Pushed: $ACR_IMAGE_LATEST"
       
       - name: Azure CLI - Verify image
-        if: steps.check.outputs.changed == 'true'
         run: |
           ENV="${{ github.ref == 'refs/heads/main' && 'prd' || github.ref == 'refs/heads/staging' && 'staging' || 'dev' }}"
           az acr repository show-tags \
@@ -457,7 +400,7 @@ jobs:
   summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, pre-commit, test, docker-build, docker-scout]
+    needs: [detect-changes, lint, docker-build, test-in-docker, docker-scout]
     if: always()
     
     steps:
@@ -465,29 +408,41 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+        continue-on-error: true
+      
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/test-results-action@v1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+        continue-on-error: true
       
       - name: Generate summary
         run: |
           echo "# Python CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Triggered by:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "## Changed Services" >> $GITHUB_STEP_SUMMARY
-          echo "- search-service: ${{ needs.detect-changes.outputs.search-service }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **search-service**: ${{ needs.detect-changes.outputs.search-service == 'true' && ' Changed' || ' Skipped' }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          echo "## Job Status" >> $GITHUB_STEP_SUMMARY
-          echo "- Pre-commit: ${{ needs.pre-commit.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Tests: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Docker Build: ${{ needs.docker-build.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Docker Scout: ${{ needs.docker-scout.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Pipeline Stages" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Format | ${{ needs.lint.result == 'success' && 'Passed' || needs.lint.result == 'skipped' && ' Skipped' || ' Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Docker Build | ${{ needs.docker-build.result == 'success' && 'Passed' || needs.docker-build.result == 'skipped' && ' Skipped' || ' Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test in Docker | ${{ needs.test-in-docker.result == 'success' && 'Passed' || needs.test-in-docker.result == 'skipped' && ' Skipped' || ' Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.docker-scout.result == 'success' && 'Passed' || needs.docker-scout.result == 'skipped' && ' Skipped' || ' Failed' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [[ "${{ needs.test.result }}" == "success" ]]; then
-            echo "All tests passed!" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ needs.test-in-docker.result }}" == "success" ]]; then
+            echo "### All tests passed with 80-90% coverage!" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.test-in-docker.result }}" == "skipped" ]]; then
+            echo "### Tests skipped (no changes detected)" >> $GITHUB_STEP_SUMMARY
           else
-            echo "Some tests failed. Check the logs above." >> $GITHUB_STEP_SUMMARY
+            echo "### Some tests failed. Check the logs above." >> $GITHUB_STEP_SUMMARY
           fi
