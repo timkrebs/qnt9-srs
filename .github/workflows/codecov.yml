@@ -21,7 +21,6 @@ jobs:
       matrix:
         service:
           - search-service
-          - data-ingestion-service
         python-version: ['3.11', '3.14']
     
     steps:

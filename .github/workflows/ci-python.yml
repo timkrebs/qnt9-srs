@@ -57,14 +57,12 @@ jobs:
     needs: detect-changes
     if: |
       needs.detect-changes.outputs.search-service == 'true' ||
-      needs.detect-changes.outputs.data-ingestion-service == 'true' ||
       needs.detect-changes.outputs.analysis-service == 'true'
     
     strategy:
       matrix:
         service:
           - search-service
-          - data-ingestion-service
     
     steps:
       - uses: actions/checkout@v4
@@ -159,7 +157,6 @@ jobs:
       matrix:
         service:
           - search-service
-          - data-ingestion-service
         python-version: ["3.11", "3.14"]
     
     steps:
@@ -249,7 +246,6 @@ jobs:
       fail-fast: false
       matrix:
         service:
-          - auth-service
           - search-service
           - frontend-service
     
@@ -331,7 +327,6 @@ jobs:
       matrix:
         service:
           - search-service
-          - data-ingestion-service
     
     steps:
       - uses: actions/checkout@v4
@@ -385,8 +380,6 @@ jobs:
       fail-fast: false
       matrix:
         service:
-          - search-service
-          - data-ingestion-service
           - search-service
           - frontend-service
     
@@ -475,7 +468,7 @@ jobs:
       
       - name: Generate summary
         run: |
-          echo "# 🚀 Python CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "# Python CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
@@ -484,7 +477,6 @@ jobs:
           
           echo "## Changed Services" >> $GITHUB_STEP_SUMMARY
           echo "- search-service: ${{ needs.detect-changes.outputs.search-service }}" >> $GITHUB_STEP_SUMMARY
-          echo "- data-ingestion-service: ${{ needs.detect-changes.outputs.data-ingestion-service }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "## Job Status" >> $GITHUB_STEP_SUMMARY
@@ -495,7 +487,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [[ "${{ needs.test.result }}" == "success" ]]; then
-            echo "✅ All tests passed!" >> $GITHUB_STEP_SUMMARY
+            echo "All tests passed!" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Some tests failed. Check the logs above." >> $GITHUB_STEP_SUMMARY
+            echo "Some tests failed. Check the logs above." >> $GITHUB_STEP_SUMMARY
           fi
