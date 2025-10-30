@@ -2,13 +2,13 @@ name: Pylint
 
 on:
   push:
-    branches: ["main", "develop", "staging"]
+    branches: ["main", "development", "staging"]
     paths:
       - 'services/**/*.py'
       - 'services/**/requirements.txt'
       - '.pylintrc'
   pull_request:
-    branches: ["main", "develop", "staging"]
+    branches: ["main", "development", "staging"]
     paths:
       - 'services/**/*.py'
       - 'services/**/requirements.txt'

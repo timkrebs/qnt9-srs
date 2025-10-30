@@ -2,12 +2,12 @@ name: Python CI Pipeline
 
 on:
   push:
-    branches: [main, develop, staging]
+    branches: [main, development, staging]
     paths:
       - 'services/**'
       - '.github/workflows/ci-python.yml'
   pull_request:
-    branches: [main, develop, staging]
+    branches: [main, development, staging]
     paths:
       - 'services/**'
       - '.github/workflows/ci-python.yml'
@@ -384,7 +384,7 @@ jobs:
     name: Push to ACR ${{ matrix.service }}
     runs-on: ubuntu-latest
     needs: [detect-changes, docker-scout]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/staging')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/development' || github.ref == 'refs/heads/staging')
     
     strategy:
       fail-fast: false

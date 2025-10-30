@@ -5,13 +5,13 @@ name: Pytest
 
 on:
   push:
-    branches: ["main", "develop", "staging"]
+    branches: ["main", "development", "staging"]
     paths:
       - 'services/**/*.py'
       - 'services/**/requirements.txt'
       - 'services/**/pyproject.toml'
   pull_request:
-    branches: ["main", "develop", "staging"]
+    branches: ["main", "development", "staging"]
     paths:
       - 'services/**/*.py'
       - 'services/**/requirements.txt'
