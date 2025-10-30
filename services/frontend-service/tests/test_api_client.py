@@ -2,6 +2,7 @@
 Frontend Service Tests - API Client Tests
 Tests for SearchServiceClient
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest

@@ -2,6 +2,7 @@
 Frontend Service - Main FastAPI Application
 Provides web UI for stock search using HTMX
 """
+
 import logging
 from pathlib import Path
 

@@ -21,7 +21,7 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH=/root/.local/bin:$PATH \
+    PATH=/home/appuser/.local/bin:$PATH \
     HOST=0.0.0.0 \
     PORT=8001
 
@@ -30,8 +30,8 @@ RUN useradd -m -u 1000 appuser
 
 WORKDIR /app
 
-# Copy dependencies from builder
-COPY --from=builder /root/.local /root/.local
+# Copy dependencies from builder to appuser's local
+COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 
 # Copy application code
 COPY app/ ./app/

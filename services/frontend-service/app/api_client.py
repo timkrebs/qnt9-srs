@@ -1,6 +1,7 @@
 """
 HTTP Client for Search Service API
 """
+
 import logging
 from typing import Any, Dict, List
 

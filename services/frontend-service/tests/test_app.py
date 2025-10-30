@@ -2,6 +2,7 @@
 Frontend Service Tests - Main Application Tests
 Tests for FastAPI endpoints and template rendering
 """
+
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -85,7 +86,11 @@ async def test_search_stock_success():
 @pytest.mark.asyncio
 async def test_search_stock_not_found():
     """Test stock search when stock is not found"""
-    mock_result = {"success": False, "message": "Stock not found", "detail": "Invalid ISIN"}
+    mock_result = {
+        "success": False,
+        "message": "Stock not found",
+        "detail": "Invalid ISIN",
+    }
 
     with patch("app.api_client.search_client.search", new_callable=AsyncMock) as mock_search:
         mock_search.return_value = mock_result

@@ -2,6 +2,7 @@
 Frontend Service Tests - Test Configuration
 Fixtures and configuration for pytest
 """
+
 import os
 
 import pytest
@@ -54,7 +55,11 @@ def mock_search_result(mock_stock_data):
 @pytest.fixture
 def mock_error_result():
     """Sample error result"""
-    return {"success": False, "message": "Stock not found", "detail": "Invalid identifier"}
+    return {
+        "success": False,
+        "message": "Stock not found",
+        "detail": "Invalid identifier",
+    }
 
 
 @pytest.fixture
