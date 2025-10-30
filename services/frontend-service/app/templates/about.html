@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}About - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <h1 class="text-4xl font-bold text-gray-900 mb-8">About QNT9 Stock Search</h1>
+    
+    <div class="bg-white rounded-lg shadow-md p-8 mb-8">
+        <h2 class="text-2xl font-semibold text-gray-900 mb-4">Overview</h2>
+        <p class="text-gray-700 leading-relaxed mb-4">
+            QNT9 Stock Recommendation System is a microservices-based stock analysis platform 
+            built on Azure cloud infrastructure. The system follows Warren Buffett's value 
+            investing principles, providing real-time stock analysis, custom watchlists, and 
+            automated weekly reports.
+        </p>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-8 mb-8">
+        <h2 class="text-2xl font-semibold text-gray-900 mb-4">Search Capabilities</h2>
+        <div class="space-y-4">
+            <div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">ISIN (International Securities Identification Number)</h3>
+                <p class="text-gray-700">12-character alphanumeric code. Example: <code class="bg-gray-100 px-2 py-1 rounded">DE0005140008</code></p>
+            </div>
+            <div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">WKN (Wertpapierkennnummer)</h3>
+                <p class="text-gray-700">6-character alphanumeric code used in Germany. Example: <code class="bg-gray-100 px-2 py-1 rounded">514000</code></p>
+            </div>
+            <div>
+                <h3 class="text-lg font-medium text-gray-900 mb-2">Stock Symbol</h3>
+                <p class="text-gray-700">Ticker symbol with exchange. Example: <code class="bg-gray-100 px-2 py-1 rounded">DBK.DE</code></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-8">
+        <h2 class="text-2xl font-semibold text-gray-900 mb-4">Technology Stack</h2>
+        <ul class="space-y-2 text-gray-700">
+            <li class="flex items-start">
+                <svg class="w-5 h-5 text-primary mr-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><strong>Frontend:</strong> FastAPI + HTMX + Tailwind CSS</span>
+            </li>
+            <li class="flex items-start">
+                <svg class="w-5 h-5 text-primary mr-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><strong>Backend:</strong> Python microservices with PostgreSQL</span>
+            </li>
+            <li class="flex items-start">
+                <svg class="w-5 h-5 text-primary mr-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><strong>Data Sources:</strong> Yahoo Finance, Alpha Vantage</span>
+            </li>
+            <li class="flex items-start">
+                <svg class="w-5 h-5 text-primary mr-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                </svg>
+                <span><strong>Infrastructure:</strong> Azure AKS, Terraform, HashiCorp Vault</span>
+            </li>
+        </ul>
+    </div>
+
+    <div class="mt-8 text-center">
+        <a href="/" class="inline-flex items-center space-x-2 text-primary hover:text-blue-600 transition">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            <span>Back to Search</span>
+        </a>
+    </div>
+</div>
+{% endblock %}
