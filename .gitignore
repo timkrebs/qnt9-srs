@@ -1,5 +1,7 @@
 # IDE settings
 .vscode
+.github/instructions/
+.github/instructions.md
 
 # Local files
 .DS_Store
