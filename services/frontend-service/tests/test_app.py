@@ -26,7 +26,9 @@ async def test_homepage():
 @pytest.mark.asyncio
 async def test_health_check_healthy():
     """Test health check when search service is available"""
-    with patch("app.api_client.search_client.health_check", new_callable=AsyncMock) as mock_health:
+    with patch(
+        "app.api_client.search_client.health_check", new_callable=AsyncMock
+    ) as mock_health:
         mock_health.return_value = True
 
         transport = ASGITransport(app=app)
@@ -42,7 +44,9 @@ async def test_health_check_healthy():
 @pytest.mark.asyncio
 async def test_health_check_unhealthy():
     """Test health check when search service is unavailable"""
-    with patch("app.api_client.search_client.health_check", new_callable=AsyncMock) as mock_health:
+    with patch(
+        "app.api_client.search_client.health_check", new_callable=AsyncMock
+    ) as mock_health:
         mock_health.return_value = False
 
         transport = ASGITransport(app=app)
@@ -72,7 +76,9 @@ async def test_search_stock_success():
         "query_type": "isin",
     }
 
-    with patch("app.api_client.search_client.search", new_callable=AsyncMock) as mock_search:
+    with patch(
+        "app.api_client.search_client.search", new_callable=AsyncMock
+    ) as mock_search:
         mock_search.return_value = mock_result
 
         transport = ASGITransport(app=app)
@@ -92,7 +98,9 @@ async def test_search_stock_not_found():
         "detail": "Invalid ISIN",
     }
 
-    with patch("app.api_client.search_client.search", new_callable=AsyncMock) as mock_search:
+    with patch(
+        "app.api_client.search_client.search", new_callable=AsyncMock
+    ) as mock_search:
         mock_search.return_value = mock_result
 
         transport = ASGITransport(app=app)
@@ -128,7 +136,9 @@ async def test_suggestions_endpoint():
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             response = await client.get("/api/suggestions?query=DE")
             assert response.status_code == 200
-            assert "DE0005140008" in response.text or "suggestion" in response.text.lower()
+            assert (
+                "DE0005140008" in response.text or "suggestion" in response.text.lower()
+            )
 
 
 @pytest.mark.asyncio
@@ -186,7 +196,9 @@ async def test_htmx_headers():
     """Test that responses work with HTMX headers"""
     mock_result = {"success": True, "data": {"symbol": "TEST", "name": "Test Stock"}}
 
-    with patch("app.api_client.search_client.search", new_callable=AsyncMock) as mock_search:
+    with patch(
+        "app.api_client.search_client.search", new_callable=AsyncMock
+    ) as mock_search:
         mock_search.return_value = mock_result
 
         transport = ASGITransport(app=app)

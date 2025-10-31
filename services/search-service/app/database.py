@@ -1,110 +1,170 @@
 """
-Database configuration and connection management for search service
-Implements Vault → Environment Variable → SQLite fallback pattern
+Database configuration and connection management for search service.
+
+This module implements a fallback pattern for database configuration:
+1. Vault KV secrets (production)
+2. Environment variables
+3. Local SQLite (development fallback)
+
+The module provides database session management and initialization functionality.
 """
 
 import logging
 import os
+from typing import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from .models import Base
 
 logger = logging.getLogger(__name__)
 
-# Check for local development mode
-USE_LOCAL_DB = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
+# Database configuration constants
+DEFAULT_SQLITE_URL = "sqlite:///./search_service.db"
+DEFAULT_LOCAL_POSTGRES_URL = (
+    "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db"
+)
+POSTGRES_CONNECTION_TIMEOUT = 10
+POOL_SIZE = 5
+MAX_OVERFLOW = 10
+POOL_RECYCLE_SECONDS = 3600
 
-if USE_LOCAL_DB:
-    print("LOCAL DEVELOPMENT MODE - Using local database")
-    db_url = os.getenv(
-        "DATABASE_URL",
-        "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db",
-    )
-    print(f"Using local database: {db_url.split('@')[0] if '@' in db_url else db_url}")
-else:
+
+def _get_database_url() -> str:
+    """
+    Get database connection URL using fallback strategy.
+
+    Strategy:
+    1. Check USE_LOCAL_DB environment variable for local development
+    2. Try to get credentials from Vault KV
+    3. Fall back to DATABASE_URL environment variable
+    4. Default to SQLite for local development
+
+    Returns:
+        Database connection URL string
+    """
+    use_local_db = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
+
+    if use_local_db:
+        logger.info("LOCAL DEVELOPMENT MODE - Using local database")
+        db_url = os.getenv("DATABASE_URL", DEFAULT_LOCAL_POSTGRES_URL)
+        logger.info(f"Using local database: {_sanitize_db_url(db_url)}")
+        return db_url
+
     # Try to get connection string from Vault, fallback to environment variables
     try:
-        print("Attempting to import Vault KV module...")
+        logger.debug("Attempting to import Vault KV module...")
         from .vault_kv import get_db_connection_string
 
-        print("Vault KV module imported successfully")
+        logger.debug("Vault KV module imported successfully")
         try:
-            print("Calling get_db_connection_string()...")
+            logger.debug("Calling get_db_connection_string()...")
             db_url = get_db_connection_string()
-            print("Using database credentials from Vault")
+            logger.info("Using database credentials from Vault")
+            return db_url
         except Exception as vault_error:
-            print(f"Could not read from Vault KV: {vault_error}")
-            print("   Falling back to environment variables...")
-            # Fallback to environment variables or SQLite for development
-            db_url = os.getenv(
-                "DATABASE_URL",
-                "sqlite:///./search_service.db",  # Default to SQLite for local dev
-            )
-            print(f"Using database URL: {db_url.split('@')[0] if '@' in db_url else db_url}")
+            logger.warning(f"Could not read from Vault KV: {vault_error}")
+            logger.info("Falling back to environment variables...")
+            db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+            logger.info(f"Using database URL: {_sanitize_db_url(db_url)}")
+            return db_url
     except ImportError as e:
-        print(f"Vault module not available: {e}")
-        # Fallback to environment variables or SQLite for development
-        db_url = os.getenv(
-            "DATABASE_URL",
-            "sqlite:///./search_service.db",  # Default to SQLite for local dev
-        )
-        print(f"Using database URL: {db_url.split('@')[0] if '@' in db_url else db_url}")
+        logger.warning(f"Vault module not available: {e}")
+        db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+        logger.info(f"Using database URL: {_sanitize_db_url(db_url)}")
+        return db_url
 
-# Use with SQLAlchemy
-print("Creating SQLAlchemy engine...")
 
-# Add connection settings with timeout
-connect_args = {}
-if db_url.startswith("postgresql"):
-    # PostgreSQL-specific settings
-    connect_args = {
-        "connect_timeout": 10,  # 10 second connection timeout
-    }
-    print("Connecting to PostgreSQL with 10s timeout...")
-elif db_url.startswith("sqlite"):
-    # SQLite-specific settings
-    connect_args = {"check_same_thread": False}
+def _sanitize_db_url(db_url: str) -> str:
+    """
+    Remove sensitive information from database URL for logging.
+
+    Args:
+        db_url: Database connection URL
+
+    Returns:
+        Sanitized URL with password removed
+    """
+    if "@" in db_url:
+        return db_url.split("@")[0] + "@..."
+    return db_url
+
+
+def _get_connect_args(db_url: str) -> dict:
+    """
+    Get database-specific connection arguments.
+
+    Args:
+        db_url: Database connection URL
+
+    Returns:
+        Dictionary of connection arguments
+    """
+    if db_url.startswith("postgresql"):
+        return {"connect_timeout": POSTGRES_CONNECTION_TIMEOUT}
+    elif db_url.startswith("sqlite"):
+        return {"check_same_thread": False}
+    return {}
+
+
+# Get database URL using fallback strategy
+db_url = _get_database_url()
+connect_args = _get_connect_args(db_url)
 
 # Create engine with connection pooling
+logger.debug("Creating SQLAlchemy engine...")
 engine = create_engine(
     db_url,
     connect_args=connect_args,
-    pool_pre_ping=True,  # Verify connections before using them
-    pool_recycle=3600,  # Recycle connections after 1 hour
+    pool_pre_ping=True,
+    pool_recycle=POOL_RECYCLE_SECONDS,
     poolclass=QueuePool,
-    pool_size=5,
-    max_overflow=10,
-    echo=False,  # Set to True for SQL debugging
+    pool_size=POOL_SIZE,
+    max_overflow=MAX_OVERFLOW,
+    echo=False,
 )
-print("SQLAlchemy engine created successfully")
+logger.debug("SQLAlchemy engine created successfully")
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-def init_db():
+def init_db() -> None:
     """
-    Initialize database tables
-    Call this on application startup
+    Initialize database tables.
+
+    Creates all tables defined in the Base metadata.
+    Should be called on application startup.
+
+    Raises:
+        Exception: If database initialization fails
     """
     try:
-        print("Initializing database tables...")
+        logger.info("Initializing database tables...")
         Base.metadata.create_all(bind=engine)
-        print("Database tables initialized successfully")
-        logger.info("Database initialized successfully")
+        logger.info("Database tables initialized successfully")
     except Exception as e:
-        print(f"Error initializing database: {e}")
         logger.error(f"Failed to initialize database: {e}")
         raise
 
 
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     """
-    Dependency function for FastAPI to get database session
-    Use with: db: Session = Depends(get_db)
+    Dependency function for FastAPI to get database session.
+
+    Creates a new database session for each request and ensures
+    proper cleanup after the request completes.
+
+    Yields:
+        Database session
+
+    Example:
+        @app.get("/endpoint")
+        def endpoint(db: Session = Depends(get_db)):
+            # Use db session here
+            pass
     """
     db = SessionLocal()
     try:
