@@ -66,7 +66,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Check if service exists
+        id: check-service
+        working-directory: services/${{ matrix.service }}
+        run: |
+          if [ -d "app" ] && [ -d "tests" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Service ${{ matrix.service }} does not have app/ and tests/ directories. Skipping."
+          fi
+      
       - name: Set up Python ${{ env.PYTHON_VERSION }}
+        if: steps.check-service.outputs.exists == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -74,11 +86,13 @@ jobs:
           cache-dependency-path: 'services/${{ matrix.service }}/requirements.txt'
       
       - name: Install linting tools
+        if: steps.check-service.outputs.exists == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install black isort flake8 mypy pylint bandit ruff
       
       - name: Install service dependencies
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: |
           if [ -f "requirements.txt" ]; then
@@ -86,21 +100,25 @@ jobs:
           fi
       
       - name: Black code formatting check
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: black --check --line-length 100 app/ tests/
         continue-on-error: false
       
       - name: isort import sorting check
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: isort --check-only --profile black --line-length 100 app/ tests/
         continue-on-error: false
       
       - name: Ruff linting
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: ruff check app/ tests/
         continue-on-error: false
       
       - name: Flake8 linting
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: |
           flake8 app/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
@@ -108,12 +126,14 @@ jobs:
         continue-on-error: true
       
       - name: Pylint analysis
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: |
           pylint app/ tests/ --exit-zero --score=y
         continue-on-error: true
       
       - name: Bandit security scan
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: |
           bandit -r app/ -ll -f sarif -o bandit-report.sarif || true
@@ -121,7 +141,7 @@ jobs:
         continue-on-error: true
       
       - name: Upload Bandit SARIF
-        if: always()
+        if: always() && steps.check-service.outputs.exists == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: services/${{ matrix.service }}/bandit-report.sarif
@@ -149,7 +169,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Check if service exists
+        id: check-service
+        working-directory: services/${{ matrix.service }}
+        run: |
+          if [ -d "app" ] && [ -d "tests" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Service ${{ matrix.service }} does not have app/ and tests/ directories. Skipping."
+          fi
+      
       - name: Set up Python ${{ env.PYTHON_VERSION }}
+        if: steps.check-service.outputs.exists == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -157,6 +189,7 @@ jobs:
           cache-dependency-path: 'services/${{ matrix.service }}/requirements.txt'
       
       - name: Install dependencies
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: |
           python -m pip install --upgrade pip
@@ -166,6 +199,7 @@ jobs:
           pip install pytest pytest-cov pytest-asyncio httpx
       
       - name: Run pytest with coverage
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         env:
           USE_LOCAL_DB: true
@@ -182,6 +216,7 @@ jobs:
             --maxfail=10
       
       - name: Check coverage threshold
+        if: steps.check-service.outputs.exists == 'true'
         working-directory: services/${{ matrix.service }}
         run: |
           if [ -f coverage.xml ]; then
@@ -204,6 +239,7 @@ jobs:
           fi
       
       - name: Upload coverage to CodeCov
+        if: steps.check-service.outputs.exists == 'true'
         uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -214,7 +250,7 @@ jobs:
           verbose: true
       
       - name: Upload test results
-        if: always()
+        if: always() && steps.check-service.outputs.exists == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.service }}
