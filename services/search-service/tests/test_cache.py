@@ -2,7 +2,7 @@
 Unit tests for cache module
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.cache import CacheManager
 from app.models import SearchHistory, StockCache
@@ -64,7 +64,7 @@ class TestCacheManager:
 
         # Manually expire the cache entry
         entry = db_session.query(StockCache).filter(StockCache.symbol == "AAPL").first()
-        entry.expires_at = datetime.utcnow() - timedelta(minutes=1)
+        entry.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         db_session.commit()
 
         # Try to retrieve - should return None
@@ -122,7 +122,7 @@ class TestCacheManager:
         # Expire 2 entries
         for symbol in ["AAPL", "MSFT"]:
             entry = db_session.query(StockCache).filter(StockCache.symbol == symbol).first()
-            entry.expires_at = datetime.utcnow() - timedelta(minutes=1)
+            entry.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         db_session.commit()
 
         # Run cleanup

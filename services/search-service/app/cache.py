@@ -11,11 +11,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from .models import SearchHistory, StockCache
-from .validators import detect_query_type
+from .validators import MAX_NAME_SEARCH_RESULTS, detect_query_type
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,14 @@ CACHE_TTL_MINUTES = 5
 RESULT_FOUND = 1
 RESULT_NOT_FOUND = 0
 SEARCH_COUNT_INCREMENT = 1
+
+# Relevance scoring constants
+SCORE_EXACT_MATCH = 1.0
+SCORE_STARTS_WITH = 0.9
+SCORE_WORD_BOUNDARY = 0.8
+SCORE_CONTAINS_BASE = 0.6
+SCORE_LENGTH_BONUS_MAX = 0.2
+SCORE_NO_MATCH = 0.0
 
 
 class CacheManager:
@@ -85,9 +93,7 @@ class CacheManager:
             logger.error(f"Error retrieving from cache: {e}")
             return None
 
-    def _get_cache_entry(
-        self, query: str, query_type: str, now: datetime
-    ) -> Optional[StockCache]:
+    def _get_cache_entry(self, query: str, query_type: str, now: datetime) -> Optional[StockCache]:
         """
         Get cache entry based on query type.
 
@@ -118,9 +124,7 @@ class CacheManager:
                 .first()
             )
 
-    def _build_stock_dict(
-        self, cache_entry: StockCache, cache_age: int
-    ) -> Dict[str, Any]:
+    def _build_stock_dict(self, cache_entry: StockCache, cache_age: int) -> Dict[str, Any]:
         """
         Build stock data dictionary from cache entry.
 
@@ -186,9 +190,7 @@ class CacheManager:
             self.db.rollback()
             return False
 
-    def _find_existing_entry(
-        self, symbol: str, isin: Optional[str]
-    ) -> Optional[StockCache]:
+    def _find_existing_entry(self, symbol: str, isin: Optional[str]) -> Optional[StockCache]:
         """
         Find existing cache entry by symbol or ISIN.
 
@@ -289,9 +291,7 @@ class CacheManager:
         """
         try:
             now = datetime.now(timezone.utc).replace(tzinfo=None)
-            deleted = (
-                self.db.query(StockCache).filter(StockCache.expires_at < now).delete()
-            )
+            deleted = self.db.query(StockCache).filter(StockCache.expires_at < now).delete()
             self.db.commit()
 
             if deleted > 0:
@@ -320,9 +320,7 @@ class CacheManager:
 
             existing = (
                 self.db.query(SearchHistory)
-                .filter(
-                    SearchHistory.query == query, SearchHistory.query_type == query_type
-                )
+                .filter(SearchHistory.query == query, SearchHistory.query_type == query_type)
                 .first()
             )
 
@@ -411,15 +409,11 @@ class CacheManager:
             now = datetime.now(timezone.utc).replace(tzinfo=None)
 
             total_entries = self.db.query(StockCache).count()
-            active_entries = (
-                self.db.query(StockCache).filter(StockCache.expires_at > now).count()
-            )
+            active_entries = self.db.query(StockCache).filter(StockCache.expires_at > now).count()
             expired_entries = total_entries - active_entries
 
             total_hits = (
-                self.db.query(StockCache)
-                .with_entities(func.sum(StockCache.cache_hits))
-                .scalar()
+                self.db.query(StockCache).with_entities(func.sum(StockCache.cache_hits)).scalar()
                 or 0
             )
 
@@ -433,3 +427,215 @@ class CacheManager:
         except Exception as e:
             logger.error(f"Error getting cache stats: {e}")
             return {}
+
+    def search_by_name(
+        self, query: str, limit: int = MAX_NAME_SEARCH_RESULTS
+    ) -> list[Dict[str, Any]]:
+        """
+        Search for stocks by company name using fuzzy matching.
+
+        Performs case-insensitive partial matching on the name field.
+        Returns only non-expired cached entries sorted by relevance.
+
+        Args:
+            query: Company name search string
+            limit: Maximum number of results to return (default: 10)
+
+        Returns:
+            List of stock dictionaries with relevance scores
+        """
+        query = query.strip()
+
+        if not query:
+            return []
+
+        try:
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            # Detect database type to choose search strategy
+            dialect_name = self.db.bind.dialect.name
+
+            if dialect_name == "postgresql" and self._has_fts_support():
+                # Use PostgreSQL full-text search for better performance
+                logger.debug(f"Using PostgreSQL full-text search for '{query}'")
+                cache_entries = self._search_with_fts(query, now, limit)
+            else:
+                # Fall back to ILIKE for SQLite or when FTS not available
+                logger.debug(f"Using ILIKE search for '{query}'")
+                cache_entries = self._search_with_ilike(query, now, limit)
+
+            results = []
+            for entry in cache_entries:
+                # Calculate relevance score based on match quality
+                relevance = self._calculate_relevance_score(query, entry.name)
+
+                result = {
+                    "symbol": entry.symbol,
+                    "name": entry.name,
+                    "isin": entry.isin,
+                    "wkn": entry.wkn,
+                    "current_price": entry.current_price,
+                    "currency": entry.currency,
+                    "exchange": entry.exchange,
+                    "relevance_score": relevance,
+                }
+                results.append(result)
+
+            # Sort by relevance score (highest first)
+            results.sort(key=lambda x: x["relevance_score"], reverse=True)
+
+            logger.info(f"Name search for '{query}' returned {len(results)} results")
+            return results
+
+        except Exception as e:
+            logger.error(f"Error searching by name: {e}")
+            return []
+
+    def _has_fts_support(self) -> bool:
+        """
+        Check if database has full-text search support.
+
+        Checks for PostgreSQL database and presence of name_search_vector column.
+
+        Returns:
+            True if full-text search is available and usable
+        """
+        try:
+            # Check if we're using PostgreSQL
+            if self.db.bind.dialect.name != "postgresql":
+                return False
+
+            # Check if the name_search_vector column exists
+            # by attempting to access it
+            inspector = self.db.bind.dialect.get_inspector(self.db.bind)
+            columns = [col["name"] for col in inspector.get_columns("stock_cache")]
+
+            return "name_search_vector" in columns
+
+        except Exception as e:
+            logger.debug(f"FTS support check failed: {e}")
+            return False
+
+    def _search_with_fts(self, query: str, now: datetime, limit: int) -> list[StockCache]:
+        """
+        Search using PostgreSQL full-text search.
+
+        Uses tsvector and tsquery for fast, ranked full-text search.
+
+        Args:
+            query: Search query string
+            now: Current timestamp for expiration check
+            limit: Maximum results to return
+
+        Returns:
+            List of StockCache entries matching the search
+        """
+        # Convert query to tsquery format (AND operation between words)
+        # This creates a phrase search with prefix matching
+        search_query = " & ".join(f"{word}:*" for word in query.split())
+
+        # Use text() for raw SQL since name_search_vector isn't in the model
+        return (
+            self.db.query(StockCache)
+            .filter(
+                StockCache.expires_at > now,
+                text("name_search_vector @@ to_tsquery('english', :query)"),
+            )
+            .params(query=search_query)
+            .limit(limit)
+            .all()
+        )
+
+    def _search_with_ilike(self, query: str, now: datetime, limit: int) -> list[StockCache]:
+        """
+        Search using case-insensitive LIKE (fallback for SQLite).
+
+        Args:
+            query: Search query string
+            now: Current timestamp for expiration check
+            limit: Maximum results to return
+
+        Returns:
+            List of StockCache entries matching the search
+        """
+        search_pattern = f"%{query}%"
+
+        return (
+            self.db.query(StockCache)
+            .filter(StockCache.expires_at > now, StockCache.name.ilike(search_pattern))
+            .limit(limit)
+            .all()
+        )
+
+    def _calculate_relevance_score(self, query: str, name: str) -> float:
+        """
+        Calculate relevance score for name matching.
+
+        Scoring algorithm:
+        - Exact match: 1.0
+        - Starts with query: 0.9
+        - Contains query as word boundary: 0.8
+        - Contains query anywhere: 0.6 + length bonus (up to 0.2)
+        - No match: 0.0
+
+        Args:
+            query: Search query (normalized)
+            name: Company name from database
+
+        Returns:
+            Relevance score between 0.0 and 1.0
+        """
+        if not name:
+            return SCORE_NO_MATCH
+
+        query_lower = query.lower()
+        name_lower = name.lower()
+
+        # Exact match
+        if query_lower == name_lower:
+            return SCORE_EXACT_MATCH
+
+        # Starts with query
+        if name_lower.startswith(query_lower):
+            return SCORE_STARTS_WITH
+
+        # Word boundary match (query appears as separate word)
+        if self._matches_word_boundary(query_lower, name_lower):
+            return SCORE_WORD_BOUNDARY
+
+        # Contains query anywhere
+        if query_lower in name_lower:
+            return self._calculate_contains_score(query, name)
+
+        return SCORE_NO_MATCH
+
+    def _matches_word_boundary(self, query_lower: str, name_lower: str) -> bool:
+        """
+        Check if query matches a word boundary in the name.
+
+        Args:
+            query_lower: Lowercase search query
+            name_lower: Lowercase company name
+
+        Returns:
+            True if query matches start of any word
+        """
+        words = name_lower.split()
+        return any(word.startswith(query_lower) for word in words)
+
+    def _calculate_contains_score(self, query: str, name: str) -> float:
+        """
+        Calculate score for substring match with length bonus.
+
+        Shorter names get higher scores as they are more specific.
+
+        Args:
+            query: Original query string
+            name: Company name string
+
+        Returns:
+            Score between SCORE_CONTAINS_BASE and (SCORE_CONTAINS_BASE + SCORE_LENGTH_BONUS_MAX)
+        """
+        length_ratio = len(query) / len(name)
+        length_bonus = length_ratio * SCORE_LENGTH_BONUS_MAX
+        return SCORE_CONTAINS_BASE + length_bonus

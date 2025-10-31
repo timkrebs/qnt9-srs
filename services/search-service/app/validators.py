@@ -15,6 +15,10 @@ ISIN_PATTERN = r"^[A-Z]{2}[A-Z0-9]{9}[0-9]$"
 WKN_PATTERN = r"^[A-Z0-9]{6}$"
 SYMBOL_PATTERN = r"^[A-Z0-9\.\-]{1,10}$"
 
+# Name search constants
+MIN_NAME_SEARCH_LENGTH = 3
+MAX_NAME_SEARCH_RESULTS = 10
+
 # ISIN validation constants
 ISIN_LENGTH = 12
 ISIN_COUNTRY_CODE_LENGTH = 2
@@ -57,9 +61,7 @@ class SearchQuery(BaseModel):
         v = v.strip().upper()
 
         if not (
-            re.match(ISIN_PATTERN, v)
-            or re.match(WKN_PATTERN, v)
-            or re.match(SYMBOL_PATTERN, v)
+            re.match(ISIN_PATTERN, v) or re.match(WKN_PATTERN, v) or re.match(SYMBOL_PATTERN, v)
         ):
             raise ValueError(
                 "Invalid format. Query must be a valid ISIN (12 chars), "
@@ -93,12 +95,8 @@ class StockData(BaseModel):
 
     symbol: str = Field(..., description="Stock ticker symbol")
     name: str = Field(..., description="Company name")
-    isin: Optional[str] = Field(
-        None, description="International Securities Identification Number"
-    )
-    wkn: Optional[str] = Field(
-        None, description="Wertpapierkennnummer (German securities code)"
-    )
+    isin: Optional[str] = Field(None, description="International Securities Identification Number")
+    wkn: Optional[str] = Field(None, description="Wertpapierkennnummer (German securities code)")
     current_price: Optional[float] = Field(None, description="Current stock price")
     currency: Optional[str] = Field(None, description="Currency code (e.g., USD, EUR)")
     exchange: Optional[str] = Field(None, description="Stock exchange")
@@ -107,9 +105,7 @@ class StockData(BaseModel):
     industry: Optional[str] = Field(None, description="Industry classification")
     source: str = Field(..., description="Data source (yahoo or alphavantage)")
     cached: bool = Field(False, description="Whether data was served from cache")
-    cache_age_seconds: Optional[int] = Field(
-        None, description="Age of cached data in seconds"
-    )
+    cache_age_seconds: Optional[int] = Field(None, description="Age of cached data in seconds")
 
 
 class StockSearchResponse(BaseModel):
@@ -133,7 +129,7 @@ class StockSearchResponse(BaseModel):
     suggestions: Optional[list[str]] = Field(
         None, description="Suggested stock symbols if not found"
     )
-    query_type: Literal["isin", "wkn", "symbol"] = Field(
+    query_type: Literal["isin", "wkn", "symbol", "name"] = Field(
         ..., description="Detected query type"
     )
     response_time_ms: int = Field(..., description="Response time in milliseconds")
@@ -154,6 +150,103 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="Error type")
     message: str = Field(..., description="Error message")
     details: Optional[dict] = Field(None, description="Additional error details")
+
+
+class NameSearchQuery(BaseModel):
+    """
+    Request model for company name search validation.
+
+    Validates company name search queries with minimum length requirement.
+
+    Attributes:
+        query: Company name search string (min 3 characters)
+    """
+
+    query: str = Field(
+        ...,
+        min_length=MIN_NAME_SEARCH_LENGTH,
+        max_length=100,
+        description="Company name to search (minimum 3 characters)",
+    )
+
+    @field_validator("query")
+    @classmethod
+    def validate_name_query(cls, v: str) -> str:
+        """
+        Validate and normalize company name query.
+
+        Args:
+            v: Input query string
+
+        Returns:
+            Normalized query string (stripped whitespace)
+
+        Raises:
+            ValueError: If query is too short or contains only whitespace
+        """
+        v = v.strip()
+
+        if len(v) < MIN_NAME_SEARCH_LENGTH:
+            raise ValueError(f"Query must be at least {MIN_NAME_SEARCH_LENGTH} characters long")
+
+        if not v:
+            raise ValueError("Query cannot be empty or only whitespace")
+
+        return v
+
+
+class StockSearchResult(BaseModel):
+    """
+    Single stock search result for name search.
+
+    Compact representation of stock data for search results listing.
+
+    Attributes:
+        symbol: Stock ticker symbol
+        name: Company name
+        isin: International Securities Identification Number
+        wkn: German securities identification number
+        current_price: Current stock price
+        currency: Currency code
+        exchange: Stock exchange name
+        relevance_score: Search relevance score (0.0 to 1.0)
+    """
+
+    symbol: str = Field(..., description="Stock ticker symbol")
+    name: str = Field(..., description="Company name")
+    isin: Optional[str] = Field(None, description="ISIN code")
+    wkn: Optional[str] = Field(None, description="WKN code")
+    current_price: Optional[float] = Field(None, description="Current stock price")
+    currency: Optional[str] = Field(None, description="Currency code")
+    exchange: Optional[str] = Field(None, description="Stock exchange")
+    relevance_score: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Search relevance score (0.0 to 1.0)"
+    )
+
+
+class NameSearchResponse(BaseModel):
+    """
+    Response model for company name search.
+
+    Returns list of matching stocks with relevance ranking.
+
+    Attributes:
+        success: Whether the search was successful
+        results: List of matching stock results
+        total_results: Total number of results found
+        message: Optional informational message
+        query: Original search query
+        response_time_ms: Response time in milliseconds
+    """
+
+    success: bool = Field(..., description="Whether the search was successful")
+    results: list[StockSearchResult] = Field(
+        default_factory=list, description="List of matching stock results"
+    )
+    total_results: int = Field(..., description="Total number of results found")
+    message: Optional[str] = Field(None, description="Optional informational message")
+    query: str = Field(..., description="Original search query")
+    response_time_ms: int = Field(..., description="Response time in milliseconds")
 
 
 def detect_query_type(query: str) -> Literal["isin", "wkn", "symbol"]:
@@ -226,9 +319,7 @@ def is_valid_isin(isin: str) -> bool:
         else:
             total += digit
 
-    check_digit = (
-        ISIN_CHECKSUM_BASE - (total % ISIN_CHECKSUM_BASE)
-    ) % ISIN_CHECKSUM_BASE
+    check_digit = (ISIN_CHECKSUM_BASE - (total % ISIN_CHECKSUM_BASE)) % ISIN_CHECKSUM_BASE
     return check_digit == int(isin[-1])
 
 

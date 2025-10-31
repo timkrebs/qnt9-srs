@@ -55,7 +55,7 @@ class StockCache(Base):
     symbol = Column(String(20), index=True, nullable=False)
 
     # Stock information
-    name = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False, index=True)
     current_price = Column(Float, nullable=True)
     currency = Column(String(10), nullable=True)
     exchange = Column(String(50), nullable=True)
@@ -71,9 +71,7 @@ class StockCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -159,9 +157,7 @@ class SearchHistory(Base):
     result_found = Column(Integer, default=0, nullable=False)
     search_count = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    last_searched = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    last_searched = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         Index("idx_query_type", "query", "query_type"),

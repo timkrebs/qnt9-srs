@@ -8,7 +8,7 @@ with caching, rate limiting, and multiple API source fallback.
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,7 +19,10 @@ from .api_clients import StockAPIClient
 from .cache import CacheManager
 from .database import get_db, init_db
 from .validators import (
+    MAX_NAME_SEARCH_RESULTS,
     ErrorResponse,
+    NameSearchQuery,
+    NameSearchResponse,
     SearchQuery,
     StockData,
     StockSearchResponse,
@@ -209,18 +212,14 @@ async def search_stock(
         # Try cache first
         cached_data = cache_manager.get_cached_stock(query)
         if cached_data:
-            return _build_cached_response(
-                cached_data, query_type, start_time, cache_manager, query
-            )
+            return _build_cached_response(cached_data, query_type, start_time, cache_manager, query)
 
         # Cache miss - fetch from external API
         logger.info(f"Cache miss - fetching from external API for {query}")
         stock_data = stock_api_client.search_stock(query, query_type)
 
         if not stock_data:
-            return _build_not_found_response(
-                query, query_type, start_time, cache_manager
-            )
+            return _build_not_found_response(query, query_type, start_time, cache_manager)
 
         # Save to cache and build response
         cache_manager.save_to_cache(stock_data, query)
@@ -514,6 +513,204 @@ async def cleanup_cache(db: Session = Depends(get_db)) -> Dict[str, Any]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to cleanup cache",
         )
+
+
+@app.get(
+    "/api/stocks/search/name",
+    response_model=NameSearchResponse,
+    responses={
+        200: {"description": "Search completed successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid input"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+    tags=["Stock Search"],
+)
+async def search_stock_by_name(
+    query: str = Query(
+        ...,
+        min_length=3,
+        max_length=100,
+        description="Company name to search (minimum 3 characters)",
+        examples=["Apple"],
+    ),
+    limit: int = Query(
+        default=MAX_NAME_SEARCH_RESULTS,
+        ge=1,
+        le=50,
+        description="Maximum number of results to return",
+    ),
+    db: Session = Depends(get_db),
+) -> NameSearchResponse:
+    """
+    Search for stocks by company name using fuzzy matching.
+
+    This endpoint provides company name search with partial matching,
+    relevance ranking, and caching for popular searches.
+
+    Features:
+        - Fuzzy matching with partial name support
+        - Relevance-based result ranking
+        - Returns top 10 results by default
+        - Minimum 3 character query length
+        - Cache-based search for fast response times
+        - Fallback to external API if no cached results
+        - Target response time <1 second
+
+    Search Algorithm:
+        1. Check cache for matching company names
+        2. If no cache results, search Yahoo Finance API
+        3. Cache API results for future searches
+        4. Rank results by relevance score
+        5. Return top N results sorted by score
+
+    Args:
+        query: Company name search string (min 3 characters)
+        limit: Maximum number of results (default: 10, max: 50)
+        db: Database session dependency
+
+    Returns:
+        NameSearchResponse with list of matching stocks
+
+    Raises:
+        HTTPException: For validation errors or internal errors
+    """
+    start_time = time.time()
+
+    try:
+        # Validate and normalize query
+        validated_query = NameSearchQuery(query=query)
+        normalized_query = validated_query.query
+
+        # Search cache first
+        cache_manager = CacheManager(db)
+        results = cache_manager.search_by_name(normalized_query, limit=limit)
+
+        # Fallback to external API if no cache results
+        if not results:
+            results = _search_external_api_and_cache(normalized_query, limit, cache_manager)
+
+        # Build and return response
+        return _build_name_search_response(results, normalized_query, start_time, cache_manager)
+
+    except ValueError as e:
+        logger.warning(f"Validation error for name search '{query}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    except Exception as e:
+        logger.error(f"Error in name search for '{query}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while searching for stocks",
+        )
+
+
+def _search_external_api_and_cache(
+    query: str, limit: int, cache_manager: CacheManager
+) -> list[Dict[str, Any]]:
+    """
+    Search external API and cache results.
+
+    Args:
+        query: Normalized company name query
+        limit: Maximum number of results
+        cache_manager: Cache manager instance
+
+    Returns:
+        List of stock search results with relevance scores
+    """
+    logger.info(f"No cache results for '{query}', searching API")
+
+    api_results = stock_api_client.search_by_name(query, limit=limit)
+    results = []
+
+    for api_result in api_results:
+        enriched_result = _enrich_and_cache_api_result(api_result, query, cache_manager)
+        if enriched_result:
+            results.append(enriched_result)
+
+    # Sort by relevance and limit results
+    results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    return results[:limit]
+
+
+def _enrich_and_cache_api_result(
+    api_result: Dict[str, Any], query: str, cache_manager: CacheManager
+) -> Optional[Dict[str, Any]]:
+    """
+    Enrich API result with full stock data and cache it.
+
+    Args:
+        api_result: Basic search result from API
+        query: Original search query for relevance calculation
+        cache_manager: Cache manager instance
+
+    Returns:
+        Enriched result dictionary or None if enrichment fails
+    """
+    symbol = api_result.get("symbol")
+    if not symbol:
+        return None
+
+    # Fetch full stock data
+    full_data = stock_api_client.enrich_search_result(symbol)
+    if not full_data:
+        return None
+
+    # Cache the enriched data
+    cache_manager.save_to_cache(full_data, symbol)
+
+    # Calculate relevance score
+    company_name = api_result.get("name", "")
+    relevance = cache_manager._calculate_relevance_score(query, company_name)
+
+    return {
+        "symbol": symbol,
+        "name": company_name,
+        "isin": full_data.get("isin"),
+        "wkn": full_data.get("wkn"),
+        "current_price": full_data.get("current_price"),
+        "currency": full_data.get("currency"),
+        "exchange": api_result.get("exchange"),
+        "relevance_score": relevance,
+    }
+
+
+def _build_name_search_response(
+    results: list[Dict[str, Any]], query: str, start_time: float, cache_manager: CacheManager
+) -> NameSearchResponse:
+    """
+    Build name search response with analytics.
+
+    Args:
+        results: List of search results
+        query: Original search query
+        start_time: Request start timestamp
+        cache_manager: Cache manager instance
+
+    Returns:
+        Formatted NameSearchResponse
+    """
+    response_time = int((time.time() - start_time) * 1000)
+
+    # Log search analytics
+    logger.info(
+        f"Name search for '{query}' returned {len(results)} results " f"in {response_time}ms"
+    )
+
+    # Record search in history
+    cache_manager.record_search(query, found=len(results) > 0)
+
+    return NameSearchResponse(
+        success=True,
+        results=results,
+        total_results=len(results),
+        message=None if results else "No stocks found matching your search",
+        query=query,
+        response_time_ms=response_time,
+    )
 
 
 @app.exception_handler(Exception)

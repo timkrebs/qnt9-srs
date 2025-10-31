@@ -185,7 +185,7 @@ class TestCacheManagementEndpoints:
 
     def test_cleanup_cache(self, client, db_session, sample_stock_data):
         """Test manual cache cleanup"""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         from app.cache import CacheManager
         from app.models import StockCache
@@ -196,7 +196,7 @@ class TestCacheManagementEndpoints:
         cache_manager.save_to_cache(sample_stock_data, "AAPL")
 
         entry = db_session.query(StockCache).filter(StockCache.symbol == "AAPL").first()
-        entry.expires_at = datetime.utcnow() - timedelta(minutes=1)
+        entry.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         db_session.commit()
 
         response = client.post("/api/cache/cleanup")
