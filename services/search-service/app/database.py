@@ -2,30 +2,47 @@
 Database configuration and connection management for search service.
 
 This module implements a fallback pattern for database configuration:
-1. Vault KV secrets (production)
-2. Environment variables
-3. Local SQLite (development fallback)
+1. Supabase PostgreSQL (free tier production)
+2. Vault KV secrets (production)
+3. Environment variables
+4. Local SQLite (development fallback)
 
 The module provides database session management and initialization functionality.
 """
 
 import logging
 import os
+from pathlib import Path
 from typing import Generator
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from .models import Base
+from .supabase_config import get_supabase_connection_string
+
+# Load environment variables from .env file
+# Search for .env in current directory and parent directories
+env_path = Path(__file__).parent.parent / ".env"
+if not env_path.exists():
+    # Try repository root
+    env_path = Path(__file__).parent.parent.parent.parent / ".env"
+
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    logger = logging.getLogger(__name__)
+    logger.info(f"Loaded environment variables from: {env_path}")
+else:
+    logger = logging.getLogger(__name__)
+    logger.warning("No .env file found, using system environment variables")
 
 logger = logging.getLogger(__name__)
 
 # Database configuration constants
 DEFAULT_SQLITE_URL = "sqlite:///./search_service.db"
-DEFAULT_LOCAL_POSTGRES_URL = (
-    "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db"
-)
+DEFAULT_LOCAL_POSTGRES_URL = "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db"
 POSTGRES_CONNECTION_TIMEOUT = 10
 POOL_SIZE = 5
 MAX_OVERFLOW = 10
@@ -38,9 +55,10 @@ def _get_database_url() -> str:
 
     Strategy:
     1. Check USE_LOCAL_DB environment variable for local development
-    2. Try to get credentials from Vault KV
-    3. Fall back to DATABASE_URL environment variable
-    4. Default to SQLite for local development
+    2. Try to get Supabase PostgreSQL connection (free tier)
+    3. Try to get credentials from Vault KV
+    4. Fall back to DATABASE_URL environment variable
+    5. Default to SQLite for local development
 
     Returns:
         Database connection URL string
@@ -52,6 +70,17 @@ def _get_database_url() -> str:
         db_url = os.getenv("DATABASE_URL", DEFAULT_LOCAL_POSTGRES_URL)
         logger.info(f"Using local database: {_sanitize_db_url(db_url)}")
         return db_url
+
+    try:
+        logger.debug("Attempting to get Supabase connection string...")
+        supabase_url = get_supabase_connection_string()
+        if supabase_url:
+            logger.info("Using Supabase PostgreSQL database (free tier)")
+            return supabase_url
+        else:
+            logger.debug("Supabase connection string not available, trying Vault...")
+    except Exception as supabase_error:
+        logger.warning(f"Supabase configuration failed: {supabase_error}")
 
     # Try to get connection string from Vault, fallback to environment variables
     try:
