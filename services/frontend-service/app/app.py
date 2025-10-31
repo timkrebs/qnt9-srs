@@ -35,7 +35,9 @@ templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
 
 # Mount static files (will be created next)
 try:
-    app.mount("/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static")
+    app.mount(
+        "/static", StaticFiles(directory=str(BASE_PATH / "static")), name="static"
+    )
 except RuntimeError:
     logger.warning("Static directory not found - will be created")
 
@@ -78,12 +80,16 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "frontend-service",
-        "dependencies": {"search_service": "healthy" if search_service_healthy else "unhealthy"},
+        "dependencies": {
+            "search_service": "healthy" if search_service_healthy else "unhealthy"
+        },
     }
 
 
 @app.get("/search", response_class=HTMLResponse, tags=["Search"])
-async def search_stock(request: Request, query: str = Query(..., min_length=1, max_length=20)):
+async def search_stock(
+    request: Request, query: str = Query(..., min_length=1, max_length=20)
+):
     """
     Search for stock and return HTML partial (for HTMX)
 
