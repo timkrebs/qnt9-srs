@@ -4,6 +4,7 @@ help:
 	@echo "Frontend Service - Available Commands"
 	@echo ""
 	@echo "Development:"
+	@echo "  make fastapi-dev     - Run FastAPI development server"
 	@echo "  make dev             - Run development server"
 	@echo "  make dev-reload      - Run with auto-reload (watch templates)"
 	@echo ""
@@ -17,6 +18,9 @@ help:
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean           - Remove cache and temporary files"
+
+fastapi-dev:
+	fastapi dev app/app.py --reload
 
 dev:
 	uvicorn app.app:app --host 0.0.0.0 --port 8001

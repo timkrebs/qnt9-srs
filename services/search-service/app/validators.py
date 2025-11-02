@@ -61,7 +61,9 @@ class SearchQuery(BaseModel):
         v = v.strip().upper()
 
         if not (
-            re.match(ISIN_PATTERN, v) or re.match(WKN_PATTERN, v) or re.match(SYMBOL_PATTERN, v)
+            re.match(ISIN_PATTERN, v)
+            or re.match(WKN_PATTERN, v)
+            or re.match(SYMBOL_PATTERN, v)
         ):
             raise ValueError(
                 "Invalid format. Query must be a valid ISIN (12 chars), "
@@ -95,8 +97,12 @@ class StockData(BaseModel):
 
     symbol: str = Field(..., description="Stock ticker symbol")
     name: str = Field(..., description="Company name")
-    isin: Optional[str] = Field(None, description="International Securities Identification Number")
-    wkn: Optional[str] = Field(None, description="Wertpapierkennnummer (German securities code)")
+    isin: Optional[str] = Field(
+        None, description="International Securities Identification Number"
+    )
+    wkn: Optional[str] = Field(
+        None, description="Wertpapierkennnummer (German securities code)"
+    )
     current_price: Optional[float] = Field(None, description="Current stock price")
     currency: Optional[str] = Field(None, description="Currency code (e.g., USD, EUR)")
     exchange: Optional[str] = Field(None, description="Stock exchange")
@@ -105,7 +111,9 @@ class StockData(BaseModel):
     industry: Optional[str] = Field(None, description="Industry classification")
     source: str = Field(..., description="Data source (yahoo or alphavantage)")
     cached: bool = Field(False, description="Whether data was served from cache")
-    cache_age_seconds: Optional[int] = Field(None, description="Age of cached data in seconds")
+    cache_age_seconds: Optional[int] = Field(
+        None, description="Age of cached data in seconds"
+    )
 
 
 class StockSearchResponse(BaseModel):
@@ -187,7 +195,9 @@ class NameSearchQuery(BaseModel):
         v = v.strip()
 
         if len(v) < MIN_NAME_SEARCH_LENGTH:
-            raise ValueError(f"Query must be at least {MIN_NAME_SEARCH_LENGTH} characters long")
+            raise ValueError(
+                f"Query must be at least {MIN_NAME_SEARCH_LENGTH} characters long"
+            )
 
         if not v:
             raise ValueError("Query cannot be empty or only whitespace")
@@ -319,7 +329,9 @@ def is_valid_isin(isin: str) -> bool:
         else:
             total += digit
 
-    check_digit = (ISIN_CHECKSUM_BASE - (total % ISIN_CHECKSUM_BASE)) % ISIN_CHECKSUM_BASE
+    check_digit = (
+        ISIN_CHECKSUM_BASE - (total % ISIN_CHECKSUM_BASE)
+    ) % ISIN_CHECKSUM_BASE
     return check_digit == int(isin[-1])
 
 
@@ -340,3 +352,123 @@ def is_valid_wkn(wkn: str) -> bool:
         return False
 
     return bool(re.match(WKN_PATTERN, wkn))
+
+
+class PricePoint(BaseModel):
+    """
+    Single price data point for historical chart.
+
+    Attributes:
+        timestamp: ISO 8601 timestamp
+        price: Stock price at this timestamp
+        volume: Trading volume (optional)
+    """
+
+    timestamp: str = Field(..., description="ISO 8601 timestamp")
+    price: float = Field(..., description="Stock price")
+    volume: Optional[int] = Field(None, description="Trading volume")
+
+
+class PriceChange(BaseModel):
+    """
+    Price change information with percentage and absolute values.
+
+    Attributes:
+        absolute: Absolute price change
+        percentage: Percentage price change
+        direction: Direction of change (up, down, neutral)
+    """
+
+    absolute: float = Field(..., description="Absolute price change")
+    percentage: float = Field(..., description="Percentage price change")
+    direction: Literal["up", "down", "neutral"] = Field(
+        ..., description="Direction of price change"
+    )
+
+
+class WeekRange52(BaseModel):
+    """
+    52-week high and low price range.
+
+    Attributes:
+        high: 52-week high price
+        low: 52-week low price
+        high_date: Date when high was reached (optional)
+        low_date: Date when low was reached (optional)
+    """
+
+    high: float = Field(..., description="52-week high price")
+    low: float = Field(..., description="52-week low price")
+    high_date: Optional[str] = Field(
+        None, description="Date of 52-week high (ISO 8601)"
+    )
+    low_date: Optional[str] = Field(None, description="Date of 52-week low (ISO 8601)")
+
+
+class StockReportData(BaseModel):
+    """
+    Comprehensive stock report data model.
+
+    Contains all information required for stock report display including
+    real-time prices, historical data, and key metrics.
+
+    Attributes:
+        symbol: Stock ticker symbol
+        name: Company name
+        isin: International Securities Identification Number
+        wkn: German securities identification number
+        current_price: Current stock price
+        currency: Currency code (e.g., USD, EUR)
+        exchange: Stock exchange name
+        price_change_1d: 1-day price change information
+        week_52_range: 52-week high/low prices
+        market_cap: Market capitalization
+        sector: Business sector
+        industry: Industry classification
+        price_history_7d: 7-day price history for chart
+        last_updated: ISO 8601 timestamp of last data update
+        data_source: Source of data (yahoo or alphavantage)
+        cached: Whether data was served from cache
+        cache_timestamp: Timestamp when data was cached (ISO 8601)
+    """
+
+    symbol: str = Field(..., description="Stock ticker symbol")
+    name: str = Field(..., description="Company name")
+    isin: Optional[str] = Field(None, description="ISIN code")
+    wkn: Optional[str] = Field(None, description="WKN code")
+    current_price: float = Field(..., description="Current stock price")
+    currency: str = Field(..., description="Currency code")
+    exchange: str = Field(..., description="Stock exchange name")
+    price_change_1d: PriceChange = Field(..., description="1-day price change")
+    week_52_range: WeekRange52 = Field(..., description="52-week high/low range")
+    market_cap: Optional[float] = Field(None, description="Market capitalization")
+    sector: Optional[str] = Field(None, description="Business sector")
+    industry: Optional[str] = Field(None, description="Industry classification")
+    price_history_7d: list[PricePoint] = Field(
+        ..., description="7-day price history for chart"
+    )
+    last_updated: str = Field(..., description="Last update timestamp (ISO 8601)")
+    data_source: str = Field(..., description="Data source (yahoo or alphavantage)")
+    cached: bool = Field(False, description="Whether data was served from cache")
+    cache_timestamp: Optional[str] = Field(
+        None, description="Cache timestamp (ISO 8601)"
+    )
+
+
+class StockReportResponse(BaseModel):
+    """
+    Response model for stock report endpoint.
+
+    Provides comprehensive stock report with all required metrics.
+
+    Attributes:
+        success: Whether the request was successful
+        data: Stock report data if successful
+        message: Error or informational message
+        response_time_ms: Response time in milliseconds
+    """
+
+    success: bool = Field(..., description="Whether the request was successful")
+    data: Optional[StockReportData] = Field(None, description="Stock report data")
+    message: Optional[str] = Field(None, description="Error or informational message")
+    response_time_ms: int = Field(..., description="Response time in milliseconds")

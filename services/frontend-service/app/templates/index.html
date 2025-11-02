@@ -3,43 +3,45 @@
 {% block title %}{{ app_name }} - Search Stocks{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div class="max-w-5xl mx-auto">
     <!-- Hero Section -->
     <div class="text-center mb-12">
-        <h1 class="text-4xl font-bold text-gray-900 mb-4">
-            Stock Search
+        <h1 class="text-5xl font-bold text-primary mb-4 tracking-tight">
+            Good morning!
         </h1>
-        <p class="text-lg text-gray-600">
+        <p class="text-xl text-secondary">
             Search for stocks by ISIN, WKN, or Symbol
         </p>
     </div>
 
-    <!-- Search Section -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+    <!-- Search Card -->
+    <div class="modern-card p-8 mb-8">
         {% include 'components/search_bar.html' %}
     </div>
 
     <!-- Results Container -->
-    <div id="search-results" class="space-y-4">
+    <div id="search-results" class="space-y-6">
         <!-- Results will be loaded here via HTMX -->
-        <div class="text-center text-gray-500 py-12">
-            <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
-            <p class="text-lg">Enter a search query to find stocks</p>
-            <p class="text-sm text-gray-400 mt-2">Supported: ISIN (DE0005140008), WKN (514000), Symbol (DBK.DE)</p>
+        <div class="text-center text-secondary py-20">
+            <div class="w-20 h-20 mx-auto mb-6 bg-accent rounded-full flex items-center justify-center">
+                <svg class="w-10 h-10 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+            </div>
+            <p class="text-lg font-medium">Enter a search query to find stocks</p>
+            <p class="text-sm text-secondary mt-2">Supported: ISIN, WKN, Symbol</p>
         </div>
     </div>
 </div>
 
 <!-- Loading overlay -->
-<div id="loading-overlay" class="htmx-indicator fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg p-8 flex flex-col items-center">
-        <svg class="animate-spin h-12 w-12 text-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+<div id="loading-overlay" class="htmx-indicator fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 backdrop-blur-sm">
+    <div class="bg-white rounded-2xl p-10 flex flex-col items-center shadow-2xl">
+        <svg class="animate-spin h-14 w-14 text-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
-        <p class="text-gray-700 font-medium">Searching...</p>
+        <p class="text-primary font-semibold text-lg">Searching...</p>
     </div>
 </div>
 {% endblock %}
@@ -58,12 +60,14 @@
     document.body.addEventListener('htmx:responseError', function(evt) {
         const resultsDiv = document.getElementById('search-results');
         resultsDiv.innerHTML = `
-            <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-                <svg class="w-12 h-12 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <h3 class="text-lg font-semibold text-red-900 mb-2">Search Service Unavailable</h3>
-                <p class="text-red-700">Please ensure the search-service is running on ${evt.detail.xhr.responseURL}</p>
+            <div class="modern-card p-8 text-center border-2 border-red-100">
+                <div class="w-16 h-16 mx-auto mb-4 bg-red-50 rounded-full flex items-center justify-center">
+                    <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <h3 class="text-xl font-bold text-primary mb-2">Search Service Unavailable</h3>
+                <p class="text-secondary">Please ensure the search-service is running</p>
             </div>
         `;
     });

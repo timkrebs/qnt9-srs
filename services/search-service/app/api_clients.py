@@ -11,6 +11,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
 import yfinance as yf
 from alpha_vantage.fundamentaldata import FundamentalData
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -171,7 +172,9 @@ class YahooFinanceClient:
 
     @retry(
         stop=stop_after_attempt(MAX_RETRY_ATTEMPTS),
-        wait=wait_exponential(multiplier=1, min=RETRY_MIN_WAIT_SECONDS, max=RETRY_MAX_WAIT_SECONDS),
+        wait=wait_exponential(
+            multiplier=1, min=RETRY_MIN_WAIT_SECONDS, max=RETRY_MAX_WAIT_SECONDS
+        ),
     )
     def search_by_isin(self, isin: str) -> Optional[Dict[str, Any]]:
         """
@@ -258,14 +261,18 @@ class YahooFinanceClient:
                     if len(results) >= limit:
                         break
 
-            logger.info(f"Yahoo Finance name search for '{query}' returned {len(results)} results")
+            logger.info(
+                f"Yahoo Finance name search for '{query}' returned {len(results)} results"
+            )
             return results
 
         except Exception as e:
             logger.error(f"Error searching Yahoo Finance by name: {e}")
             return []
 
-    def _try_fetch_ticker(self, ticker_symbol: str, query: str) -> Optional[Dict[str, Any]]:
+    def _try_fetch_ticker(
+        self, ticker_symbol: str, query: str
+    ) -> Optional[Dict[str, Any]]:
         """
         Try to fetch and validate ticker information.
 
@@ -473,7 +480,9 @@ class YahooFinanceClient:
             return {
                 "symbol": info.get("symbol", symbol),
                 "name": info.get("longName", info.get("shortName", "")),
-                "current_price": info.get("currentPrice", info.get("regularMarketPrice")),
+                "current_price": info.get(
+                    "currentPrice", info.get("regularMarketPrice")
+                ),
                 "currency": info.get("currency"),
                 "exchange": info.get("exchange"),
                 "market_cap": info.get("marketCap"),
@@ -511,6 +520,166 @@ class YahooFinanceClient:
 
         return None
 
+    def get_historical_data(
+        self, symbol: str, period: str = "7d", interval: str = "1d"
+    ) -> Optional[list[Dict[str, Any]]]:
+        """
+        Retrieve historical price data for stock.
+
+        Args:
+            symbol: Stock ticker symbol
+            period: Time period (e.g., '7d', '1mo', '3mo', '1y')
+            interval: Data interval (e.g., '1d', '1h', '5m')
+
+        Returns:
+            List of price data points or None if error occurs
+
+        Example:
+            [
+                {"timestamp": "2024-01-01T00:00:00Z", "price": 150.0, "volume": 1000000},
+                {"timestamp": "2024-01-02T00:00:00Z", "price": 152.0, "volume": 1100000}
+            ]
+        """
+        self._wait_for_rate_limit()
+
+        try:
+            logger.info(f"Fetching {period} historical data for {symbol}")
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period=period, interval=interval)
+
+            if hist.empty:
+                logger.warning(f"No historical data found for {symbol}")
+                return None
+
+            price_data = []
+            for index, row in hist.iterrows():
+                price_data.append(
+                    {
+                        "timestamp": index.isoformat(),
+                        "price": float(row["Close"]),
+                        "volume": int(row["Volume"])
+                        if not pd.isna(row["Volume"])
+                        else None,
+                    }
+                )
+
+            logger.info(
+                f"Retrieved {len(price_data)} historical data points for {symbol}"
+            )
+            return price_data
+
+        except Exception as e:
+            logger.error(f"Error fetching historical data for {symbol}: {e}")
+            return None
+
+    def get_52_week_range(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Get 52-week high and low prices for stock.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            Dictionary with 52-week high and low prices or None if error
+
+        Example:
+            {
+                "high": 180.0,
+                "low": 120.0,
+                "high_date": "2024-06-15T00:00:00Z",
+                "low_date": "2023-12-01T00:00:00Z"
+            }
+        """
+        self._wait_for_rate_limit()
+
+        try:
+            logger.info(f"Fetching 52-week range for {symbol}")
+            stock = yf.Ticker(symbol)
+            info = stock.info
+
+            high = info.get("fiftyTwoWeekHigh")
+            low = info.get("fiftyTwoWeekLow")
+
+            if high is None or low is None:
+                logger.warning(f"52-week range not available for {symbol}")
+                return None
+
+            # Try to get dates from historical data
+            hist = stock.history(period="1y", interval="1d")
+            high_date = None
+            low_date = None
+
+            if not hist.empty:
+                high_idx = hist["High"].idxmax()
+                low_idx = hist["Low"].idxmin()
+                high_date = high_idx.isoformat() if pd.notna(high_idx) else None
+                low_date = low_idx.isoformat() if pd.notna(low_idx) else None
+
+            return {
+                "high": float(high),
+                "low": float(low),
+                "high_date": high_date,
+                "low_date": low_date,
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching 52-week range for {symbol}: {e}")
+            return None
+
+    def get_price_change(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Calculate 1-day price change for stock.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            Dictionary with absolute and percentage price change or None
+
+        Example:
+            {
+                "absolute": 2.5,
+                "percentage": 1.67,
+                "direction": "up"
+            }
+        """
+        self._wait_for_rate_limit()
+
+        try:
+            logger.info(f"Calculating price change for {symbol}")
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period="5d", interval="1d")
+
+            if len(hist) < 2:
+                logger.warning(
+                    f"Insufficient data to calculate price change for {symbol}"
+                )
+                return None
+
+            current_price = float(hist["Close"].iloc[-1])
+            previous_price = float(hist["Close"].iloc[-2])
+
+            absolute_change = current_price - previous_price
+            percentage_change = (absolute_change / previous_price) * 100
+
+            direction = (
+                "up"
+                if absolute_change > 0
+                else "down"
+                if absolute_change < 0
+                else "neutral"
+            )
+
+            return {
+                "absolute": round(absolute_change, 2),
+                "percentage": round(percentage_change, 2),
+                "direction": direction,
+            }
+
+        except Exception as e:
+            logger.error(f"Error calculating price change for {symbol}: {e}")
+            return None
+
 
 class AlphaVantageClient:
     """
@@ -542,7 +711,9 @@ class AlphaVantageClient:
     @retry(
         stop=stop_after_attempt(MAX_RETRY_ATTEMPTS),
         wait=wait_exponential(
-            multiplier=1, min=ALPHA_VANTAGE_RETRY_MIN_SECONDS, max=ALPHA_VANTAGE_RETRY_MAX_SECONDS
+            multiplier=1,
+            min=ALPHA_VANTAGE_RETRY_MIN_SECONDS,
+            max=ALPHA_VANTAGE_RETRY_MAX_SECONDS,
         ),
     )
     def search_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -623,7 +794,9 @@ class StockAPIClient:
         self.yahoo = YahooFinanceClient()
         self.alpha_vantage = AlphaVantageClient()
 
-    def search_stock(self, query: str, query_type: str = "symbol") -> Optional[Dict[str, Any]]:
+    def search_stock(
+        self, query: str, query_type: str = "symbol"
+    ) -> Optional[Dict[str, Any]]:
         """
         Search for stock using available APIs with automatic fallback.
 
@@ -715,4 +888,59 @@ class StockAPIClient:
             return self.search_stock(symbol, query_type="symbol")
         except Exception as e:
             logger.error(f"Error enriching search result for {symbol}: {e}")
+            return None
+
+    def get_stock_report_data(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Get comprehensive stock report data including historical prices and metrics.
+
+        Fetches all data required for stock report display:
+        - Current stock information
+        - 7-day price history
+        - 52-week high/low range
+        - 1-day price change
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            Dictionary with complete stock report data or None if error
+
+        Example:
+            {
+                "basic_info": {...},
+                "price_history_7d": [...],
+                "week_52_range": {...},
+                "price_change_1d": {...}
+            }
+        """
+        try:
+            logger.info(f"Fetching comprehensive stock report data for {symbol}")
+
+            # Get basic stock information
+            basic_info = self.yahoo.search_by_symbol(symbol)
+            if not basic_info:
+                logger.warning(f"Could not fetch basic info for {symbol}")
+                return None
+
+            # Get historical data (7 days)
+            price_history = self.yahoo.get_historical_data(
+                symbol, period="7d", interval="1d"
+            )
+
+            # Get 52-week range
+            week_52_range = self.yahoo.get_52_week_range(symbol)
+
+            # Get price change (1 day)
+            price_change = self.yahoo.get_price_change(symbol)
+
+            return {
+                "basic_info": basic_info,
+                "price_history_7d": price_history or [],
+                "week_52_range": week_52_range,
+                "price_change_1d": price_change,
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching stock report data for {symbol}: {e}")
             return None
