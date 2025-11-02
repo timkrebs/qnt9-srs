@@ -2,6 +2,8 @@
 Test configuration and fixtures
 """
 
+from unittest.mock import patch
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -45,10 +47,12 @@ def client(db_session):
         finally:
             pass
 
-    app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+    # Mock init_db to prevent creating production database tables
+    with patch("app.app.init_db"):
+        app.dependency_overrides[get_db] = override_get_db
+        with TestClient(app) as test_client:
+            yield test_client
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture
