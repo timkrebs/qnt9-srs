@@ -93,7 +93,9 @@ class CacheManager:
             logger.error(f"Error retrieving from cache: {e}")
             return None
 
-    def _get_cache_entry(self, query: str, query_type: str, now: datetime) -> Optional[StockCache]:
+    def _get_cache_entry(
+        self, query: str, query_type: str, now: datetime
+    ) -> Optional[StockCache]:
         """
         Get cache entry based on query type.
 
@@ -124,7 +126,9 @@ class CacheManager:
                 .first()
             )
 
-    def _build_stock_dict(self, cache_entry: StockCache, cache_age: int) -> Dict[str, Any]:
+    def _build_stock_dict(
+        self, cache_entry: StockCache, cache_age: int
+    ) -> Dict[str, Any]:
         """
         Build stock data dictionary from cache entry.
 
@@ -190,7 +194,9 @@ class CacheManager:
             self.db.rollback()
             return False
 
-    def _find_existing_entry(self, symbol: str, isin: Optional[str]) -> Optional[StockCache]:
+    def _find_existing_entry(
+        self, symbol: str, isin: Optional[str]
+    ) -> Optional[StockCache]:
         """
         Find existing cache entry by symbol or ISIN.
 
@@ -291,7 +297,9 @@ class CacheManager:
         """
         try:
             now = datetime.now(timezone.utc).replace(tzinfo=None)
-            deleted = self.db.query(StockCache).filter(StockCache.expires_at < now).delete()
+            deleted = (
+                self.db.query(StockCache).filter(StockCache.expires_at < now).delete()
+            )
             self.db.commit()
 
             if deleted > 0:
@@ -320,7 +328,9 @@ class CacheManager:
 
             existing = (
                 self.db.query(SearchHistory)
-                .filter(SearchHistory.query == query, SearchHistory.query_type == query_type)
+                .filter(
+                    SearchHistory.query == query, SearchHistory.query_type == query_type
+                )
                 .first()
             )
 
@@ -409,11 +419,15 @@ class CacheManager:
             now = datetime.now(timezone.utc).replace(tzinfo=None)
 
             total_entries = self.db.query(StockCache).count()
-            active_entries = self.db.query(StockCache).filter(StockCache.expires_at > now).count()
+            active_entries = (
+                self.db.query(StockCache).filter(StockCache.expires_at > now).count()
+            )
             expired_entries = total_entries - active_entries
 
             total_hits = (
-                self.db.query(StockCache).with_entities(func.sum(StockCache.cache_hits)).scalar()
+                self.db.query(StockCache)
+                .with_entities(func.sum(StockCache.cache_hits))
+                .scalar()
                 or 0
             )
 
@@ -516,7 +530,9 @@ class CacheManager:
             logger.debug(f"FTS support check failed: {e}")
             return False
 
-    def _search_with_fts(self, query: str, now: datetime, limit: int) -> list[StockCache]:
+    def _search_with_fts(
+        self, query: str, now: datetime, limit: int
+    ) -> list[StockCache]:
         """
         Search using PostgreSQL full-text search.
 
@@ -546,7 +562,9 @@ class CacheManager:
             .all()
         )
 
-    def _search_with_ilike(self, query: str, now: datetime, limit: int) -> list[StockCache]:
+    def _search_with_ilike(
+        self, query: str, now: datetime, limit: int
+    ) -> list[StockCache]:
         """
         Search using case-insensitive LIKE (fallback for SQLite).
 
@@ -639,3 +657,217 @@ class CacheManager:
         length_ratio = len(query) / len(name)
         length_bonus = length_ratio * SCORE_LENGTH_BONUS_MAX
         return SCORE_CONTAINS_BASE + length_bonus
+
+    def get_cached_report(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve stock report data from cache if available and not expired.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            Cached stock report data dictionary or None if not found/expired
+        """
+        try:
+            from .models import StockReportCache
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            symbol_upper = symbol.strip().upper()
+
+            cache_entry = (
+                self.db.query(StockReportCache)
+                .filter(
+                    StockReportCache.symbol == symbol_upper,
+                    StockReportCache.expires_at > now,
+                )
+                .first()
+            )
+
+            if cache_entry:
+                cache_entry.increment_hits()
+                self.db.commit()
+
+                cache_age = int((now - cache_entry.created_at).total_seconds())
+
+                logger.info(
+                    f"Report cache HIT for symbol {symbol_upper} "
+                    f"(age: {cache_age}s, hits: {cache_entry.cache_hits})"
+                )
+
+                return self._build_report_dict(cache_entry, cache_age)
+
+            logger.debug(f"Report cache MISS for symbol {symbol_upper}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error retrieving report from cache: {e}")
+            return None
+
+    def _build_report_dict(self, cache_entry: Any, cache_age: int) -> Dict[str, Any]:
+        """
+        Build stock report dictionary from cache entry.
+
+        Args:
+            cache_entry: StockReportCache database entry
+            cache_age: Age of cache entry in seconds
+
+        Returns:
+            Dictionary with complete stock report data
+        """
+        # Parse price history from JSON
+        price_history = []
+        if cache_entry.price_history_7d:
+            try:
+                price_history = json.loads(cache_entry.price_history_7d)
+            except json.JSONDecodeError:
+                logger.warning(
+                    f"Failed to parse price history for {cache_entry.symbol}"
+                )
+
+        return {
+            "symbol": cache_entry.symbol,
+            "name": cache_entry.name,
+            "isin": cache_entry.isin,
+            "wkn": cache_entry.wkn,
+            "current_price": cache_entry.current_price,
+            "currency": cache_entry.currency,
+            "exchange": cache_entry.exchange,
+            "market_cap": cache_entry.market_cap,
+            "sector": cache_entry.sector,
+            "industry": cache_entry.industry,
+            "price_change_1d": {
+                "absolute": cache_entry.price_change_absolute,
+                "percentage": cache_entry.price_change_percentage,
+                "direction": cache_entry.price_change_direction,
+            }
+            if cache_entry.price_change_absolute is not None
+            else None,
+            "week_52_range": {
+                "high": cache_entry.week_52_high,
+                "low": cache_entry.week_52_low,
+                "high_date": cache_entry.week_52_high_date,
+                "low_date": cache_entry.week_52_low_date,
+            }
+            if cache_entry.week_52_high is not None
+            else None,
+            "price_history_7d": price_history,
+            "data_source": cache_entry.data_source,
+            "cached": True,
+            "cache_age_seconds": cache_age,
+            "cache_timestamp": cache_entry.created_at.isoformat(),
+        }
+
+    def cache_report_data(self, report_data: Dict[str, Any]) -> bool:
+        """
+        Cache stock report data with TTL.
+
+        Args:
+            report_data: Complete stock report data dictionary
+
+        Returns:
+            True if caching successful, False otherwise
+        """
+        try:
+            from .models import StockReportCache
+
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
+            expires_at = now + timedelta(minutes=CACHE_TTL_MINUTES)
+
+            basic_info = report_data.get("basic_info", {})
+            symbol = basic_info.get("symbol", "").upper()
+
+            if not symbol:
+                logger.warning("Cannot cache report data: missing symbol")
+                return False
+
+            # Serialize price history to JSON
+            price_history_json = None
+            if report_data.get("price_history_7d"):
+                try:
+                    price_history_json = json.dumps(report_data["price_history_7d"])
+                except Exception as e:
+                    logger.warning(f"Failed to serialize price history: {e}")
+
+            # Extract price change data
+            price_change = report_data.get("price_change_1d", {})
+            week_52_range = report_data.get("week_52_range", {})
+
+            # Check if entry exists
+            existing = (
+                self.db.query(StockReportCache)
+                .filter(StockReportCache.symbol == symbol)
+                .first()
+            )
+
+            if existing:
+                # Update existing entry
+                existing.name = basic_info.get("name", existing.name)
+                existing.isin = basic_info.get("isin")
+                existing.wkn = basic_info.get("wkn")
+                existing.current_price = basic_info.get("current_price")
+                existing.currency = basic_info.get("currency")
+                existing.exchange = basic_info.get("exchange")
+                existing.market_cap = basic_info.get("market_cap")
+                existing.sector = basic_info.get("sector")
+                existing.industry = basic_info.get("industry")
+                existing.price_change_absolute = price_change.get("absolute")
+                existing.price_change_percentage = price_change.get("percentage")
+                existing.price_change_direction = price_change.get("direction")
+                existing.week_52_high = (
+                    week_52_range.get("high") if week_52_range else None
+                )
+                existing.week_52_low = (
+                    week_52_range.get("low") if week_52_range else None
+                )
+                existing.week_52_high_date = (
+                    week_52_range.get("high_date") if week_52_range else None
+                )
+                existing.week_52_low_date = (
+                    week_52_range.get("low_date") if week_52_range else None
+                )
+                existing.price_history_7d = price_history_json
+                existing.data_source = basic_info.get("source", "yahoo")
+                existing.raw_data = json.dumps(basic_info.get("raw_data", {}))
+                existing.expires_at = expires_at
+                existing.updated_at = now
+
+                logger.info(f"Updated report cache for {symbol}")
+            else:
+                # Create new entry
+                cache_entry = StockReportCache(
+                    symbol=symbol,
+                    isin=basic_info.get("isin"),
+                    wkn=basic_info.get("wkn"),
+                    name=basic_info.get("name", ""),
+                    current_price=basic_info.get("current_price"),
+                    currency=basic_info.get("currency", "USD"),
+                    exchange=basic_info.get("exchange", ""),
+                    market_cap=basic_info.get("market_cap"),
+                    sector=basic_info.get("sector"),
+                    industry=basic_info.get("industry"),
+                    price_change_absolute=price_change.get("absolute"),
+                    price_change_percentage=price_change.get("percentage"),
+                    price_change_direction=price_change.get("direction"),
+                    week_52_high=week_52_range.get("high") if week_52_range else None,
+                    week_52_low=week_52_range.get("low") if week_52_range else None,
+                    week_52_high_date=week_52_range.get("high_date")
+                    if week_52_range
+                    else None,
+                    week_52_low_date=week_52_range.get("low_date")
+                    if week_52_range
+                    else None,
+                    price_history_7d=price_history_json,
+                    data_source=basic_info.get("source", "yahoo"),
+                    raw_data=json.dumps(basic_info.get("raw_data", {})),
+                    expires_at=expires_at,
+                )
+                self.db.add(cache_entry)
+                logger.info(f"Cached new report data for {symbol}")
+
+            self.db.commit()
+            return True
+
+        except Exception as e:
+            logger.error(f"Error caching report data: {e}")
+            self.db.rollback()
+            return False

@@ -1,8 +1,11 @@
 """
-Frontend Service Tests - API Client Tests
-Tests for SearchServiceClient
+Frontend Service Tests - API Client Tests.
+
+Tests for SearchServiceClient class, including search operations,
+suggestions, health checks, and error handling.
 """
 
+from typing import Any, Dict, List
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,15 +15,25 @@ from app.api_client import SearchServiceClient
 
 
 @pytest.fixture
-def client():
-    """Create a SearchServiceClient instance"""
+def client() -> SearchServiceClient:
+    """
+    Create a SearchServiceClient instance for testing.
+
+    Returns:
+        SearchServiceClient instance with test configuration
+    """
     return SearchServiceClient()
 
 
 @pytest.mark.asyncio
-async def test_search_success(client):
-    """Test successful search request"""
-    mock_response = {
+async def test_search_success(client: SearchServiceClient) -> None:
+    """
+    Test successful search request.
+
+    Verifies that the search method correctly handles a successful
+    response from the search service.
+    """
+    mock_response: Dict[str, Any] = {
         "success": True,
         "data": {
             "isin": "DE0005140008",
@@ -45,8 +58,13 @@ async def test_search_success(client):
 
 
 @pytest.mark.asyncio
-async def test_search_timeout(client):
-    """Test search timeout handling"""
+async def test_search_timeout(client: SearchServiceClient) -> None:
+    """
+    Test search timeout handling.
+
+    Verifies that the search method correctly handles timeout errors
+    and returns an appropriate error response.
+    """
     with patch("httpx.AsyncClient.get", side_effect=TimeoutError("Request timeout")):
         result = await client.search("DE0005140008")
 
@@ -55,18 +73,29 @@ async def test_search_timeout(client):
 
 
 @pytest.mark.asyncio
-async def test_search_connection_error(client):
-    """Test search when connection fails"""
+async def test_search_connection_error(client: SearchServiceClient) -> None:
+    """
+    Test search when connection fails.
+
+    Verifies that the search method correctly handles connection errors
+    when the search service is unavailable.
+    """
     with patch("httpx.AsyncClient.get", side_effect=ConnectError("Connection refused")):
         result = await client.search("DE0005140008")
 
         assert result["success"] is False
+        assert "connect" in result["message"].lower()
 
 
 @pytest.mark.asyncio
-async def test_get_suggestions_success(client):
-    """Test successful suggestions request"""
-    mock_suggestions = [
+async def test_get_suggestions_success(client: SearchServiceClient) -> None:
+    """
+    Test successful suggestions request.
+
+    Verifies that the get_suggestions method correctly retrieves
+    and returns autocomplete suggestions.
+    """
+    mock_suggestions: List[Dict[str, Any]] = [
         {"query": "DE0005140008", "result_found": True, "search_count": 5},
         {"query": "DBK.DE", "result_found": True, "search_count": 3},
     ]
@@ -84,8 +113,13 @@ async def test_get_suggestions_success(client):
 
 
 @pytest.mark.asyncio
-async def test_get_suggestions_empty(client):
-    """Test suggestions with no results"""
+async def test_get_suggestions_empty(client: SearchServiceClient) -> None:
+    """
+    Test suggestions with no results.
+
+    Verifies that the get_suggestions method correctly handles
+    cases where no suggestions are found.
+    """
     with patch("httpx.AsyncClient.get") as mock_get:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -98,8 +132,13 @@ async def test_get_suggestions_empty(client):
 
 
 @pytest.mark.asyncio
-async def test_get_suggestions_error(client):
-    """Test suggestions with error"""
+async def test_get_suggestions_error(client: SearchServiceClient) -> None:
+    """
+    Test suggestions with error.
+
+    Verifies that the get_suggestions method returns an empty list
+    when an error occurs, allowing the UI to degrade gracefully.
+    """
     with patch("httpx.AsyncClient.get", side_effect=ConnectError("Connection refused")):
         result = await client.get_suggestions("DE")
 
@@ -107,8 +146,13 @@ async def test_get_suggestions_error(client):
 
 
 @pytest.mark.asyncio
-async def test_health_check_healthy(client):
-    """Test health check when service is healthy"""
+async def test_health_check_healthy(client: SearchServiceClient) -> None:
+    """
+    Test health check when service is healthy.
+
+    Verifies that the health_check method correctly identifies
+    a healthy search service.
+    """
     with patch("httpx.AsyncClient.get") as mock_get:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -121,9 +165,29 @@ async def test_health_check_healthy(client):
 
 
 @pytest.mark.asyncio
-async def test_health_check_unhealthy(client):
-    """Test health check when service is unhealthy"""
+async def test_health_check_unhealthy(client: SearchServiceClient) -> None:
+    """
+    Test health check when service is unhealthy.
+
+    Verifies that the health_check method correctly identifies
+    when the search service is down or unreachable.
+    """
     with patch("httpx.AsyncClient.get", side_effect=ConnectError("Connection refused")):
         result = await client.health_check()
 
         assert result is False
+
+
+@pytest.mark.asyncio
+async def test_get_suggestions_empty_query(client: SearchServiceClient) -> None:
+    """
+    Test suggestions with empty query.
+
+    Verifies that the get_suggestions method returns an empty list
+    for empty or invalid queries.
+    """
+    result = await client.get_suggestions("")
+    assert result == []
+
+    result = await client.get_suggestions("   ")
+    assert result == []

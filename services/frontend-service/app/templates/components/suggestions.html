@@ -1,16 +1,16 @@
 {% if suggestions %}
-<div class="bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+<div class="modern-card border border-gray-100 max-h-80 overflow-y-auto">
     {% for suggestion in suggestions %}
-    <div class="suggestion-item px-4 py-3 cursor-pointer border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition" 
+    <div class="suggestion-item cursor-pointer" 
          data-query="{{ suggestion.query }}">
         <div class="flex items-center justify-between">
             <div class="flex-1">
-                <div class="font-medium text-gray-900">{{ suggestion.query }}</div>
+                <div class="font-semibold text-primary">{{ suggestion.query }}</div>
                 {% if suggestion.result_found %}
-                <div class="text-xs text-gray-500 mt-1">Recent search</div>
+                <div class="text-xs text-secondary mt-1 font-medium">Recent search</div>
                 {% endif %}
             </div>
-            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
             </svg>
         </div>
@@ -18,3 +18,4 @@
     {% endfor %}
 </div>
 {% endif %}
+

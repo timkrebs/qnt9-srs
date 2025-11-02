@@ -1,0 +1,10 @@
+fastapi[standard]
+uvicorn[standard]
+python-jose[cryptography]
+bcrypt>=4.0.0
+python-multipart
+sqlalchemy
+databases[sqlite]
+alembic
+hvac>=2.0.0
+psycopg2-binary

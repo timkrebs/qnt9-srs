@@ -71,7 +71,9 @@ class StockCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -157,9 +159,116 @@ class SearchHistory(Base):
     result_found = Column(Integer, default=0, nullable=False)
     search_count = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    last_searched = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    last_searched = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     __table_args__ = (
         Index("idx_query_type", "query", "query_type"),
         Index("idx_search_count", "search_count"),
     )
+
+
+class StockReportCache(Base):
+    """
+    Stock report data cache model with detailed historical information.
+
+    Caches comprehensive stock report data including historical prices,
+    52-week ranges, and price changes to reduce API calls for report pages.
+
+    Attributes:
+        id: Primary key identifier
+        symbol: Stock ticker symbol
+        isin: International Securities Identification Number
+        wkn: German securities identification number
+        name: Company name
+        current_price: Current stock price
+        currency: Currency code
+        exchange: Stock exchange name
+        market_cap: Market capitalization
+        sector: Business sector
+        industry: Industry classification
+        price_change_absolute: 1-day absolute price change
+        price_change_percentage: 1-day percentage price change
+        price_change_direction: Direction of price change (up/down/neutral)
+        week_52_high: 52-week high price
+        week_52_low: 52-week low price
+        week_52_high_date: Date of 52-week high
+        week_52_low_date: Date of 52-week low
+        price_history_7d: JSON string of 7-day price history
+        data_source: API source name
+        raw_data: JSON string of raw API response
+        created_at: Timestamp of cache entry creation
+        updated_at: Timestamp of last update
+        expires_at: Timestamp when cache expires (TTL)
+        cache_hits: Number of times served from cache
+    """
+
+    __tablename__ = "stock_report_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Stock identifiers
+    symbol = Column(String(20), unique=True, index=True, nullable=False)
+    isin = Column(String(12), index=True, nullable=True)
+    wkn = Column(String(6), nullable=True)
+
+    # Basic stock information
+    name = Column(String(255), nullable=False)
+    current_price = Column(Float, nullable=False)
+    currency = Column(String(10), nullable=False)
+    exchange = Column(String(50), nullable=False)
+
+    # Additional metadata
+    market_cap = Column(Float, nullable=True)
+    sector = Column(String(100), nullable=True)
+    industry = Column(String(100), nullable=True)
+
+    # Price change (1-day)
+    price_change_absolute = Column(Float, nullable=True)
+    price_change_percentage = Column(Float, nullable=True)
+    price_change_direction = Column(String(10), nullable=True)
+
+    # 52-week range
+    week_52_high = Column(Float, nullable=True)
+    week_52_low = Column(Float, nullable=True)
+    week_52_high_date = Column(String(30), nullable=True)
+    week_52_low_date = Column(String(30), nullable=True)
+
+    # Historical data (stored as JSON)
+    price_history_7d = Column(Text, nullable=True)
+
+    # API source tracking
+    data_source = Column(String(50), nullable=False)
+    raw_data = Column(Text, nullable=True)
+
+    # Cache management
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+    expires_at = Column(DateTime, nullable=False)
+    cache_hits = Column(Integer, default=0, nullable=False)
+
+    # Indexes for faster lookups
+    __table_args__ = (
+        Index("idx_symbol_expires", "symbol", "expires_at"),
+        Index("idx_isin_expires_report", "isin", "expires_at"),
+    )
+
+    def is_expired(self) -> bool:
+        """
+        Check if cache entry has expired.
+
+        Returns:
+            True if current time is past expiration time, False otherwise
+        """
+        return datetime.now(timezone.utc) > self.expires_at
+
+    def increment_hits(self) -> None:
+        """
+        Increment cache hit counter.
+
+        Tracks how many times this cached entry has been served to requests.
+        """
+        self.cache_hits += CACHE_HIT_INCREMENT

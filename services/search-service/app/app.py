@@ -8,6 +8,7 @@ with caching, rate limiting, and multiple API source fallback.
 import logging
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -23,9 +24,14 @@ from .validators import (
     ErrorResponse,
     NameSearchQuery,
     NameSearchResponse,
+    PriceChange,
+    PricePoint,
     SearchQuery,
     StockData,
+    StockReportData,
+    StockReportResponse,
     StockSearchResponse,
+    WeekRange52,
     detect_query_type,
     is_valid_isin,
     is_valid_wkn,
@@ -212,14 +218,18 @@ async def search_stock(
         # Try cache first
         cached_data = cache_manager.get_cached_stock(query)
         if cached_data:
-            return _build_cached_response(cached_data, query_type, start_time, cache_manager, query)
+            return _build_cached_response(
+                cached_data, query_type, start_time, cache_manager, query
+            )
 
         # Cache miss - fetch from external API
         logger.info(f"Cache miss - fetching from external API for {query}")
         stock_data = stock_api_client.search_stock(query, query_type)
 
         if not stock_data:
-            return _build_not_found_response(query, query_type, start_time, cache_manager)
+            return _build_not_found_response(
+                query, query_type, start_time, cache_manager
+            )
 
         # Save to cache and build response
         cache_manager.save_to_cache(stock_data, query)
@@ -587,10 +597,14 @@ async def search_stock_by_name(
 
         # Fallback to external API if no cache results
         if not results:
-            results = _search_external_api_and_cache(normalized_query, limit, cache_manager)
+            results = _search_external_api_and_cache(
+                normalized_query, limit, cache_manager
+            )
 
         # Build and return response
-        return _build_name_search_response(results, normalized_query, start_time, cache_manager)
+        return _build_name_search_response(
+            results, normalized_query, start_time, cache_manager
+        )
 
     except ValueError as e:
         logger.warning(f"Validation error for name search '{query}': {e}")
@@ -605,6 +619,410 @@ async def search_stock_by_name(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while searching for stocks",
         )
+
+
+@app.get(
+    "/api/stocks/{identifier}/report",
+    response_model=StockReportResponse,
+    responses={
+        200: {"description": "Stock report retrieved successfully"},
+        400: {"model": ErrorResponse, "description": "Invalid ISIN or symbol"},
+        404: {"model": ErrorResponse, "description": "Stock not found"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+    tags=["Stock Reports"],
+)
+async def get_stock_report(
+    identifier: str,
+    db: Session = Depends(get_db),
+) -> StockReportResponse:
+    """
+    Get comprehensive stock report with historical data and key metrics.
+
+    This endpoint provides a complete stock report including:
+    - Basic stock information (name, ISIN, WKN, symbol)
+    - Current price with currency
+    - 1-day price change (absolute, percentage, direction)
+    - 52-week high and low prices
+    - Market capitalization
+    - 7-day price history for charting
+    - Exchange information
+    - Last updated timestamp
+
+    The endpoint accepts either ISIN or stock symbol as identifier.
+    Data is cached for 5 minutes to reduce API calls and improve response time.
+
+    Features:
+        - Target response time: <2 seconds
+        - Automatic caching with TTL
+        - Fallback to cached data if fresh data unavailable
+        - Warning message when serving cached data
+        - Support for ISIN and symbol identifiers
+
+    Args:
+        identifier: Stock ISIN (12 chars) or symbol (e.g., AAPL)
+        db: Database session dependency
+
+    Returns:
+        StockReportResponse with comprehensive stock data
+
+    Raises:
+        HTTPException: For validation errors, not found, or internal errors
+
+    Example Response:
+        {
+            "success": true,
+            "data": {
+                "symbol": "AAPL",
+                "name": "Apple Inc.",
+                "isin": "US0378331005",
+                "current_price": 175.50,
+                "currency": "USD",
+                "price_change_1d": {"absolute": 2.5, "percentage": 1.44, "direction": "up"},
+                "week_52_range": {"high": 199.62, "low": 164.08},
+                "price_history_7d": [...]
+            },
+            "response_time_ms": 156
+        }
+    """
+    start_time = time.time()
+
+    try:
+        # Normalize identifier
+        identifier = identifier.strip().upper()
+
+        # Detect if it's ISIN or symbol
+        query_type = detect_query_type(identifier)
+
+        logger.info(f"Stock report request for {identifier} (type: {query_type})")
+
+        # Initialize cache manager
+        cache_manager = CacheManager(db)
+
+        # If identifier is ISIN, we need to find the symbol first
+        symbol: str = identifier
+        if query_type == "isin":
+            resolved_symbol = _get_symbol_from_isin(identifier, cache_manager)
+            if not resolved_symbol:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail={
+                        "error": "stock_not_found",
+                        "message": f"No stock found for ISIN {identifier}",
+                    },
+                )
+            symbol = resolved_symbol
+
+        # Try cache first
+        cached_report = cache_manager.get_cached_report(symbol)
+        if cached_report:
+            return _build_cached_report_response(cached_report, start_time)
+
+        # Cache miss - fetch from external API
+        logger.info(f"Report cache miss - fetching from API for {symbol}")
+        report_data = stock_api_client.get_stock_report_data(symbol)
+
+        if not report_data:
+            # Try to return stale cache data if available
+            stale_data = _get_stale_cached_report(symbol, cache_manager)
+            if stale_data:
+                return _build_stale_cache_response(stale_data, start_time)
+
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "stock_not_found",
+                    "message": f"No stock data found for {identifier}",
+                },
+            )
+
+        # Validate that we have the minimum required data
+        _validate_report_data(report_data)
+
+        # Cache the report data
+        cache_manager.cache_report_data(report_data)
+
+        # Build and return response
+        return _build_report_response(report_data, start_time)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error fetching stock report for {identifier}: {e}", exc_info=True
+        )
+        response_time_ms = int((time.time() - start_time) * 1000)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "internal_error",
+                "message": "An error occurred while fetching stock report",
+                "response_time_ms": response_time_ms,
+            },
+        )
+
+
+def _get_symbol_from_isin(isin: str, cache_manager: CacheManager) -> Optional[str]:
+    """
+    Get stock symbol from ISIN using cache or API.
+
+    Args:
+        isin: ISIN code
+        cache_manager: Cache manager instance
+
+    Returns:
+        Stock symbol or None if not found
+    """
+    # Try cache first
+    cached_stock = cache_manager.get_cached_stock(isin)
+    if cached_stock:
+        return cached_stock.get("symbol")
+
+    # Try API
+    stock_data = stock_api_client.search_stock(isin, query_type="isin")
+    if stock_data:
+        # Cache for future use
+        cache_manager.save_to_cache(stock_data, isin)
+        return stock_data.get("symbol")
+
+    return None
+
+
+def _validate_report_data(report_data: Dict[str, Any]) -> None:
+    """
+    Validate that report data contains minimum required fields.
+
+    Args:
+        report_data: Report data dictionary
+
+    Raises:
+        ValueError: If required data is missing
+    """
+    basic_info = report_data.get("basic_info", {})
+
+    required_fields = ["symbol", "name", "current_price", "currency", "exchange"]
+    missing_fields = [field for field in required_fields if not basic_info.get(field)]
+
+    if missing_fields:
+        raise ValueError(f"Missing required report fields: {', '.join(missing_fields)}")
+
+
+def _build_report_response(
+    report_data: Dict[str, Any], start_time: float
+) -> StockReportResponse:
+    """
+    Build stock report response from fetched data.
+
+    Args:
+        report_data: Complete report data from API
+        start_time: Request start timestamp
+
+    Returns:
+        StockReportResponse with formatted data
+    """
+    basic_info = report_data["basic_info"]
+    price_change = report_data.get("price_change_1d")
+    week_52_range = report_data.get("week_52_range")
+    price_history = report_data.get("price_history_7d", [])
+
+    # Build price change object
+    price_change_obj = None
+    if price_change:
+        price_change_obj = PriceChange(
+            absolute=price_change["absolute"],
+            percentage=price_change["percentage"],
+            direction=price_change["direction"],
+        )
+
+    # Build 52-week range object
+    week_52_range_obj = None
+    if week_52_range:
+        week_52_range_obj = WeekRange52(
+            high=week_52_range["high"],
+            low=week_52_range["low"],
+            high_date=week_52_range.get("high_date"),
+            low_date=week_52_range.get("low_date"),
+        )
+
+    # Build price history
+    price_points = [
+        PricePoint(
+            timestamp=point["timestamp"],
+            price=point["price"],
+            volume=point.get("volume"),
+        )
+        for point in price_history
+    ]
+
+    # Create report data object
+    report = StockReportData(
+        symbol=basic_info["symbol"],
+        name=basic_info["name"],
+        isin=basic_info.get("isin"),
+        wkn=basic_info.get("wkn"),
+        current_price=basic_info["current_price"],
+        currency=basic_info.get("currency", "USD"),
+        exchange=basic_info.get("exchange", ""),
+        price_change_1d=price_change_obj
+        or PriceChange(absolute=0.0, percentage=0.0, direction="neutral"),
+        week_52_range=week_52_range_obj or WeekRange52(high=0.0, low=0.0),
+        market_cap=basic_info.get("market_cap"),
+        sector=basic_info.get("sector"),
+        industry=basic_info.get("industry"),
+        price_history_7d=price_points,
+        last_updated=datetime.now(timezone.utc).isoformat(),
+        data_source=basic_info.get("source", "yahoo"),
+        cached=False,
+        cache_timestamp=None,
+    )
+
+    response_time_ms = int((time.time() - start_time) * 1000)
+
+    return StockReportResponse(
+        success=True,
+        data=report,
+        message=None,
+        response_time_ms=response_time_ms,
+    )
+
+
+def _build_cached_report_response(
+    cached_data: Dict[str, Any], start_time: float
+) -> StockReportResponse:
+    """
+    Build stock report response from cached data.
+
+    Args:
+        cached_data: Cached report data
+        start_time: Request start timestamp
+
+    Returns:
+        StockReportResponse with cached data
+    """
+    # Build price change object
+    price_change_data = cached_data.get("price_change_1d")
+    price_change_obj = None
+    if price_change_data:
+        price_change_obj = PriceChange(
+            absolute=price_change_data["absolute"],
+            percentage=price_change_data["percentage"],
+            direction=price_change_data["direction"],
+        )
+
+    # Build 52-week range object
+    week_52_data = cached_data.get("week_52_range")
+    week_52_range_obj = None
+    if week_52_data:
+        week_52_range_obj = WeekRange52(
+            high=week_52_data["high"],
+            low=week_52_data["low"],
+            high_date=week_52_data.get("high_date"),
+            low_date=week_52_data.get("low_date"),
+        )
+
+    # Build price history
+    price_history = cached_data.get("price_history_7d", [])
+    price_points = [
+        PricePoint(
+            timestamp=point["timestamp"],
+            price=point["price"],
+            volume=point.get("volume"),
+        )
+        for point in price_history
+    ]
+
+    # Create report data object
+    report = StockReportData(
+        symbol=cached_data["symbol"],
+        name=cached_data["name"],
+        isin=cached_data.get("isin"),
+        wkn=cached_data.get("wkn"),
+        current_price=cached_data["current_price"],
+        currency=cached_data["currency"],
+        exchange=cached_data["exchange"],
+        price_change_1d=price_change_obj
+        or PriceChange(absolute=0.0, percentage=0.0, direction="neutral"),
+        week_52_range=week_52_range_obj or WeekRange52(high=0.0, low=0.0),
+        market_cap=cached_data.get("market_cap"),
+        sector=cached_data.get("sector"),
+        industry=cached_data.get("industry"),
+        price_history_7d=price_points,
+        last_updated=cached_data.get("cache_timestamp", ""),
+        data_source=cached_data.get("data_source", "yahoo"),
+        cached=True,
+        cache_timestamp=cached_data.get("cache_timestamp"),
+    )
+
+    response_time_ms = int((time.time() - start_time) * 1000)
+
+    return StockReportResponse(
+        success=True,
+        data=report,
+        message=None,
+        response_time_ms=response_time_ms,
+    )
+
+
+def _get_stale_cached_report(
+    symbol: str, cache_manager: CacheManager
+) -> Optional[Dict[str, Any]]:
+    """
+    Get stale (expired) cached report data as fallback.
+
+    Args:
+        symbol: Stock symbol
+        cache_manager: Cache manager instance
+
+    Returns:
+        Stale cached data or None if not found
+    """
+    try:
+        from .models import StockReportCache
+
+        # Query without expiration filter to get stale data
+        cache_entry = (
+            cache_manager.db.query(StockReportCache)
+            .filter(StockReportCache.symbol == symbol.upper())
+            .order_by(StockReportCache.updated_at.desc())
+            .first()
+        )
+
+        if cache_entry:
+            logger.info(f"Using stale cache data for {symbol}")
+            cache_age = int(
+                (
+                    datetime.now(timezone.utc).replace(tzinfo=None)
+                    - cache_entry.created_at
+                ).total_seconds()
+            )
+            return cache_manager._build_report_dict(cache_entry, cache_age)
+
+        return None
+
+    except Exception as e:
+        logger.error(f"Error retrieving stale cache: {e}")
+        return None
+
+
+def _build_stale_cache_response(
+    stale_data: Dict[str, Any], start_time: float
+) -> StockReportResponse:
+    """
+    Build response using stale cached data with warning message.
+
+    Args:
+        stale_data: Stale cached report data
+        start_time: Request start timestamp
+
+    Returns:
+        StockReportResponse with warning about cached data
+    """
+    response = _build_cached_report_response(stale_data, start_time)
+    cache_timestamp = stale_data.get("cache_timestamp", "unknown")
+    response.message = f"Showing cached data from {cache_timestamp}. Fresh data temporarily unavailable."
+
+    return response
 
 
 def _search_external_api_and_cache(
@@ -679,7 +1097,10 @@ def _enrich_and_cache_api_result(
 
 
 def _build_name_search_response(
-    results: list[Dict[str, Any]], query: str, start_time: float, cache_manager: CacheManager
+    results: list[Dict[str, Any]],
+    query: str,
+    start_time: float,
+    cache_manager: CacheManager,
 ) -> NameSearchResponse:
     """
     Build name search response with analytics.
@@ -697,7 +1118,8 @@ def _build_name_search_response(
 
     # Log search analytics
     logger.info(
-        f"Name search for '{query}' returned {len(results)} results " f"in {response_time}ms"
+        f"Name search for '{query}' returned {len(results)} results "
+        f"in {response_time}ms"
     )
 
     # Record search in history
