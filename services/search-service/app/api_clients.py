@@ -226,40 +226,49 @@ class YahooFinanceClient:
 
     def search_by_name(self, query: str, limit: int = 10) -> list[Dict[str, Any]]:
         """
-        Search for stocks by company name using Yahoo Finance API.
+        Search for stocks by company name using Yahoo Finance Search API.
 
-        Uses yfinance library's Ticker search functionality to find stocks
-        matching the company name query. This is more reliable than the
-        web API which has strict rate limits.
+        Uses Yahoo Finance's quote search functionality to find stocks worldwide
+        matching the query. This provides comprehensive coverage of global markets.
 
         Strategy:
-        1. Generate potential ticker symbols from company name
-        2. Fetch stock info for each candidate ticker
-        3. Validate that company name matches the query
-        4. Return matching results up to the limit
+        1. Use Yahoo Finance Search API for direct query lookup
+        2. Fallback to ticker candidate generation if API fails
+        3. Return top matching results up to limit
 
         Args:
-            query: Company name to search for
+            query: Company name or symbol to search for
             limit: Maximum number of results to return (default: 10)
 
         Returns:
             List of stock data dictionaries matching the search query
+
+        Examples:
+            >>> client.search_by_name("Apple", limit=5)
+            [{'symbol': 'AAPL', 'name': 'Apple Inc.', ...}, ...]
+
+            >>> client.search_by_name("Microsoft", limit=3)
+            [{'symbol': 'MSFT', 'name': 'Microsoft Corporation', ...}, ...]
         """
         self._wait_for_rate_limit()
 
         try:
-            logger.info(f"Searching Yahoo Finance for company name: {query}")
+            logger.info(f"Searching Yahoo Finance for: {query}")
 
-            results = []
-            potential_tickers = self._generate_ticker_candidates(query)
+            # Try Yahoo Finance Search API first (best results)
+            results = self._search_yahoo_api(query, limit)
 
-            for ticker_symbol in potential_tickers[:limit]:
-                result = self._try_fetch_ticker(ticker_symbol, query)
-                if result:
-                    results.append(result)
+            if results:
+                logger.info(
+                    f"Yahoo Finance API search for '{query}' returned {len(results)} results"
+                )
+                return results
 
-                    if len(results) >= limit:
-                        break
+            # Fallback to ticker candidate generation
+            logger.info(
+                "Yahoo Finance API returned no results, trying ticker candidates"
+            )
+            results = self._search_ticker_candidates(query, limit)
 
             logger.info(
                 f"Yahoo Finance name search for '{query}' returned {len(results)} results"
@@ -269,6 +278,87 @@ class YahooFinanceClient:
         except Exception as e:
             logger.error(f"Error searching Yahoo Finance by name: {e}")
             return []
+
+    def _search_yahoo_api(self, query: str, limit: int) -> list[Dict[str, Any]]:
+        """
+        Search using Yahoo Finance Search API.
+
+        Uses yfinance's built-in search functionality which queries Yahoo's
+        backend API for comprehensive worldwide stock search.
+
+        Args:
+            query: Search query string
+            limit: Maximum number of results
+
+        Returns:
+            List of stock data dictionaries from search results
+        """
+        try:
+            import yfinance as yf
+
+            # Use yfinance search - this queries Yahoo's search API
+            search_results = yf.Search(query, max_results=limit)
+
+            if not hasattr(search_results, "quotes") or not search_results.quotes:
+                logger.debug(f"No quotes found in search results for: {query}")
+                return []
+
+            results = []
+            for quote in search_results.quotes[:limit]:
+                # Filter for equities and ETFs only
+                quote_type = quote.get("quoteType", "").upper()
+                if quote_type not in {"EQUITY", "ETF"}:
+                    continue
+
+                symbol = quote.get("symbol")
+                if not symbol:
+                    continue
+
+                result = {
+                    "symbol": symbol,
+                    "name": quote.get("longname") or quote.get("shortname", ""),
+                    "exchange": quote.get("exchange", ""),
+                    "quote_type": quote_type,
+                    "sector": quote.get("sector"),
+                    "industry": quote.get("industry"),
+                    "source": "yahoo_search_api",
+                }
+
+                results.append(result)
+
+            return results
+
+        except AttributeError:
+            # yfinance.Search not available in this version
+            logger.warning("yfinance.Search not available, using fallback method")
+            return []
+        except Exception as e:
+            logger.error(f"Error using Yahoo Finance Search API: {e}")
+            return []
+
+    def _search_ticker_candidates(self, query: str, limit: int) -> list[Dict[str, Any]]:
+        """
+        Search using ticker candidate generation (fallback method).
+
+        Args:
+            query: Company name query
+            limit: Maximum number of results
+
+        Returns:
+            List of stock data dictionaries
+        """
+        results = []
+        potential_tickers = self._generate_ticker_candidates(query)
+
+        for ticker_symbol in potential_tickers[: limit * 2]:  # Try more candidates
+            result = self._try_fetch_ticker(ticker_symbol, query)
+            if result:
+                results.append(result)
+
+                if len(results) >= limit:
+                    break
+
+        return results
 
     def _try_fetch_ticker(
         self, ticker_symbol: str, query: str
@@ -462,13 +552,25 @@ class YahooFinanceClient:
 
     def _get_stock_data(self, symbol: str) -> Optional[Dict[str, Any]]:
         """
-        Retrieve stock data from Yahoo Finance.
+        Retrieve comprehensive stock data from Yahoo Finance.
+
+        Fetches all important metrics including price data, trading info,
+        financial metrics, and company details.
 
         Args:
             symbol: Stock ticker symbol
 
         Returns:
-            Dictionary with stock data or None if not found
+            Dictionary with comprehensive stock data or None if not found
+
+        Data includes:
+            - Basic info: symbol, name, currency, exchange
+            - Price data: current_price, previous_close, open, day_high, day_low
+            - Trading: bid, ask, volume, avg_volume
+            - Ranges: day_range, 52_week_range
+            - Financial: market_cap, pe_ratio, eps, beta
+            - Dividends: dividend_rate, dividend_yield, ex_dividend_date
+            - Other: target_price, sector, industry
         """
         try:
             stock = yf.Ticker(symbol)
@@ -477,20 +579,95 @@ class YahooFinanceClient:
             if not info or "symbol" not in info:
                 return None
 
+            # Helper function to safely get numeric values
+            def get_numeric(key: str, default=None):
+                value = info.get(key)
+                if value is None or (isinstance(value, float) and pd.isna(value)):
+                    return default
+                return float(value) if isinstance(value, (int, float)) else default
+
+            # Helper function to safely get string values
+            def get_string(key: str, default: str = ""):
+                value = info.get(key)
+                return str(value) if value is not None else default
+
             return {
+                # Basic Information
                 "symbol": info.get("symbol", symbol),
                 "name": info.get("longName", info.get("shortName", "")),
-                "current_price": info.get(
-                    "currentPrice", info.get("regularMarketPrice")
-                ),
                 "currency": info.get("currency"),
                 "exchange": info.get("exchange"),
-                "market_cap": info.get("marketCap"),
+                "isin": info.get("isin"),
                 "sector": info.get("sector"),
                 "industry": info.get("industry"),
-                "isin": info.get("isin"),
+                "website": info.get("website"),
+                "long_business_summary": info.get("longBusinessSummary"),
+                "full_time_employees": info.get("fullTimeEmployees"),
+                "city": info.get("city"),
+                "state": info.get("state"),
+                "country": info.get("country"),
+                # Current Price Data
+                "current_price": get_numeric("currentPrice")
+                or get_numeric("regularMarketPrice"),
+                "previous_close": get_numeric("previousClose")
+                or get_numeric("regularMarketPreviousClose"),
+                "open": get_numeric("open") or get_numeric("regularMarketOpen"),
+                "day_high": get_numeric("dayHigh")
+                or get_numeric("regularMarketDayHigh"),
+                "day_low": get_numeric("dayLow") or get_numeric("regularMarketDayLow"),
+                # Bid/Ask
+                "bid": get_numeric("bid"),
+                "ask": get_numeric("ask"),
+                "bid_size": info.get("bidSize"),
+                "ask_size": info.get("askSize"),
+                # Volume
+                "volume": info.get("volume"),
+                "avg_volume": info.get("averageVolume")
+                or info.get("averageVolume10days"),
+                "avg_volume_10d": info.get("averageVolume10days"),
+                # 52 Week Range
+                "fifty_two_week_high": get_numeric("fiftyTwoWeekHigh"),
+                "fifty_two_week_low": get_numeric("fiftyTwoWeekLow"),
+                # Market Data
+                "market_cap": info.get("marketCap"),
+                "enterprise_value": info.get("enterpriseValue"),
+                # Financial Ratios
+                "pe_ratio": get_numeric("trailingPE") or get_numeric("forwardPE"),
+                "trailing_pe": get_numeric("trailingPE"),
+                "forward_pe": get_numeric("forwardPE"),
+                "peg_ratio": get_numeric("pegRatio"),
+                "price_to_book": get_numeric("priceToBook"),
+                "price_to_sales": get_numeric("priceToSalesTrailing12Months"),
+                # Profitability
+                "profit_margins": get_numeric("profitMargins"),
+                "operating_margins": get_numeric("operatingMargins"),
+                # Per Share Data
+                "eps": get_numeric("trailingEps"),
+                "forward_eps": get_numeric("forwardEps"),
+                "book_value": get_numeric("bookValue"),
+                # Growth & Risk
+                "beta": get_numeric("beta"),
+                "earnings_growth": get_numeric("earningsGrowth"),
+                "revenue_growth": get_numeric("revenueGrowth"),
+                # Dividend Information
+                "dividend_rate": get_numeric("dividendRate"),
+                "dividend_yield": get_numeric("dividendYield"),
+                "ex_dividend_date": info.get("exDividendDate"),
+                "payout_ratio": get_numeric("payoutRatio"),
+                # Analyst Targets
+                "target_high_price": get_numeric("targetHighPrice"),
+                "target_low_price": get_numeric("targetLowPrice"),
+                "target_mean_price": get_numeric("targetMeanPrice"),
+                "target_median_price": get_numeric("targetMedianPrice"),
+                "recommendation_mean": get_numeric("recommendationMean"),
+                "recommendation_key": get_string("recommendationKey"),
+                "number_of_analyst_opinions": info.get("numberOfAnalystOpinions"),
+                # Dates
+                "earnings_date": info.get("earningsTimestamp"),
+                "earnings_date_start": info.get("earningsTimestampStart"),
+                "earnings_date_end": info.get("earningsTimestampEnd"),
+                # Source
                 "source": "yahoo",
-                "raw_data": info,
             }
 
         except Exception as e:

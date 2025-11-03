@@ -4,8 +4,9 @@ help:
 	@echo "Search Service - Available Commands"
 	@echo ""
 	@echo "Development:"
-	@echo "  make fastapi-dev      - Run development server with hot reload"
+	@echo "  make fastapi-dev      - Run development server with hot reload (Port 8000)"
 	@echo "  make fastapi-dev-dd   - Run development server with Datadog APM instrumentation"
+	@echo "  make dev              - Run with uvicorn on port 8000"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test            - Run tests with pytest"
@@ -19,7 +20,10 @@ help:
 	@echo "  make clean           - Remove cache and temporary files"
 
 fastapi-dev:
-	fastapi dev app/app.py --reload
+	fastapi dev app/app.py --reload --port 8000
+
+dev:
+	uvicorn app.app:app --host 0.0.0.0 --port 8000 --reload
 	
 docker-build:
 	docker build -t search-service .

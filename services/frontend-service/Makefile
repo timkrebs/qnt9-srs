@@ -20,7 +20,7 @@ help:
 	@echo "  make clean           - Remove cache and temporary files"
 
 fastapi-dev:
-	fastapi dev app/app.py --reload
+	fastapi dev app/app.py --reload --port 8001
 
 dev:
 	uvicorn app.app:app --host 0.0.0.0 --port 8001

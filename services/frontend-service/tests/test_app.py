@@ -294,3 +294,121 @@ async def test_htmx_headers() -> None:
             assert response.status_code == 200
             # Response should be HTML partial, not full page
             assert "<!DOCTYPE html>" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_timestamp_to_date_filter() -> None:
+    """
+    Test timestamp_to_date Jinja2 filter.
+
+    Verifies that Unix timestamps are correctly converted to readable dates.
+    """
+    from app.app import timestamp_to_date
+
+    # Valid timestamp (November 3, 2025)
+    result = timestamp_to_date(1730636400)
+    assert result != ""
+    assert "Nov" in result or "2025" in result
+
+    # Empty/zero timestamp
+    result = timestamp_to_date(0)
+    assert result == ""
+
+    # None/invalid timestamp
+    result = timestamp_to_date(None)
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_timestamp_to_date_filter_invalid() -> None:
+    """
+    Test timestamp_to_date filter with invalid values.
+
+    Verifies graceful handling of invalid timestamps.
+    """
+    from app.app import timestamp_to_date
+
+    # Very large invalid timestamp (causes OSError on some systems)
+    result = timestamp_to_date(9999999999999)
+    # Some systems may handle this, just verify it returns a string
+    assert isinstance(result, str)
+
+    # None timestamp
+    result = timestamp_to_date(None)
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_search_with_details_in_error() -> None:
+    """
+    Test search error response with details.
+
+    Verifies that error details are properly rendered in the error template.
+    """
+    mock_result: Dict[str, Any] = {
+        "success": False,
+        "message": "Stock not found",
+        "detail": "The ISIN you entered does not exist in our database",
+    }
+
+    with patch(
+        "app.api_client.search_client.search",
+        new_callable=AsyncMock,
+    ) as mock_search:
+        mock_search.return_value = mock_result
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/search?query=INVALID123")
+
+            assert response.status_code == 200
+            assert "Stock Not Found" in response.text
+            assert "does not exist" in response.text
+
+
+@pytest.mark.asyncio
+async def test_suggestions_with_results() -> None:
+    """
+    Test suggestions endpoint with multiple results.
+
+    Verifies that suggestions are properly formatted and rendered.
+    """
+    mock_suggestions = [
+        {"query": "APPLE INC", "result_found": True},
+        {"query": "AMAZON.COM", "result_found": True},
+        {"query": "MICROSOFT CORP", "result_found": False},
+    ]
+
+    with patch(
+        "app.api_client.search_client.get_suggestions",
+        new_callable=AsyncMock,
+    ) as mock_get_suggestions:
+        mock_get_suggestions.return_value = mock_suggestions
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/suggestions?query=A")
+
+            assert response.status_code == 200
+            assert "APPLE INC" in response.text
+            assert "AMAZON.COM" in response.text
+            assert "MICROSOFT CORP" in response.text
+            assert (
+                "Recent search" in response.text
+            )  # Should appear for result_found=True
+
+
+@pytest.mark.asyncio
+async def test_get_search_suggestions_helper() -> None:
+    """
+    Test _get_search_suggestions helper function.
+
+    Verifies that default suggestions are returned for error messages.
+    """
+    from app.app import _get_search_suggestions
+
+    suggestions = _get_search_suggestions()
+
+    assert isinstance(suggestions, list)
+    assert len(suggestions) > 0
+    assert any("ISIN" in s or "WKN" in s or "Symbol" in s for s in suggestions)

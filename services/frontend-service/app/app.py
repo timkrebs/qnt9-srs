@@ -5,8 +5,9 @@ Provides a web UI for stock search functionality using HTMX for dynamic updates.
 This service acts as the user-facing frontend for the QNT9 Stock Recommendation System.
 """
 
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse
@@ -21,38 +22,16 @@ from .logging_config import get_logger, setup_logging
 setup_logging(log_level=settings.LOG_LEVEL, service_name="frontend-service")
 logger = get_logger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="QNT9 Frontend Service",
-    description="Web UI for QNT9 Stock Recommendation System",
-    version="1.0.0",
-    docs_url="/api/docs" if settings.DEBUG else None,
-    redoc_url="/api/redoc" if settings.DEBUG else None,
-)
 
-# Setup templates and static files
-BASE_PATH = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
-
-# Mount static files
-try:
-    app.mount(
-        "/static",
-        StaticFiles(directory=str(BASE_PATH / "static")),
-        name="static",
-    )
-except RuntimeError:
-    logger.warning("Static directory not found - will be created")
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
-    Application startup event handler.
+    Application lifespan context manager.
 
-    Executes when the application starts. Performs initial health checks
-    and logs service configuration.
+    Handles startup and shutdown events for the application.
+    Replaces the deprecated @app.on_event decorators.
     """
+    # Startup
     logger.info("Starting Frontend Service...")
     logger.info(f"Service URL: {settings.SEARCH_SERVICE_URL}")
     logger.info(f"Debug mode: {settings.DEBUG}")
@@ -67,15 +46,60 @@ async def startup_event() -> None:
             "Search service is not responding - some features may be unavailable"
         )
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    """
-    Application shutdown event handler.
-
-    Executes when the application shuts down. Performs cleanup operations.
-    """
+    # Shutdown
     logger.info("Shutting down Frontend Service...")
+
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="QNT9 Frontend Service",
+    description="Web UI for QNT9 Stock Recommendation System",
+    version="1.0.0",
+    docs_url="/api/docs" if settings.DEBUG else None,
+    redoc_url="/api/redoc" if settings.DEBUG else None,
+    lifespan=lifespan,
+)
+
+# Setup templates and static files
+BASE_PATH = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
+
+
+# Add custom Jinja2 filters
+def timestamp_to_date(timestamp: Optional[int]) -> str:
+    """
+    Convert Unix timestamp to readable date string.
+
+    Args:
+        timestamp: Unix timestamp (seconds since epoch), or None
+
+    Returns:
+        Formatted date string (e.g., "Nov 10, 2025"), or empty string if None
+    """
+    if not timestamp:
+        return ""
+    try:
+        from datetime import datetime
+
+        dt = datetime.fromtimestamp(timestamp)
+        return dt.strftime("%b %d, %Y")
+    except (ValueError, OSError):
+        return ""
+
+
+templates.env.filters["timestamp_to_date"] = timestamp_to_date
+
+# Mount static files
+try:
+    app.mount(
+        "/static",
+        StaticFiles(directory=str(BASE_PATH / "static")),
+        name="static",
+    )
+except RuntimeError:
+    logger.warning("Static directory not found - will be created")
 
 
 @app.get(
@@ -99,9 +123,9 @@ async def homepage(request: Request) -> HTMLResponse:
         Rendered HTML response
     """
     return templates.TemplateResponse(
-        "index.html",
-        {
-            "request": request,
+        request=request,
+        name="index.html",
+        context={
             "app_name": settings.APP_NAME,
         },
     )
@@ -153,8 +177,8 @@ async def search_stock(
     query: str = Query(
         ...,
         min_length=1,
-        max_length=20,
-        description="ISIN, WKN, or symbol to search for",
+        max_length=100,  # Increased from 20 to support company names like "Deutsche Bank AG"
+        description="Company name, ISIN, WKN, or symbol to search for",
     ),
 ) -> HTMLResponse:
     """
@@ -163,16 +187,22 @@ async def search_stock(
     Performs a stock search using the provided query and returns
     an HTML partial that can be inserted into the page by HTMX.
 
+    Supports worldwide stock search by:
+    - Company names (e.g., "Amazon", "Microsoft", "Deutsche Bank")
+    - Stock symbols (e.g., "AAPL", "MSFT", "DBK.DE")
+    - ISIN codes (e.g., "US0378331005")
+    - WKN codes (e.g., "865985")
+
     Args:
         request: FastAPI request object
-        query: ISIN, WKN, or symbol to search for
+        query: Company name, ISIN, WKN, or symbol to search for
 
     Returns:
         HTML partial with stock card or error message
 
     Example:
-        GET /search?query=DE0005140008
-        Returns: HTML partial with Deutsche Bank stock information
+        GET /search?query=Deutsche+Bank
+        Returns: HTML partial with Deutsche Bank stock information (DB or DBK.DE)
     """
     logger.info(f"Search request received: query='{query}'")
 
@@ -185,9 +215,9 @@ async def search_stock(
             f"Stock found for query '{query}': {result.get('data', {}).get('name')}"
         )
         return templates.TemplateResponse(
-            "components/stock_card.html",
-            {
-                "request": request,
+            request=request,
+            name="components/stock_card.html",
+            context={
                 "stock": result.get("data"),
                 "response_time": result.get("response_time_ms", 0),
                 "query_type": result.get("query_type", "unknown"),
@@ -199,9 +229,9 @@ async def search_stock(
         error_message = result.get("message", "Stock not found")
 
         return templates.TemplateResponse(
-            "components/error.html",
-            {
-                "request": request,
+            request=request,
+            name="components/error.html",
+            context={
                 "error_title": "Stock Not Found",
                 "error_message": error_message,
                 "error_details": result.get("detail"),
@@ -247,9 +277,9 @@ async def get_suggestions(
     suggestions = await search_client.get_suggestions(query, limit=5)
 
     return templates.TemplateResponse(
-        "components/suggestions.html",
-        {
-            "request": request,
+        request=request,
+        name="components/suggestions.html",
+        context={
             "suggestions": suggestions,
             "query": query,
         },
@@ -277,9 +307,9 @@ async def about_page(request: Request) -> HTMLResponse:
         Rendered HTML response
     """
     return templates.TemplateResponse(
-        "about.html",
-        {
-            "request": request,
+        request=request,
+        name="about.html",
+        context={
             "app_name": settings.APP_NAME,
         },
     )
@@ -296,8 +326,9 @@ def _get_search_suggestions() -> List[str]:
         List of suggestion strings
     """
     return [
+        "Try searching by company name (e.g., 'Amazon', 'Microsoft', 'Deutsche Bank')",
         "Verify the ISIN follows the format: 2-letter country code + 10 alphanumeric characters",
-        "Verify WKN is 6 characters (letters or numbers)",
+        "Verify WKN is 6 characters with at least one digit (letters or numbers)",
         "Check if the stock symbol includes the exchange (e.g., DBK.DE for Deutsche Bank)",
         "Try searching with a different identifier type",
     ]

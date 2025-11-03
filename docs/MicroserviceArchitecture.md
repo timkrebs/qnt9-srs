@@ -296,7 +296,7 @@ stock-recommendation-system/
 
 ## Implementierungs-Roadmap (Agile Sprints)
 
-### **✅ Sprint 0: Infrastructure Migration** (COMPLETED)
+### **Sprint 0: Infrastructure Migration** (COMPLETED)
 - [x] Azure Infrastructure Setup
 - [x] AKS Cluster Deployment
 - [x] Azure Container Registry

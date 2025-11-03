@@ -121,7 +121,9 @@ class TestCacheManager:
 
         # Expire 2 entries
         for symbol in ["AAPL", "MSFT"]:
-            entry = db_session.query(StockCache).filter(StockCache.symbol == symbol).first()
+            entry = (
+                db_session.query(StockCache).filter(StockCache.symbol == symbol).first()
+            )
             entry.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         db_session.commit()
 
@@ -144,7 +146,11 @@ class TestSearchHistory:
         cache_manager.record_search("AAPL", found=True)
 
         # Verify record
-        history = db_session.query(SearchHistory).filter(SearchHistory.query == "AAPL").first()
+        history = (
+            db_session.query(SearchHistory)
+            .filter(SearchHistory.query == "AAPL")
+            .first()
+        )
         assert history is not None
         assert history.search_count == 1
         assert history.result_found == 1
@@ -158,7 +164,11 @@ class TestSearchHistory:
             cache_manager.record_search("AAPL", found=True)
 
         # Verify count
-        history = db_session.query(SearchHistory).filter(SearchHistory.query == "AAPL").first()
+        history = (
+            db_session.query(SearchHistory)
+            .filter(SearchHistory.query == "AAPL")
+            .first()
+        )
         assert history.search_count == 3
 
     def test_get_suggestions(self, db_session):

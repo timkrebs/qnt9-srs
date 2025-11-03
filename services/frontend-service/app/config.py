@@ -69,7 +69,7 @@ class Settings(BaseSettings):
 
     # HTTP client configuration
     REQUEST_TIMEOUT: float = Field(
-        default=2.0,
+        default=10.0,  # Increased from 2.0 to support company name search (4-5s response time)
         gt=0,
         le=30.0,
         description="Default timeout for HTTP requests in seconds",

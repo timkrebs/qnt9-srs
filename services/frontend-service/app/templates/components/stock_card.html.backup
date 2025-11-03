@@ -226,21 +226,20 @@
     {% endif %}
 
     <!-- Information Section (Company Description) -->
-    {% if stock.long_business_summary or stock.isin or stock.wkn or stock.symbol %}
+    {% if stock.long_business_summary %}
     <div class="border-t border-gray-100 p-6 md:p-8">
         <h3 class="text-xl font-bold text-gray-900 mb-4">Information</h3>
         
         <!-- Tabs (like screenshot) -->
         <div class="flex gap-4 mb-6 border-b border-gray-200">
-            <button class="pb-3 px-1 font-semibold text-gray-900 border-b-2 border-gray-900">{{ stock.country or 'USA' }}</button>
+            <button class="pb-3 px-1 font-semibold text-gray-900 border-b-2 border-gray-900">USA</button>
             {% if stock.exchange %}<button class="pb-3 px-1 text-gray-500 hover:text-gray-900">{{ stock.exchange }}</button>{% endif %}
             {% if stock.sector %}<button class="pb-3 px-1 text-gray-500 hover:text-gray-900">{{ stock.sector }}</button>{% endif %}
             {% if stock.isin %}<button class="pb-3 px-1 text-gray-500 hover:text-gray-900">ISIN</button>{% endif %}
         </div>
         
         <!-- Company Description -->
-        {% if stock.long_business_summary %}
-        <div class="prose max-w-none mb-6">
+        <div class="prose max-w-none">
             <p class="text-gray-700 leading-relaxed">
                 {{ stock.long_business_summary[:500] }}{% if stock.long_business_summary|length > 500 %}...{% endif %}
             </p>
@@ -249,10 +248,9 @@
             <button class="text-blue-600 hover:text-blue-700 font-medium mt-2">Show more ▼</button>
             {% endif %}
         </div>
-        {% endif %}
         
         <!-- Company Details -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             {% if stock.isin %}
             <div>
                 <div class="text-sm text-gray-500 mb-1">ISIN</div>
@@ -327,7 +325,7 @@
                     <div class="w-10 h-10 bg-gray-200 rounded-lg flex-shrink-0"></div>
                     <div class="flex-1">
                         <h4 class="font-semibold text-gray-900 text-sm line-clamp-2">
-                            Latest news about {{ stock.name or stock.symbol }}
+                            Microsoft to invest over $15 billion in UAE, secures US...
                         </h4>
                     </div>
                 </div>
@@ -339,11 +337,11 @@
                     <div class="w-10 h-10 bg-gray-200 rounded-lg flex-shrink-0"></div>
                     <div class="flex-1">
                         <h4 class="font-semibold text-gray-900 text-sm line-clamp-2">
-                            Market analysis and insights
+                            BRIEF-US Allows Microsoft To Ship Nvidia AI Chips To...
                         </h4>
                     </div>
                 </div>
-                <p class="text-xs text-gray-500">3 hours ago</p>
+                <p class="text-xs text-gray-500">1 hour ago</p>
             </div>
             
             <div class="bg-gray-50 rounded-xl p-4 hover:bg-gray-100 transition cursor-pointer">
@@ -351,7 +349,7 @@
                     <div class="w-10 h-10 bg-gray-200 rounded-lg flex-shrink-0"></div>
                     <div class="flex-1">
                         <h4 class="font-semibold text-gray-900 text-sm line-clamp-2">
-                            Industry updates and trends
+                            UPDATE 1-Trump says Nvidia's Blackwell AI chip in...
                         </h4>
                     </div>
                 </div>
@@ -363,18 +361,16 @@
             News feed coming soon. API integration in progress.
         </p>
     </div>
-
-    <!-- Cache Info Footer -->
-    {% if stock.cached %}
-    <div class="border-t border-gray-100 p-4">
-        <div class="text-center">
-            <span class="inline-block px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full">
-                ⚡ Cached ({{ stock.cache_age_seconds }}s old)
-            </span>
-        </div>
-    </div>
-    {% endif %}
 </div>
+
+<!-- Cache Info -->
+{% if stock.cached %}
+<div class="mt-4 text-center">
+    <span class="inline-block px-3 py-1 bg-blue-50 text-blue-700 text-sm rounded-full">
+        ⚡ Cached ({{ stock.cache_age_seconds }}s old)
+    </span>
+</div>
+{% endif %}
 
 {% else %}
 <div class="bg-white rounded-2xl shadow-sm p-8 text-center">
@@ -385,5 +381,91 @@
     </div>
     <h3 class="text-xl font-bold text-gray-900 mb-2">No Stock Data</h3>
     <p class="text-gray-600">The requested stock information could not be found.</p>
+</div>
+{% endif %}
+            {% if stock.forward_pe %}
+            <div class="bg-accent rounded-lg p-3">
+                <div class="text-xs text-secondary mb-1 font-semibold">Forward P/E</div>
+                <div class="font-bold text-primary">{{ "%.2f"|format(stock.forward_pe) }}</div>
+            </div>
+            {% endif %}
+            
+            {% if stock.price_to_book %}
+            <div class="bg-accent rounded-lg p-3">
+                <div class="text-xs text-secondary mb-1 font-semibold">Price to Book</div>
+                <div class="font-bold text-primary">{{ "%.2f"|format(stock.price_to_book) }}</div>
+            </div>
+            {% endif %}
+            
+            {% if stock.profit_margins %}
+            <div class="bg-accent rounded-lg p-3">
+                <div class="text-xs text-secondary mb-1 font-semibold">Profit Margins</div>
+                <div class="font-bold text-primary">{{ "%.2f"|format(stock.profit_margins * 100) }}%</div>
+            </div>
+            {% endif %}
+            
+            {% if stock.earnings_growth %}
+            <div class="bg-accent rounded-lg p-3">
+                <div class="text-xs text-secondary mb-1 font-semibold">Earnings Growth</div>
+                <div class="font-bold text-primary">{{ "%.2f"|format(stock.earnings_growth * 100) }}%</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Identifiers -->
+    {% if stock.isin or stock.wkn or stock.exchange %}
+    <div class="border-t border-gray-100 pt-6 mb-6">
+        <h3 class="text-lg font-bold text-primary mb-4">Identifiers</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {% if stock.isin %}
+            <div class="bg-accent rounded-lg p-3">
+                <div class="text-xs text-secondary mb-1 font-semibold">ISIN</div>
+                <div class="font-bold text-primary font-mono">{{ stock.isin }}</div>
+            </div>
+            {% endif %}
+            
+            {% if stock.wkn %}
+            <div class="bg-accent rounded-lg p-3">
+                <div class="text-xs text-secondary mb-1 font-semibold">WKN</div>
+                <div class="font-bold text-primary font-mono">{{ stock.wkn }}</div>
+            </div>
+            {% endif %}
+            
+            {% if stock.exchange %}
+            <div class="bg-accent rounded-lg p-3">
+                <div class="text-xs text-secondary mb-1 font-semibold">Exchange</div>
+                <div class="font-bold text-primary">{{ stock.exchange }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Data Source Footer -->
+    <div class="mt-8 pt-6 border-t border-gray-100">
+        <div class="flex items-center justify-between text-sm">
+            <div class="flex items-center space-x-2 text-secondary">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="font-medium">Source: {{ stock.source or 'Yahoo Finance' }}</span>
+            </div>
+            <div class="flex items-center space-x-3">
+                {% if response_time %}
+                <span class="text-secondary text-xs">{{ response_time }}ms</span>
+                {% endif %}
+                {% if stock.cached %}
+                <div class="flex items-center space-x-1 text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span class="font-semibold text-xs">Cached</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 </div>
 {% endif %}

@@ -30,85 +30,250 @@ class SearchQuery(BaseModel):
     """
     Request model for stock search validation.
 
-    Validates that input matches ISIN, WKN, or stock symbol format.
+    Validates input for ISIN, WKN, stock symbol, or company name search.
+    Supports worldwide stock search including multi-word company names.
 
     Attributes:
-        query: Search string (ISIN, WKN, or stock symbol)
+        query: Search string (ISIN, WKN, stock symbol, or company name)
     """
 
     query: str = Field(
         ...,
         min_length=1,
-        max_length=20,
-        description="ISIN, WKN, or stock symbol to search",
+        max_length=100,  # Increased from 20 to support company names
+        description="ISIN, WKN, stock symbol, or company name to search",
     )
 
     @field_validator("query")
     @classmethod
     def validate_query_format(cls, v: str) -> str:
         """
-        Validate that query matches ISIN, WKN, or symbol format.
+        Validate and normalize search query.
+
+        Accepts:
+        - ISIN format (12 characters, e.g., US0378331005)
+        - WKN format (6 alphanumeric, e.g., 865985)
+        - Stock symbols (e.g., AAPL, MSFT)
+        - Company names (e.g., "Apple", "Deutsche Bank", "Microsoft Corporation")
 
         Args:
             v: Input query string
 
         Returns:
-            Normalized (uppercase, stripped) query string
+            Normalized query string (stripped whitespace, uppercase for identifiers)
 
         Raises:
-            ValueError: If query doesn't match any valid format
+            ValueError: If query is empty or only whitespace
         """
-        v = v.strip().upper()
+        # Strip whitespace
+        v = v.strip()
 
-        if not (
-            re.match(ISIN_PATTERN, v)
-            or re.match(WKN_PATTERN, v)
-            or re.match(SYMBOL_PATTERN, v)
-        ):
-            raise ValueError(
-                "Invalid format. Query must be a valid ISIN (12 chars), "
-                "WKN (6 chars), or stock symbol."
-            )
+        # Reject empty strings
+        if not v:
+            raise ValueError("Query cannot be empty or only whitespace")
 
-        return v
+        # Check if it contains spaces - if so, it's likely a company name
+        # Keep original casing for company names
+        if " " in v:
+            return v
+
+        # For identifiers (ISIN, WKN, symbols), normalize to uppercase
+        return v.upper()
 
 
 class StockData(BaseModel):
     """
-    Response model for stock data.
+    Response model for comprehensive stock data.
 
-    Contains comprehensive stock information from external APIs.
+    Contains all important stock information from external APIs including
+    price data, trading metrics, financial ratios, and company details.
 
     Attributes:
-        symbol: Stock ticker symbol
-        name: Company name
-        isin: International Securities Identification Number
-        wkn: German securities identification number
-        current_price: Current stock price
-        currency: Currency code (e.g., USD, EUR)
-        exchange: Stock exchange name
-        market_cap: Market capitalization
-        sector: Business sector
-        industry: Industry classification
-        source: Data source API name
-        cached: Whether data was served from cache
-        cache_age_seconds: Age of cached data in seconds
+        Basic Information:
+            symbol: Stock ticker symbol
+            name: Company name
+            currency: Currency code (e.g., USD, EUR)
+            exchange: Stock exchange name
+            isin: International Securities Identification Number
+            wkn: German securities identification number
+            sector: Business sector
+            industry: Industry classification
+
+        Price Data:
+            current_price: Current stock price
+            previous_close: Previous closing price
+            open: Opening price
+            day_high: Day's high price
+            day_low: Day's low price
+
+        Trading Information:
+            bid: Current bid price
+            ask: Current ask price
+            bid_size: Bid size
+            ask_size: Ask size
+            volume: Trading volume
+            avg_volume: Average volume
+            avg_volume_10d: 10-day average volume
+
+        Price Ranges:
+            fifty_two_week_high: 52-week high
+            fifty_two_week_low: 52-week low
+
+        Market Data:
+            market_cap: Market capitalization
+            enterprise_value: Enterprise value
+
+        Financial Ratios:
+            pe_ratio: Price-to-Earnings ratio
+            trailing_pe: Trailing P/E
+            forward_pe: Forward P/E
+            peg_ratio: PEG ratio
+            price_to_book: Price-to-Book ratio
+            price_to_sales: Price-to-Sales ratio
+            profit_margins: Profit margins
+            operating_margins: Operating margins
+
+        Per Share:
+            eps: Earnings per share
+            forward_eps: Forward EPS
+            book_value: Book value per share
+
+        Growth & Risk:
+            beta: Beta (5Y monthly)
+            earnings_growth: Earnings growth
+            revenue_growth: Revenue growth
+
+        Dividends:
+            dividend_rate: Annual dividend rate
+            dividend_yield: Dividend yield
+            ex_dividend_date: Ex-dividend date
+            payout_ratio: Dividend payout ratio
+
+        Analyst Data:
+            target_high_price: Analyst target high
+            target_low_price: Analyst target low
+            target_mean_price: Analyst target mean
+            target_median_price: Analyst target median
+            recommendation_mean: Recommendation mean
+            recommendation_key: Recommendation key
+            number_of_analyst_opinions: Number of analysts
+
+        Dates:
+            earnings_date: Next earnings date
+            earnings_date_start: Earnings period start
+            earnings_date_end: Earnings period end
+
+        Metadata:
+            source: Data source API name
+            cached: Whether data was served from cache
+            cache_age_seconds: Age of cached data in seconds
     """
 
+    # Basic Information
     symbol: str = Field(..., description="Stock ticker symbol")
     name: str = Field(..., description="Company name")
+    currency: Optional[str] = Field(None, description="Currency code (e.g., USD, EUR)")
+    exchange: Optional[str] = Field(None, description="Stock exchange")
     isin: Optional[str] = Field(
         None, description="International Securities Identification Number"
     )
     wkn: Optional[str] = Field(
         None, description="Wertpapierkennnummer (German securities code)"
     )
-    current_price: Optional[float] = Field(None, description="Current stock price")
-    currency: Optional[str] = Field(None, description="Currency code (e.g., USD, EUR)")
-    exchange: Optional[str] = Field(None, description="Stock exchange")
-    market_cap: Optional[float] = Field(None, description="Market capitalization")
     sector: Optional[str] = Field(None, description="Business sector")
     industry: Optional[str] = Field(None, description="Industry classification")
+    website: Optional[str] = Field(None, description="Company website URL")
+    long_business_summary: Optional[str] = Field(
+        None, description="Detailed business description"
+    )
+    full_time_employees: Optional[int] = Field(
+        None, description="Number of full-time employees"
+    )
+    city: Optional[str] = Field(None, description="Company headquarters city")
+    state: Optional[str] = Field(None, description="Company headquarters state")
+    country: Optional[str] = Field(None, description="Company headquarters country")
+
+    # Price Data
+    current_price: Optional[float] = Field(None, description="Current stock price")
+    previous_close: Optional[float] = Field(None, description="Previous closing price")
+    open: Optional[float] = Field(None, description="Opening price")
+    day_high: Optional[float] = Field(None, description="Day's high price")
+    day_low: Optional[float] = Field(None, description="Day's low price")
+
+    # Trading Information
+    bid: Optional[float] = Field(None, description="Current bid price")
+    ask: Optional[float] = Field(None, description="Current ask price")
+    bid_size: Optional[int] = Field(None, description="Bid size")
+    ask_size: Optional[int] = Field(None, description="Ask size")
+    volume: Optional[int] = Field(None, description="Trading volume")
+    avg_volume: Optional[int] = Field(None, description="Average volume")
+    avg_volume_10d: Optional[int] = Field(None, description="10-day average volume")
+
+    # Price Ranges
+    fifty_two_week_high: Optional[float] = Field(None, description="52-week high price")
+    fifty_two_week_low: Optional[float] = Field(None, description="52-week low price")
+
+    # Market Data
+    market_cap: Optional[float] = Field(None, description="Market capitalization")
+    enterprise_value: Optional[float] = Field(None, description="Enterprise value")
+
+    # Financial Ratios
+    pe_ratio: Optional[float] = Field(None, description="Price-to-Earnings ratio")
+    trailing_pe: Optional[float] = Field(None, description="Trailing P/E")
+    forward_pe: Optional[float] = Field(None, description="Forward P/E")
+    peg_ratio: Optional[float] = Field(None, description="PEG ratio")
+    price_to_book: Optional[float] = Field(None, description="Price-to-Book ratio")
+    price_to_sales: Optional[float] = Field(None, description="Price-to-Sales ratio")
+    profit_margins: Optional[float] = Field(None, description="Profit margins")
+    operating_margins: Optional[float] = Field(None, description="Operating margins")
+
+    # Per Share Data
+    eps: Optional[float] = Field(None, description="Earnings per share")
+    forward_eps: Optional[float] = Field(None, description="Forward EPS")
+    book_value: Optional[float] = Field(None, description="Book value per share")
+
+    # Growth & Risk
+    beta: Optional[float] = Field(None, description="Beta (5Y monthly)")
+    earnings_growth: Optional[float] = Field(None, description="Earnings growth")
+    revenue_growth: Optional[float] = Field(None, description="Revenue growth")
+
+    # Dividend Information
+    dividend_rate: Optional[float] = Field(None, description="Annual dividend rate")
+    dividend_yield: Optional[float] = Field(None, description="Dividend yield")
+    ex_dividend_date: Optional[int] = Field(
+        None, description="Ex-dividend date (timestamp)"
+    )
+    payout_ratio: Optional[float] = Field(None, description="Dividend payout ratio")
+
+    # Analyst Data
+    target_high_price: Optional[float] = Field(None, description="Analyst target high")
+    target_low_price: Optional[float] = Field(None, description="Analyst target low")
+    target_mean_price: Optional[float] = Field(
+        None, description="Analyst target mean (1y estimate)"
+    )
+    target_median_price: Optional[float] = Field(
+        None, description="Analyst target median"
+    )
+    recommendation_mean: Optional[float] = Field(
+        None, description="Recommendation mean"
+    )
+    recommendation_key: Optional[str] = Field(None, description="Recommendation key")
+    number_of_analyst_opinions: Optional[int] = Field(
+        None, description="Number of analyst opinions"
+    )
+
+    # Dates
+    earnings_date: Optional[int] = Field(
+        None, description="Next earnings date (timestamp)"
+    )
+    earnings_date_start: Optional[int] = Field(
+        None, description="Earnings period start (timestamp)"
+    )
+    earnings_date_end: Optional[int] = Field(
+        None, description="Earnings period end (timestamp)"
+    )
+
+    # Metadata
     source: str = Field(..., description="Data source (yahoo or alphavantage)")
     cached: bool = Field(False, description="Whether data was served from cache")
     cache_age_seconds: Optional[int] = Field(
@@ -265,7 +430,7 @@ def detect_query_type(query: str) -> Literal["isin", "wkn", "symbol"]:
 
     Detection rules:
     - ISIN: 12 characters, starts with 2 letters
-    - WKN: Exactly 6 alphanumeric characters
+    - WKN: Exactly 6 alphanumeric characters WITH at least one digit (not all letters)
     - Symbol: Everything else
 
     Args:
@@ -273,9 +438,20 @@ def detect_query_type(query: str) -> Literal["isin", "wkn", "symbol"]:
 
     Returns:
         Query type: 'isin', 'wkn', or 'symbol'
+
+    Examples:
+        >>> detect_query_type("US0378331005")  # ISIN
+        'isin'
+        >>> detect_query_type("865985")  # WKN (has digits)
+        'wkn'
+        >>> detect_query_type("AMAZON")  # Symbol (all letters, 6 chars)
+        'symbol'
+        >>> detect_query_type("AAPL")  # Symbol
+        'symbol'
     """
     query = query.strip().upper()
 
+    # ISIN: 12 characters, starts with 2 letters
     if (
         len(query) == ISIN_LENGTH
         and query[:ISIN_COUNTRY_CODE_LENGTH].isalpha()
@@ -283,9 +459,12 @@ def detect_query_type(query: str) -> Literal["isin", "wkn", "symbol"]:
     ):
         return "isin"
 
-    if len(query) == 6 and query.isalnum():
+    # WKN: Exactly 6 alphanumeric characters WITH at least one digit
+    # This prevents company names like "AMAZON" from being detected as WKN
+    if len(query) == 6 and query.isalnum() and any(c.isdigit() for c in query):
         return "wkn"
 
+    # Everything else is treated as symbol (including company names)
     return "symbol"
 
 

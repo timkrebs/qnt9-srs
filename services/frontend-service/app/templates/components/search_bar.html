@@ -11,10 +11,11 @@
                     type="text" 
                     id="query" 
                     name="query" 
-                    placeholder="Search ISIN, WKN, or Symbol..."
+                    placeholder="Search: Amazon, Microsoft, AAPL, ISIN, WKN..."
                     autocomplete="off"
                     required
-                    minlength="3"
+                    minlength="1"
+                    maxlength="100"
                     hx-get="/api/suggestions"
                     hx-trigger="keyup changed delay:300ms"
                     hx-target="#suggestions"
@@ -53,13 +54,17 @@
     <div class="mt-6">
         <p class="text-sm font-semibold text-secondary mb-3">Try these examples:</p>
         <div class="flex flex-wrap gap-2">
-            <button onclick="document.getElementById('query').value='DE0005140008'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
+            <button onclick="document.getElementById('query').value='Amazon'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
                     class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">
-                DE0005140008
+                Amazon
             </button>
-            <button onclick="document.getElementById('query').value='514000'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
+            <button onclick="document.getElementById('query').value='Microsoft'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
                     class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">
-                514000
+                Microsoft
+            </button>
+            <button onclick="document.getElementById('query').value='Deutsche Bank'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
+                    class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">
+                Deutsche Bank
             </button>
             <button onclick="document.getElementById('query').value='DBK.DE'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
                     class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">

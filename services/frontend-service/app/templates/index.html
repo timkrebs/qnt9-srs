@@ -10,7 +10,7 @@
             Good morning!
         </h1>
         <p class="text-xl text-secondary">
-            Search for stocks by ISIN, WKN, or Symbol
+            Search for stocks by company name, ISIN, WKN, or Symbol
         </p>
     </div>
 
@@ -29,19 +29,42 @@
                 </svg>
             </div>
             <p class="text-lg font-medium">Enter a search query to find stocks</p>
-            <p class="text-sm text-secondary mt-2">Supported: ISIN, WKN, Symbol</p>
+            <p class="text-sm text-secondary mt-2">Supported: Company Name, ISIN, WKN, Symbol</p>
         </div>
     </div>
 </div>
 
-<!-- Loading overlay -->
-<div id="loading-overlay" class="htmx-indicator fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 backdrop-blur-sm">
-    <div class="bg-white rounded-2xl p-10 flex flex-col items-center shadow-2xl">
-        <svg class="animate-spin h-14 w-14 text-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
-        <p class="text-primary font-semibold text-lg">Searching...</p>
+<!-- Modern Loading Overlay -->
+<div id="loading-overlay" class="htmx-indicator fixed inset-0 bg-white bg-opacity-95 z-50 backdrop-blur-md">
+    <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+        <div class="flex flex-col items-center">
+        <!-- Animated Stock Chart Icon -->
+        <div class="relative w-24 h-24 mb-6">
+            <!-- Outer ring -->
+            <div class="absolute inset-0 border-4 border-gray-200 rounded-full"></div>
+            <!-- Animated ring -->
+            <div class="absolute inset-0 border-4 border-green-500 rounded-full border-t-transparent animate-spin"></div>
+            <!-- Inner icon -->
+            <div class="absolute inset-0 flex items-center justify-center">
+                <svg class="w-10 h-10 text-green-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                </svg>
+            </div>
+        </div>
+        
+        <!-- Loading Text -->
+        <div class="text-center">
+            <h3 class="text-2xl font-bold text-gray-900 mb-2">Searching stocks...</h3>
+            <p class="text-gray-500 text-sm">Finding the best matches worldwide</p>
+        </div>
+        
+        <!-- Animated dots -->
+        <div class="flex gap-2 mt-6">
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" style="animation-delay: 0ms;"></div>
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" style="animation-delay: 150ms;"></div>
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" style="animation-delay: 300ms;"></div>
+        </div>
+        </div>
     </div>
 </div>
 {% endblock %}

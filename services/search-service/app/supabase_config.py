@@ -5,13 +5,19 @@ This module provides Supabase PostgreSQL connection string construction
 using environment variables. Supabase offers free PostgreSQL hosting
 with connection pooling and built-in security features.
 
-Connection string format:
-postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+Connection string format (Session Pooler):
+postgresql://postgres.[project-ref]:[password]@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
 
 Environment variables required:
 - PROJECT_URL: https://[project-ref].supabase.co
 - DATABASE_PASSWORD: Database password from Supabase dashboard
 - API_KEY: Optional, for Supabase client operations
+
+Alternative: Set DATABASE_URL directly to override automatic construction.
+
+Note: Modern Supabase projects use connection pooling instead of direct connections.
+- Session pooler (Port 5432): Best for migrations and DDL operations
+- Transaction pooler (Port 6543): Best for serverless/high concurrency
 """
 
 import logging
@@ -24,8 +30,8 @@ logger = logging.getLogger(__name__)
 # Supabase configuration constants
 SUPABASE_POSTGRES_PORT = 5432
 SUPABASE_DATABASE_NAME = "postgres"
-SUPABASE_USER = "postgres"
-SUPABASE_HOST_PREFIX = "db"
+SUPABASE_USER_PREFIX = "postgres"
+SUPABASE_POOLER_HOST = "aws-1-eu-west-1.pooler.supabase.com"  # Session pooler
 
 
 def extract_project_reference(project_url: str) -> Optional[str]:
@@ -60,8 +66,8 @@ def build_supabase_connection_string() -> Optional[str]:
     - PROJECT_URL: Supabase project URL
     - DATABASE_PASSWORD: Database password
 
-    Connection string format:
-    postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+    Connection string format (Session Pooler):
+    postgresql://postgres.[project-ref]:[password]@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
 
     Returns:
         PostgreSQL connection string or None if required variables missing
@@ -70,7 +76,7 @@ def build_supabase_connection_string() -> Optional[str]:
         >>> os.environ["PROJECT_URL"] = "https://abc123.supabase.co"
         >>> os.environ["DATABASE_PASSWORD"] = "mypassword"
         >>> build_supabase_connection_string()
-        "postgresql://postgres:mypassword@db.abc123.supabase.co:5432/postgres"
+        "postgresql://postgres.abc123:mypassword@aws-1-eu-west-1.pooler.supabase.com:5432/postgres"
     """
     project_url = os.getenv("PROJECT_URL")
     database_password = os.getenv("DATABASE_PASSWORD")
@@ -86,14 +92,16 @@ def build_supabase_connection_string() -> Optional[str]:
         logger.error("Failed to extract project reference from PROJECT_URL")
         return None
 
-    # Construct connection string for direct Supabase PostgreSQL connection
-    # Format: postgresql://postgres:[password]@db.[project-ref].supabase.co:5432/postgres
+    # Construct connection string for Supabase Session Pooler
+    # Format: postgresql://postgres.[project-ref]:[password]@aws-1-eu-west-1.pooler.supabase.com:5432/postgres
     connection_string = (
-        f"postgresql://{SUPABASE_USER}:{database_password}"
-        f"@{SUPABASE_HOST_PREFIX}.{project_ref}.supabase.co:{SUPABASE_POSTGRES_PORT}/{SUPABASE_DATABASE_NAME}"
+        f"postgresql://{SUPABASE_USER_PREFIX}.{project_ref}:{database_password}"
+        f"@{SUPABASE_POOLER_HOST}:{SUPABASE_POSTGRES_PORT}/{SUPABASE_DATABASE_NAME}"
     )
 
-    logger.info(f"Supabase connection string built for project: {project_ref}")
+    logger.info(
+        f"Supabase connection string built for project: {project_ref} (Session Pooler)"
+    )
     return connection_string
 
 

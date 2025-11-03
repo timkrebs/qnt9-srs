@@ -59,8 +59,8 @@ make fastapi-dev-dd
 **Note**: You'll see connection errors to `localhost:8126` in the logs. This is **normal and safe** - the Datadog tracer can't reach the agent, but your application runs perfectly fine. The instrumentation is active, but traces just won't be sent to Datadog. To actually send traces, you'd need to install and run the Datadog Agent locally.
 
 This will enable:
-- ✅ Distributed tracing (instrumented, not sent)
-- ✅ Application Security Management (ASM) - threat detection
+- Distributed tracing (instrumented, not sent)
+- Application Security Management (ASM) - threat detection
 - Interactive Application Security Testing (IAST) - vulnerability detection
 - Software Composition Analysis (SCA) - dependency scanning
 - Continuous profiling
@@ -308,9 +308,9 @@ env:
 
 **Solution**: This is **normal for local development** without a Datadog Agent installed.
 
-- ✅ **Your application is running fine** - this error doesn't affect functionality
-- ✅ **Instrumentation is active** - code is being traced, just not sent anywhere
-- ✅ **Security features are working** - ASM, IAST, and SCA are operational
+- **Your application is running fine** - this error doesn't affect functionality
+- **Instrumentation is active** - code is being traced, just not sent anywhere
+- **Security features are working** - ASM, IAST, and SCA are operational
 
 **Options**:
 1. **Ignore it** (recommended for local dev) - the errors are harmless

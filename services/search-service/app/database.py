@@ -42,7 +42,9 @@ logger = logging.getLogger(__name__)
 
 # Database configuration constants
 DEFAULT_SQLITE_URL = "sqlite:///./search_service.db"
-DEFAULT_LOCAL_POSTGRES_URL = "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db"
+DEFAULT_LOCAL_POSTGRES_URL = (
+    "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db"
+)
 POSTGRES_CONNECTION_TIMEOUT = 10
 POOL_SIZE = 5
 MAX_OVERFLOW = 10
@@ -54,23 +56,37 @@ def _get_database_url() -> str:
     Get database connection URL using fallback strategy.
 
     Strategy:
-    1. Check USE_LOCAL_DB environment variable for local development
-    2. Try to get Supabase PostgreSQL connection (free tier)
-    3. Try to get credentials from Vault KV
-    4. Fall back to DATABASE_URL environment variable
+    1. Check DATABASE_URL environment variable first (highest priority)
+    2. Check USE_LOCAL_DB environment variable for local development
+    3. Try to get Supabase PostgreSQL connection (free tier)
+    4. Try to get credentials from Vault KV
     5. Default to SQLite for local development
 
     Returns:
         Database connection URL string
     """
+    # Priority 1: Direct DATABASE_URL (overrides everything)
+    direct_db_url = os.getenv("DATABASE_URL")
+    if direct_db_url:
+        # Verify it's not a placeholder
+        if "[YOUR_PASSWORD]" in direct_db_url or "[YOUR-PASSWORD]" in direct_db_url:
+            logger.warning("DATABASE_URL contains placeholder - ignoring")
+        else:
+            logger.info(
+                f"Using DATABASE_URL from environment: {_sanitize_db_url(direct_db_url)}"
+            )
+            return direct_db_url
+
+    # Priority 2: Local development mode
     use_local_db = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
 
     if use_local_db:
         logger.info("LOCAL DEVELOPMENT MODE - Using local database")
-        db_url = os.getenv("DATABASE_URL", DEFAULT_LOCAL_POSTGRES_URL)
+        db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
         logger.info(f"Using local database: {_sanitize_db_url(db_url)}")
         return db_url
 
+    # Priority 3: Try Supabase
     try:
         logger.debug("Attempting to get Supabase connection string...")
         supabase_url = get_supabase_connection_string()
@@ -82,7 +98,7 @@ def _get_database_url() -> str:
     except Exception as supabase_error:
         logger.warning(f"Supabase configuration failed: {supabase_error}")
 
-    # Try to get connection string from Vault, fallback to environment variables
+    # Priority 4: Try Vault KV, fallback to SQLite
     try:
         logger.debug("Attempting to import Vault KV module...")
         from .vault_kv import get_db_connection_string
@@ -95,9 +111,10 @@ def _get_database_url() -> str:
             return db_url
         except Exception as vault_error:
             logger.warning(f"Could not read from Vault KV: {vault_error}")
-            logger.info("Falling back to environment variables...")
-            db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
+            logger.info("Falling back to SQLite for local development...")
+            db_url = DEFAULT_SQLITE_URL
             logger.info(f"Using database URL: {_sanitize_db_url(db_url)}")
+            return db_url
             return db_url
     except ImportError as e:
         logger.warning(f"Vault module not available: {e}")
@@ -167,16 +184,29 @@ def init_db() -> None:
     Creates all tables defined in the Base metadata.
     Should be called on application startup.
 
+    Note: Uses checkfirst=True to avoid errors with existing tables/indexes.
+    For production, consider using Alembic migrations instead.
+
     Raises:
         Exception: If database initialization fails
     """
     try:
         logger.info("Initializing database tables...")
-        Base.metadata.create_all(bind=engine)
+
+        # Create tables with checkfirst=True (default)
+        # This checks if tables exist before trying to create them
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+
         logger.info("Database tables initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+        # Log error but don't crash if tables already exist
+        error_msg = str(e).lower()
+        if "already exists" in error_msg or "duplicate" in error_msg:
+            logger.warning(f"Database objects already exist (expected): {e}")
+            logger.info("Continuing with existing database schema...")
+        else:
+            logger.error(f"Failed to initialize database: {e}")
+            raise
 
 
 def get_db() -> Generator[Session, None, None]:

@@ -449,7 +449,8 @@ class CacheManager:
         Search for stocks by company name using fuzzy matching.
 
         Performs case-insensitive partial matching on the name field.
-        Returns only non-expired cached entries sorted by relevance.
+        Prioritizes non-expired entries but includes expired ones if needed
+        (company names don't change often, so expired data is still useful).
 
         Args:
             query: Company name search string
@@ -472,16 +473,25 @@ class CacheManager:
             if dialect_name == "postgresql" and self._has_fts_support():
                 # Use PostgreSQL full-text search for better performance
                 logger.debug(f"Using PostgreSQL full-text search for '{query}'")
-                cache_entries = self._search_with_fts(query, now, limit)
+                cache_entries = self._search_with_fts(
+                    query, now, limit, include_expired=True
+                )
             else:
                 # Fall back to ILIKE for SQLite or when FTS not available
                 logger.debug(f"Using ILIKE search for '{query}'")
-                cache_entries = self._search_with_ilike(query, now, limit)
+                cache_entries = self._search_with_ilike(
+                    query, now, limit, include_expired=True
+                )
 
             results = []
             for entry in cache_entries:
                 # Calculate relevance score based on match quality
                 relevance = self._calculate_relevance_score(query, entry.name)
+
+                # Penalize expired entries slightly
+                is_expired = entry.expires_at <= now
+                if is_expired:
+                    relevance *= 0.95  # 5% penalty for expired data
 
                 result = {
                     "symbol": entry.symbol,
@@ -492,6 +502,7 @@ class CacheManager:
                     "currency": entry.currency,
                     "exchange": entry.exchange,
                     "relevance_score": relevance,
+                    "cached": not is_expired,
                 }
                 results.append(result)
 
@@ -531,7 +542,7 @@ class CacheManager:
             return False
 
     def _search_with_fts(
-        self, query: str, now: datetime, limit: int
+        self, query: str, now: datetime, limit: int, include_expired: bool = False
     ) -> list[StockCache]:
         """
         Search using PostgreSQL full-text search.
@@ -542,6 +553,7 @@ class CacheManager:
             query: Search query string
             now: Current timestamp for expiration check
             limit: Maximum results to return
+            include_expired: If True, include expired cache entries
 
         Returns:
             List of StockCache entries matching the search
@@ -551,19 +563,20 @@ class CacheManager:
         search_query = " & ".join(f"{word}:*" for word in query.split())
 
         # Use text() for raw SQL since name_search_vector isn't in the model
-        return (
+        query_obj = (
             self.db.query(StockCache)
-            .filter(
-                StockCache.expires_at > now,
-                text("name_search_vector @@ to_tsquery('english', :query)"),
-            )
+            .filter(text("name_search_vector @@ to_tsquery('english', :query)"))
             .params(query=search_query)
-            .limit(limit)
-            .all()
         )
 
+        # Filter by expiration if not including expired
+        if not include_expired:
+            query_obj = query_obj.filter(StockCache.expires_at > now)
+
+        return query_obj.limit(limit).all()
+
     def _search_with_ilike(
-        self, query: str, now: datetime, limit: int
+        self, query: str, now: datetime, limit: int, include_expired: bool = False
     ) -> list[StockCache]:
         """
         Search using case-insensitive LIKE (fallback for SQLite).
@@ -572,18 +585,22 @@ class CacheManager:
             query: Search query string
             now: Current timestamp for expiration check
             limit: Maximum results to return
+            include_expired: If True, include expired cache entries
 
         Returns:
             List of StockCache entries matching the search
         """
         search_pattern = f"%{query}%"
 
-        return (
-            self.db.query(StockCache)
-            .filter(StockCache.expires_at > now, StockCache.name.ilike(search_pattern))
-            .limit(limit)
-            .all()
+        query_obj = self.db.query(StockCache).filter(
+            StockCache.name.ilike(search_pattern)
         )
+
+        # Filter by expiration if not including expired
+        if not include_expired:
+            query_obj = query_obj.filter(StockCache.expires_at > now)
+
+        return query_obj.limit(limit).all()
 
     def _calculate_relevance_score(self, query: str, name: str) -> float:
         """
@@ -871,3 +888,50 @@ class CacheManager:
             logger.error(f"Error caching report data: {e}")
             self.db.rollback()
             return False
+
+    def get_cache_age(self, cached_data: Dict[str, Any]) -> int:
+        """
+        Calculate age of cached data in seconds.
+
+        Args:
+            cached_data: Cached stock data dictionary
+
+        Returns:
+            Age in seconds, or 0 if age cannot be determined
+        """
+        try:
+            if "cache_age_seconds" in cached_data:
+                return cached_data["cache_age_seconds"]
+            return 0
+        except Exception as e:
+            logger.error(f"Error calculating cache age: {e}")
+            return 0
+
+    def get_name_search_cache(self, query: str) -> Optional[list]:
+        """
+        Retrieve cached company name search results.
+
+        Args:
+            query: Company name query
+
+        Returns:
+            List of cached search results or None if not found/expired
+        """
+        # For now, name search results are not cached separately
+        # This can be implemented later if needed
+        return None
+
+    def save_name_search_cache(self, query: str, results: list) -> bool:
+        """
+        Save company name search results to cache.
+
+        Args:
+            query: Company name query
+            results: List of search results to cache
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        # For now, name search results are not cached separately
+        # This can be implemented later if needed
+        return True

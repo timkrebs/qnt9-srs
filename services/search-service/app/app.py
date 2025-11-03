@@ -146,6 +146,117 @@ async def health_check() -> Dict[str, Any]:
     }
 
 
+def _is_potential_company_name(query: str) -> bool:
+    """
+    Check if query looks like a company name rather than an identifier.
+
+    A query is considered a potential company name if:
+    - Length >= 3 characters
+    - Contains at least one letter
+    - Contains spaces, lowercase letters, or is longer than 5 chars
+    - Is not a valid ISIN format (12 chars starting with 2 letters)
+
+    Args:
+        query: Search query string
+
+    Returns:
+        True if query looks like a company name, False otherwise
+
+    Examples:
+        >>> _is_potential_company_name("Amazon")  # True - 6 chars, mixed case
+        >>> _is_potential_company_name("Apple Inc")  # True - has space
+        >>> _is_potential_company_name("microsoft")  # True - lowercase
+        >>> _is_potential_company_name("AAPL")  # False - short symbol
+        >>> _is_potential_company_name("US0378331005")  # False - ISIN format
+    """
+    if len(query) < 3:
+        return False
+
+    # Must contain at least one letter
+    if not any(c.isalpha() for c in query):
+        return False
+
+    # Strong indicators of company name:
+    # 1. Contains spaces (e.g., "Apple Inc", "Deutsche Bank")
+    if " " in query:
+        return True
+
+    # 2. Contains lowercase letters (e.g., "Amazon", "Microsoft")
+    if any(c.islower() for c in query):
+        return True
+
+    # 3. Longer than typical symbols/WKNs (>5 chars) and all letters
+    #    (e.g., "AMAZON", "MICROSOFT", "GOOGLE")
+    if len(query) > 5 and query.isalpha():
+        return True
+
+    # If it matches ISIN format exactly (12 chars, starts with 2 letters), not a name
+    if len(query) == 12 and query[:2].isalpha() and query[2:].isalnum():
+        return False
+
+    # Short all-uppercase strings without numbers are likely symbols, not names
+    # (e.g., "AAPL", "MSFT", "TSLA")
+    if query.isupper() and len(query) <= 5 and query.isalpha():
+        return False
+
+    # WKN format (exactly 6 alphanumeric, all uppercase, with at least one digit)
+    # is not a company name
+    if (
+        len(query) == 6
+        and query.isalnum()
+        and query.isupper()
+        and any(c.isdigit() for c in query)
+    ):
+        return False
+
+    # Default to False for edge cases
+    return False
+
+
+async def _try_name_search_fallback(
+    query: str, cache_manager: "CacheManager", db: Session
+) -> Optional[Dict[str, Any]]:
+    """
+    Try to find stock by company name as fallback.
+
+    Searches for the company name and returns the first (best) result
+    if found. This allows the main search endpoint to work with company
+    names transparently.
+
+    Args:
+        query: Company name query
+        cache_manager: Cache manager instance
+        db: Database session
+
+    Returns:
+        Stock data dict if found, None otherwise
+    """
+    try:
+        # Normalize query for name search
+        normalized_query = query.strip()
+
+        # Search cache first
+        results = cache_manager.search_by_name(normalized_query, limit=1)
+
+        # Fallback to external API if no cache results
+        if not results:
+            results = _search_external_api_and_cache(normalized_query, 1, cache_manager)
+
+        if results:
+            # Return first result as stock data
+            best_match = results[0]
+            logger.info(
+                f"Name search fallback found: {best_match.get('name')} ({best_match.get('symbol')})"
+            )
+            return best_match
+
+        return None
+
+    except Exception as e:
+        logger.warning(f"Name search fallback failed for '{query}': {e}")
+        return None
+
+
 @app.get(
     "/api/stocks/search",
     response_model=StockSearchResponse,
@@ -161,36 +272,45 @@ async def search_stock(
     query: str = Query(
         ...,
         min_length=1,
-        max_length=20,
-        description="ISIN, WKN, or stock symbol to search",
-        examples=["US0378331005"],
+        max_length=100,
+        description="ISIN, WKN, stock symbol, or company name to search",
+        examples=["US0378331005", "AAPL", "Apple"],
     ),
     db: Session = Depends(get_db),
 ) -> StockSearchResponse:
     """
-    Search for stock information by ISIN, WKN, or symbol.
+    Search for stock information by ISIN, WKN, symbol, or company name.
 
     This endpoint provides comprehensive stock data with automatic query type
-    detection, validation, and caching.
+    detection, validation, and caching. Supports both identifier-based search
+    (ISIN, WKN, Symbol) and company name search with fallback.
 
     Query Types:
         - ISIN: 12-character alphanumeric (e.g., US0378331005 for Apple)
         - WKN: 6-character alphanumeric (e.g., 865985 for Apple)
         - Symbol: Standard ticker symbol (e.g., AAPL)
+        - Company Name: Full or partial company name (e.g., "Apple", "Microsoft")
 
     Features:
         - Automatic query type detection
+        - Intelligent fallback to name search if identifier search fails
         - Input validation with regex and checksum verification
         - 5-minute caching to reduce API calls
         - Response time <2 seconds
         - Suggestions for similar stocks if not found
+
+    Search Flow:
+        1. Try identifier-based search (ISIN/WKN/Symbol)
+        2. If not found and query looks like a name (>2 chars, has letters),
+           automatically fallback to company name search
+        3. Return first result from name search if found
 
     Data Sources:
         - Primary: Yahoo Finance API
         - Fallback: Alpha Vantage API
 
     Args:
-        query: Search query (ISIN, WKN, or symbol)
+        query: Search query (ISIN, WKN, symbol, or company name)
         db: Database session dependency
 
     Returns:
@@ -204,16 +324,73 @@ async def search_stock(
     try:
         # Validate query format using Pydantic model
         validated_query = _validate_search_query(query)
+        original_query = query
         query = validated_query.query
 
-        # Detect and validate query type
+        # Initialize cache manager first
+        cache_manager = CacheManager(db)
+
+        # Detect and validate query type first
         query_type = detect_query_type(query)
         logger.info(f"Search request: {query} (type: {query_type})")
 
-        _validate_query_format(query, query_type)
+        # For symbol queries, check if it could be a company name
+        # This enables search-as-you-type for company names
+        if query_type == "symbol" and _is_potential_company_name(original_query):
+            logger.info(
+                f"Symbol query looks like company name, using universal search: {original_query}"
+            )
 
-        # Initialize cache manager
-        cache_manager = CacheManager(db)
+            # Try comprehensive search with multiple results
+            search_results = _search_external_api_and_cache(
+                original_query, limit=5, cache_manager=cache_manager
+            )
+
+            if search_results:
+                # Get the best match symbol
+                best_result = search_results[0]
+                symbol = best_result["symbol"]
+                response_query_type = "name"  # For response only
+
+                logger.info(
+                    f"Name search found symbol: {symbol}, fetching complete data..."
+                )
+
+                # Fetch complete stock data for the symbol (not just search result)
+                stock_data = stock_api_client.search_stock(symbol, query_type="symbol")
+
+                if stock_data:
+                    # Save to cache for future lookups
+                    cache_manager.save_to_cache(stock_data, symbol)
+                    cache_manager.record_search(original_query, found=True)
+
+                    return _build_success_response(
+                        stock_data, response_query_type, start_time
+                    )
+                else:
+                    # Fallback to basic search result if full data fetch fails
+                    logger.warning(
+                        f"Could not fetch full data for {symbol}, using search result"
+                    )
+                    stock_data = {
+                        "symbol": best_result["symbol"],
+                        "name": best_result["name"],
+                        "isin": best_result.get("isin"),
+                        "wkn": best_result.get("wkn"),
+                        "current_price": best_result.get("current_price"),
+                        "currency": best_result.get("currency"),
+                        "exchange": best_result.get("exchange", ""),
+                        "source": "yahoo_search",
+                        "cached": False,
+                    }
+
+                    cache_manager.save_to_cache(stock_data, stock_data["symbol"])
+                    cache_manager.record_search(original_query, found=True)
+
+                    return _build_success_response(stock_data, query_type, start_time)
+
+        # Standard identifier-based search (ISIN, WKN, or known symbols)
+        _validate_query_format(query, query_type)
 
         # Try cache first
         cached_data = cache_manager.get_cached_stock(query)

@@ -11,7 +11,7 @@ help:
 	@echo "  make docker-run      - Run container"
 
 fastapi-dev:
-	fastapi dev app/app.py --reload
+	fastapi dev app/app.py --reload --port 8002
 	
 docker-build:
 	docker build -t auth-service .
