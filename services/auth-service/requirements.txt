@@ -1,10 +1,25 @@
-fastapi[standard]
-uvicorn[standard]
-python-jose[cryptography]
-bcrypt>=4.0.0
-python-multipart
-sqlalchemy
-databases[sqlite]
-alembic
-hvac>=2.0.0
-psycopg2-binary
+# FastAPI and ASGI server
+fastapi>=0.115.5
+uvicorn[standard]>=0.32.1
+
+# Supabase client for authentication
+supabase>=2.10.0
+gotrue>=2.10.1
+
+# Pydantic for data validation
+pydantic>=2.10.3
+pydantic-settings>=2.6.1
+
+# Email validation
+email-validator>=2.2.0
+
+# Python environment variables
+python-dotenv>=1.0.1
+
+# HTTP client
+httpx>=0.28.1
+
+# Testing
+pytest>=8.4.0
+pytest-asyncio>=0.25.0
+pytest-cov>=6.0.0

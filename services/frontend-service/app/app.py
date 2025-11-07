@@ -3,6 +3,7 @@ Frontend Service - Main FastAPI Application.
 
 Provides a web UI for stock search functionality using HTMX for dynamic updates.
 This service acts as the user-facing frontend for the QNT9 Stock Recommendation System.
+Implements comprehensive logging, request tracing, and error handling for production use.
 """
 
 from contextlib import asynccontextmanager
@@ -17,9 +18,15 @@ from fastapi.templating import Jinja2Templates
 from .api_client import search_client
 from .config import settings
 from .logging_config import get_logger, setup_logging
+from .middleware import PerformanceMonitoringMiddleware, RequestLoggingMiddleware
 
-# Setup logging
-setup_logging(log_level=settings.LOG_LEVEL, service_name="frontend-service")
+# Setup logging with structured format
+use_json_logging = settings.LOG_LEVEL == "DEBUG"
+setup_logging(
+    log_level=settings.LOG_LEVEL,
+    service_name="frontend-service",
+    use_json=use_json_logging,
+)
 logger = get_logger(__name__)
 
 
@@ -32,24 +39,60 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Replaces the deprecated @app.on_event decorators.
     """
     # Startup
-    logger.info("Starting Frontend Service...")
-    logger.info(f"Service URL: {settings.SEARCH_SERVICE_URL}")
-    logger.info(f"Debug mode: {settings.DEBUG}")
-    logger.info(f"Log level: {settings.LOG_LEVEL}")
+    logger.info("=" * 80)
+    logger.info("Starting Frontend Service")
+    logger.info("=" * 80)
+    logger.info(
+        "Configuration loaded",
+        extra={
+            "extra_fields": {
+                "service_name": settings.APP_NAME,
+                "debug_mode": settings.DEBUG,
+                "log_level": settings.LOG_LEVEL,
+                "search_service_url": settings.SEARCH_SERVICE_URL,
+                "auth_service_url": settings.AUTH_SERVICE_URL,
+                "request_timeout": settings.REQUEST_TIMEOUT,
+                "host": settings.HOST,
+                "port": settings.PORT,
+            }
+        },
+    )
 
-    # Check search service health
+    # Verify backend connectivity
+    logger.info("Verifying backend service connectivity...")
     is_healthy = await search_client.health_check()
+
     if is_healthy:
-        logger.info("Search service is healthy and ready")
-    else:
-        logger.warning(
-            "Search service is not responding - some features may be unavailable"
+        logger.info(
+            "Backend service connectivity verified",
+            extra={
+                "extra_fields": {
+                    "search_service_status": "healthy",
+                    "search_service_url": settings.SEARCH_SERVICE_URL,
+                }
+            },
         )
+    else:
+        logger.error(
+            "Backend service is not responding",
+            extra={
+                "extra_fields": {
+                    "search_service_status": "unhealthy",
+                    "search_service_url": settings.SEARCH_SERVICE_URL,
+                    "impact": "Stock search functionality will be unavailable",
+                }
+            },
+        )
+
+    logger.info("Frontend Service startup complete")
+    logger.info("=" * 80)
 
     yield
 
     # Shutdown
-    logger.info("Shutting down Frontend Service...")
+    logger.info("=" * 80)
+    logger.info("Shutting down Frontend Service")
+    logger.info("=" * 80)
 
 
 # Initialize FastAPI app
@@ -61,6 +104,10 @@ app = FastAPI(
     redoc_url="/api/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
 )
+
+# Add middleware (order matters - first added is last executed)
+app.add_middleware(PerformanceMonitoringMiddleware, slow_request_threshold_ms=1000.0)
+app.add_middleware(RequestLoggingMiddleware)
 
 # Setup templates and static files
 BASE_PATH = Path(__file__).resolve().parent
@@ -177,7 +224,7 @@ async def search_stock(
     query: str = Query(
         ...,
         min_length=1,
-        max_length=100,  # Increased from 20 to support company names like "Deutsche Bank AG"
+        max_length=100,
         description="Company name, ISIN, WKN, or symbol to search for",
     ),
 ) -> HTMLResponse:
@@ -199,34 +246,63 @@ async def search_stock(
 
     Returns:
         HTML partial with stock card or error message
-
-    Example:
-        GET /search?query=Deutsche+Bank
-        Returns: HTML partial with Deutsche Bank stock information (DB or DBK.DE)
     """
-    logger.info(f"Search request received: query='{query}'")
+    logger.info(
+        "Stock search endpoint invoked",
+        extra={
+            "extra_fields": {
+                "query": query,
+                "query_length": len(query),
+                "client_host": request.client.host if request.client else None,
+            }
+        },
+    )
 
-    # Call search service
+    # Call search service with detailed logging
     result = await search_client.search(query)
 
     if result.get("success"):
-        # Stock found - return stock card
+        stock_data = result.get("data", {})
+
         logger.info(
-            f"Stock found for query '{query}': {result.get('data', {}).get('name')}"
+            "Stock search successful, rendering stock card",
+            extra={
+                "extra_fields": {
+                    "query": query,
+                    "stock_name": stock_data.get("name"),
+                    "stock_symbol": stock_data.get("symbol"),
+                    "stock_isin": stock_data.get("isin"),
+                    "query_type": result.get("query_type"),
+                    "response_time_ms": result.get("response_time_ms", 0),
+                }
+            },
         )
+
         return templates.TemplateResponse(
             request=request,
             name="components/stock_card.html",
             context={
-                "stock": result.get("data"),
+                "stock": stock_data,
                 "response_time": result.get("response_time_ms", 0),
                 "query_type": result.get("query_type", "unknown"),
             },
         )
     else:
-        # Stock not found or error - return error message
-        logger.warning(f"Stock not found for query '{query}': {result.get('message')}")
         error_message = result.get("message", "Stock not found")
+        error_details = result.get("error_details", {})
+
+        logger.warning(
+            "Stock search failed",
+            extra={
+                "extra_fields": {
+                    "query": query,
+                    "error_message": error_message,
+                    "error_type": error_details.get("error_type", "unknown"),
+                    "backend_status_code": error_details.get("status_code"),
+                    "response_time_ms": result.get("response_time_ms", 0),
+                }
+            },
+        )
 
         return templates.TemplateResponse(
             request=request,

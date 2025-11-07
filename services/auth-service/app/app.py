@@ -1,320 +1,504 @@
-from datetime import timedelta
-from typing import List
+"""
+Auth Service - Main FastAPI Application.
 
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+Provides authentication endpoints using Supabase Auth for secure user management.
+Integrates with the QNT9 Stock Recommendation System.
+"""
 
-from . import crud
-from .auth import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-    get_current_active_user,
-)
-from .database import get_db
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
+
+from fastapi import FastAPI, Header, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from gotrue.errors import AuthApiError
+
+from .auth_service import auth_service
+from .config import settings
+from .logging_config import get_logger, setup_logging
 from .models import (
-    PasswordChange,
-    PasswordReset,
-    User,
-    UserCreate,
-    UserStatusUpdate,
+    AuthResponse,
+    MessageResponse,
+    PasswordResetRequest,
+    PasswordUpdate,
+    RefreshToken,
+    SessionResponse,
+    UserResponse,
+    UserSignIn,
+    UserSignUp,
     UserUpdate,
 )
 
-app = FastAPI(title="Authentication Demo", version="1.0.0")
+# Setup logging
+setup_logging(log_level=settings.LOG_LEVEL, service_name="auth-service")
+logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """
+    Application lifespan context manager.
+
+    Handles startup and shutdown events for the application.
+    """
+    # Startup
+    logger.info("Starting Auth Service...")
+    logger.info(f"Service: {settings.APP_NAME}")
+    logger.info(f"Debug mode: {settings.DEBUG}")
+    logger.info(f"Log level: {settings.LOG_LEVEL}")
+    logger.info("Supabase Auth integration active")
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down Auth Service...")
+
+
+# Initialize FastAPI app
+app = FastAPI(
+    title=settings.APP_NAME,
+    description="Authentication service using Supabase for QNT9 SRS",
+    version="2.0.0",
+    docs_url="/api/docs" if settings.DEBUG else None,
+    redoc_url="/api/redoc" if settings.DEBUG else None,
+    lifespan=lifespan,
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.get_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Helper Functions
+
+
+def get_token_from_header(authorization: str = Header(None)) -> str:
+    """
+    Extract Bearer token from Authorization header.
+
+    Args:
+        authorization: Authorization header value
+
+    Returns:
+        JWT access token
+
+    Raises:
+        HTTPException: If authorization header is missing or invalid
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header missing",
+        )
+
+    try:
+        scheme, token = authorization.split()
+        if scheme.lower() != "bearer":
+            raise ValueError("Invalid authentication scheme")
+        return token
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format. Use: Bearer <token>",
+        )
+
+
+# Health & Info Endpoints
 
 
 @app.get("/")
-async def root():
-    return {"message": "Welcome to FastAPI Authentication Demo"}
+async def root() -> dict:
+    """Root endpoint with service information."""
+    return {
+        "service": "QNT9 Auth Service",
+        "version": "2.0.0",
+        "status": "active",
+        "auth_provider": "Supabase",
+    }
 
 
-@app.post("/register", response_model=User)
-async def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user."""
-    # Check if user already exists
-    db_user = crud.get_user_by_username(db, username=user.username)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-
-    db_user = crud.get_user_by_email(db, email=user.email)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    new_user = crud.create_user(db=db, user=user)
-    return User(
-        id=new_user.id,
-        username=new_user.username,
-        email=new_user.email,
-        full_name=new_user.full_name,
-        is_active=new_user.is_active,
-    )
+@app.get("/health")
+async def health_check() -> dict:
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "auth-service",
+    }
 
 
-@app.post("/token")
-async def login_for_access_token(
-    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
-):
-    """Authenticate user and return access token."""
-    user = crud.authenticate_user(db, form_data.username, form_data.password)
-    if not user:
+# Authentication Endpoints
+
+
+@app.post(
+    "/auth/signup",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Authentication"],
+    summary="Register new user",
+)
+async def sign_up(user_data: UserSignUp):
+    """
+    Register a new user with email and password.
+
+    Creates a new user account in Supabase Auth and returns
+    session tokens for immediate authentication.
+
+    Args:
+        user_data: User registration data (email, password, full_name)
+
+    Returns:
+        User data and session tokens
+
+    Raises:
+        HTTPException: If registration fails
+    """
+    try:
+        result = await auth_service.sign_up(
+            email=user_data.email,
+            password=user_data.password,
+            full_name=user_data.full_name,
+        )
+
+        return AuthResponse(
+            user=UserResponse(**result["user"]),
+            session=SessionResponse(**result["session"]),
+        )
+
+    except AuthApiError as e:
+        logger.error(f"Sign up failed: {e.message}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Registration failed: {e.message}",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error during sign up: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during registration",
+        )
+
+
+@app.post(
+    "/auth/signin",
+    response_model=AuthResponse,
+    tags=["Authentication"],
+    summary="Sign in user",
+)
+async def sign_in(credentials: UserSignIn):
+    """
+    Sign in a user with email and password.
+
+    Authenticates the user and returns session tokens.
+
+    Args:
+        credentials: User credentials (email, password)
+
+    Returns:
+        User data and session tokens
+
+    Raises:
+        HTTPException: If authentication fails
+    """
+    try:
+        result = await auth_service.sign_in(
+            email=credentials.email,
+            password=credentials.password,
+        )
+
+        return AuthResponse(
+            user=UserResponse(**result["user"]),
+            session=SessionResponse(**result["session"]),
+        )
+
+    except AuthApiError as e:
+        logger.error(f"Sign in failed: {e.message}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Invalid email or password",
         )
-
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
-
-
-@app.get("/users/me", response_model=User)
-async def read_users_me(current_user: User = Depends(get_current_active_user)):
-    """Get current user information."""
-    return current_user
-
-
-@app.get("/protected")
-async def protected_route(current_user: User = Depends(get_current_active_user)):
-    return {"message": f"Hello {current_user.full_name}, this is a protected route!"}
-
-
-@app.put("/users/me", response_model=User)
-async def update_my_profile(
-    user_update: UserUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Update current user's profile information."""
-    # Check if email is being changed and if it's already taken
-    if user_update.email and user_update.email != current_user.email:
-        existing_user = crud.get_user_by_email(db, email=user_update.email)
-        if existing_user:
-            raise HTTPException(status_code=400, detail="Email already registered")
-
-    updated_user = crud.update_user_profile(
-        db,
-        user_id=current_user.id,
-        email=user_update.email,
-        full_name=user_update.full_name,
-    )
-
-    if not updated_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return User(
-        id=updated_user.id,
-        username=updated_user.username,
-        email=updated_user.email,
-        full_name=updated_user.full_name,
-        is_active=updated_user.is_active,
-    )
-
-
-@app.post("/users/me/password")
-async def change_my_password(
-    password_change: PasswordChange,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Change current user's password."""
-    result = crud.change_user_password(
-        db,
-        user_id=current_user.id,
-        current_password=password_change.current_password,
-        new_password=password_change.new_password,
-    )
-
-    if result is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    elif result is True:
+    except Exception as e:
+        logger.exception(f"Unexpected error during sign in: {e}")
         raise HTTPException(
-            status_code=400,
-            detail="New password cannot be the same as the current password",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during sign in",
         )
-    elif result is False:
-        raise HTTPException(status_code=400, detail="Current password is incorrect")
-
-    return {"message": "Password changed successfully"}
 
 
-@app.delete("/users/me")
-async def delete_my_account(
-    current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
-):
-    """Delete current user's account."""
-    result = crud.delete_user(db, user_id=current_user.id)
+@app.post(
+    "/auth/signout",
+    response_model=MessageResponse,
+    tags=["Authentication"],
+    summary="Sign out user",
+)
+async def sign_out(authorization: str = Header(None)):
+    """
+    Sign out the current user.
 
-    if not result:
-        raise HTTPException(status_code=404, detail="User not found")
+    Invalidates the user's session tokens.
 
-    return {"message": "Account deleted successfully"}
+    Args:
+        authorization: Bearer token in Authorization header
 
+    Returns:
+        Success message
 
-@app.get("/users", response_model=List[User])
-async def list_users(
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """List all users (requires authentication)."""
-    users = crud.get_all_users(db, skip=skip, limit=limit)
-    return [
-        User(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            full_name=user.full_name,
-            is_active=user.is_active,
+    Raises:
+        HTTPException: If sign out fails
+    """
+    try:
+        token = get_token_from_header(authorization)
+        await auth_service.sign_out(token)
+
+        return MessageResponse(
+            message="Signed out successfully",
+            success=True,
         )
-        for user in users
-    ]
 
-
-@app.get("/users/search", response_model=List[User])
-async def search_users(
-    q: str,
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Search users by username, email, or full name."""
-    users = crud.search_users(db, search_term=q, skip=skip, limit=limit)
-    return [
-        User(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            full_name=user.full_name,
-            is_active=user.is_active,
-        )
-        for user in users
-    ]
-
-
-@app.get("/users/count")
-async def get_user_count(
-    current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
-):
-    """Get total count of users."""
-    count = crud.get_user_count(db)
-    return {"count": count}
-
-
-@app.get("/users/{user_id}", response_model=User)
-async def get_user(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Get user by ID (requires authentication)."""
-    user = crud.get_user_by_id(db, user_id=user_id)
-
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return User(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        full_name=user.full_name,
-        is_active=user.is_active,
-    )
-
-
-@app.put("/users/{user_id}", response_model=User)
-async def update_user(
-    user_id: int,
-    user_update: UserUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Update user profile (admin function)."""
-    # Check if email is being changed and if it's already taken
-    if user_update.email:
-        existing_user = crud.get_user_by_email(db, email=user_update.email)
-        if existing_user and existing_user.id != user_id:
-            raise HTTPException(status_code=400, detail="Email already registered")
-
-    updated_user = crud.update_user_profile(
-        db, user_id=user_id, email=user_update.email, full_name=user_update.full_name
-    )
-
-    if not updated_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return User(
-        id=updated_user.id,
-        username=updated_user.username,
-        email=updated_user.email,
-        full_name=updated_user.full_name,
-        is_active=updated_user.is_active,
-    )
-
-
-@app.post("/users/{user_id}/password-reset")
-async def reset_user_password(
-    user_id: int,
-    password_reset: PasswordReset,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Reset user password (admin function)."""
-    result = crud.reset_user_password(
-        db, user_id=user_id, new_password=password_reset.new_password
-    )
-
-    if not result:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return {"message": "Password reset successfully"}
-
-
-@app.patch("/users/{user_id}/status", response_model=User)
-async def update_user_status(
-    user_id: int,
-    status_update: UserStatusUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Enable or disable user account (admin function)."""
-    updated_user = crud.update_user_status(
-        db, user_id=user_id, is_active=status_update.is_active
-    )
-
-    if not updated_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return User(
-        id=updated_user.id,
-        username=updated_user.username,
-        email=updated_user.email,
-        full_name=updated_user.full_name,
-        is_active=updated_user.is_active,
-    )
-
-
-@app.delete("/users/{user_id}")
-async def delete_user(
-    user_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Delete user (admin function)."""
-    # Prevent users from deleting themselves via this endpoint
-    if user_id == current_user.id:
+    except AuthApiError as e:
+        logger.error(f"Sign out failed: {e.message}")
         raise HTTPException(
-            status_code=400, detail="Use /users/me endpoint to delete your own account"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Sign out failed: {e.message}",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error during sign out: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during sign out",
         )
 
-    result = crud.delete_user(db, user_id=user_id)
 
-    if not result:
-        raise HTTPException(status_code=404, detail="User not found")
+@app.post(
+    "/auth/refresh",
+    response_model=SessionResponse,
+    tags=["Authentication"],
+    summary="Refresh session",
+)
+async def refresh_session(token_data: RefreshToken):
+    """
+    Refresh an expired session.
 
-    return {"message": "User deleted successfully"}
+    Uses a refresh token to obtain new access and refresh tokens.
+
+    Args:
+        token_data: Refresh token
+
+    Returns:
+        New session tokens
+
+    Raises:
+        HTTPException: If refresh fails
+    """
+    try:
+        result = await auth_service.refresh_session(token_data.refresh_token)
+
+        return SessionResponse(**result)
+
+    except AuthApiError as e:
+        logger.error(f"Session refresh failed: {e.message}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error refreshing session: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during session refresh",
+        )
+
+
+# User Management Endpoints
+
+
+@app.get(
+    "/auth/me",
+    response_model=UserResponse,
+    tags=["User Management"],
+    summary="Get current user",
+)
+async def get_current_user(authorization: str = Header(None)):
+    """
+    Get current authenticated user information.
+
+    Requires a valid access token in the Authorization header.
+
+    Args:
+        authorization: Bearer token in Authorization header
+
+    Returns:
+        User information
+
+    Raises:
+        HTTPException: If token is invalid or user not found
+    """
+    try:
+        token = get_token_from_header(authorization)
+        user = await auth_service.get_user(token)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+        return UserResponse(**user)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Unexpected error getting user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )
+
+
+@app.patch(
+    "/auth/me",
+    response_model=UserResponse,
+    tags=["User Management"],
+    summary="Update current user",
+)
+async def update_current_user(
+    user_update: UserUpdate,
+    authorization: str = Header(None),
+):
+    """
+    Update current user's profile information.
+
+    Requires a valid access token in the Authorization header.
+
+    Args:
+        user_update: Updated user data (email, full_name)
+        authorization: Bearer token in Authorization header
+
+    Returns:
+        Updated user information
+
+    Raises:
+        HTTPException: If update fails
+    """
+    try:
+        token = get_token_from_header(authorization)
+
+        result = await auth_service.update_user(
+            access_token=token,
+            email=user_update.email,
+            full_name=user_update.full_name,
+        )
+
+        return UserResponse(**result)
+
+    except AuthApiError as e:
+        logger.error(f"User update failed: {e.message}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Update failed: {e.message}",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error updating user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during update",
+        )
+
+
+@app.patch(
+    "/auth/me/password",
+    response_model=MessageResponse,
+    tags=["User Management"],
+    summary="Update password",
+)
+async def update_password(
+    password_update: PasswordUpdate,
+    authorization: str = Header(None),
+):
+    """
+    Update current user's password.
+
+    Requires a valid access token in the Authorization header.
+
+    Args:
+        password_update: New password
+        authorization: Bearer token in Authorization header
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: If password update fails
+    """
+    try:
+        token = get_token_from_header(authorization)
+
+        await auth_service.update_user(
+            access_token=token,
+            password=password_update.password,
+        )
+
+        return MessageResponse(
+            message="Password updated successfully",
+            success=True,
+        )
+
+    except AuthApiError as e:
+        logger.error(f"Password update failed: {e.message}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password update failed: {e.message}",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error updating password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during password update",
+        )
+
+
+@app.post(
+    "/auth/reset-password",
+    response_model=MessageResponse,
+    tags=["User Management"],
+    summary="Request password reset",
+)
+async def request_password_reset(reset_request: PasswordResetRequest):
+    """
+    Request a password reset email.
+
+    Sends a password reset link to the user's email address.
+
+    Args:
+        reset_request: Email address for password reset
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: If request fails
+    """
+    try:
+        await auth_service.reset_password_request(reset_request.email)
+
+        return MessageResponse(
+            message="Password reset email sent. Please check your inbox.",
+            success=True,
+        )
+
+    except AuthApiError as e:
+        logger.error(f"Password reset request failed: {e.message}")
+        # Don't reveal if email exists for security
+        return MessageResponse(
+            message="If the email exists, a password reset link has been sent.",
+            success=True,
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error requesting password reset: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred",
+        )

@@ -3,12 +3,13 @@ Configuration module for frontend service.
 
 This module provides centralized configuration management using Pydantic settings.
 All configuration values can be overridden via environment variables or .env file.
+Implements validation and type safety for all configuration parameters.
 """
 
 from typing import Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
         PORT: Server port number
         LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         REQUEST_TIMEOUT: Default timeout for HTTP requests in seconds
+        MAX_RETRIES: Maximum number of retry attempts for failed requests
+        ENABLE_REQUEST_TRACING: Enable distributed request tracing
     """
 
     # Service URLs
@@ -35,7 +38,7 @@ class Settings(BaseSettings):
         description="Base URL for the search service API",
     )
     AUTH_SERVICE_URL: str = Field(
-        default="http://localhost:8002",
+        default="http://localhost:8001",
         description="Base URL for the authentication service API",
     )
 
@@ -67,12 +70,31 @@ class Settings(BaseSettings):
         description="Logging level",
     )
 
+    ENABLE_REQUEST_TRACING: bool = Field(
+        default=True,
+        description="Enable distributed request tracing with request IDs",
+    )
+
     # HTTP client configuration
     REQUEST_TIMEOUT: float = Field(
-        default=10.0,  # Increased from 2.0 to support company name search (4-5s response time)
+        default=10.0,
         gt=0,
         le=30.0,
         description="Default timeout for HTTP requests in seconds",
+    )
+
+    MAX_RETRIES: int = Field(
+        default=0,
+        ge=0,
+        le=5,
+        description="Maximum number of retry attempts for failed requests",
+    )
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+        extra="ignore",
     )
 
     @field_validator("SEARCH_SERVICE_URL", "AUTH_SERVICE_URL")
@@ -101,12 +123,6 @@ class Settings(BaseSettings):
             )
 
         return value
-
-    model_config = {
-        "env_file": ".env",
-        "case_sensitive": True,
-        "extra": "ignore",
-    }
 
 
 # Global settings instance
