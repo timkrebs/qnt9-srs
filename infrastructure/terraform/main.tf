@@ -58,18 +58,6 @@ resource "azurerm_resource_group" "main" {
   tags     = local.common_tags
 }
 
-# Generate random password for PostgreSQL
-resource "random_password" "db_password" {
-  length  = 32
-  special = true
-  # Azure PostgreSQL password requirements
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-  min_lower        = 1
-  min_upper        = 1
-  min_numeric      = 1
-  min_special      = 1
-}
-
 # Storage Account for Terraform state and blob storage
 resource "azurerm_storage_account" "main" {
   name                     = "qnt9srs${var.environment}${local.unique_suffix}"
@@ -113,24 +101,6 @@ resource "azurerm_storage_container" "tfstate" {
   container_access_type = "private"
 }
 
-# PostgreSQL Flexible Server module
-module "postgresql" {
-  source = "./modules/postgresql"
-
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  resource_prefix     = local.resource_prefix
-
-  db_name       = var.db_name
-  db_username   = var.db_username
-  db_password   = random_password.db_password.result
-  db_sku_name   = var.db_sku_name
-  db_storage_mb = var.db_storage_mb
-  db_version    = var.db_version
-
-  tags = local.common_tags
-}
-
 # AKS Cluster module
 module "aks" {
   source = "./modules/aks"
@@ -153,13 +123,13 @@ module "acr" {
   acr_name            = "acr${replace(local.project_name, "-", "")}${var.environment}${local.unique_suffix}"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  
+
   # Use Basic SKU for dev, Standard for staging/prod
   sku = var.environment == "dev" ? "Basic" : "Standard"
-  
+
   # Enable admin for GitHub Actions authentication
   admin_enabled = true
-  
+
   # Allow AKS to pull images
   aks_principal_id = module.aks.kubelet_identity_object_id
 
@@ -168,15 +138,152 @@ module "acr" {
   })
 }
 
-# Application Insights module
-module "app_insights" {
-  source = "./modules/app-insights"
-
+# Icinga monitoring VM
+resource "azurerm_linux_virtual_machine" "icinga" {
+  name                = "${local.resource_prefix}-icinga-vm"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
-  resource_prefix     = local.resource_prefix
+  size                = var.icinga_vm_size
+  admin_username      = var.icinga_admin_username
+
+  network_interface_ids = [
+    azurerm_network_interface.icinga.id,
+  ]
+
+  admin_ssh_key {
+    username   = var.icinga_admin_username
+    public_key = var.icinga_ssh_public_key
+  }
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = var.environment == "dev" ? "Standard_LRS" : "Premium_LRS"
+  }
+
+  source_image_reference {
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-jammy"
+    sku       = "22_04-lts-gen2"
+    version   = "latest"
+  }
+
+  tags = merge(local.common_tags, {
+    Purpose = "Icinga Monitoring Server"
+  })
+}
+
+# Network Interface for Icinga VM
+resource "azurerm_network_interface" "icinga" {
+  name                = "${local.resource_prefix}-icinga-nic"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.icinga.id
+    private_ip_address_allocation = "Dynamic"
+    public_ip_address_id          = azurerm_public_ip.icinga.id
+  }
 
   tags = local.common_tags
+}
+
+# Public IP for Icinga VM
+resource "azurerm_public_ip" "icinga" {
+  name                = "${local.resource_prefix}-icinga-pip"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+
+  tags = merge(local.common_tags, {
+    Purpose = "Icinga Web Access"
+  })
+}
+
+# Virtual Network for Icinga
+resource "azurerm_virtual_network" "icinga" {
+  name                = "${local.resource_prefix}-icinga-vnet"
+  address_space       = ["10.1.0.0/16"]
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  tags = local.common_tags
+}
+
+# Subnet for Icinga
+resource "azurerm_subnet" "icinga" {
+  name                 = "${local.resource_prefix}-icinga-subnet"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.icinga.name
+  address_prefixes     = ["10.1.1.0/24"]
+}
+
+# Network Security Group for Icinga
+resource "azurerm_network_security_group" "icinga" {
+  name                = "${local.resource_prefix}-icinga-nsg"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+
+  # SSH access
+  security_rule {
+    name                       = "SSH"
+    priority                   = 1001
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = var.icinga_allowed_ip_range
+    destination_address_prefix = "*"
+  }
+
+  # HTTPS for Icinga Web
+  security_rule {
+    name                       = "HTTPS"
+    priority                   = 1002
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = var.icinga_allowed_ip_range
+    destination_address_prefix = "*"
+  }
+
+  # HTTP for Icinga Web (redirect to HTTPS)
+  security_rule {
+    name                       = "HTTP"
+    priority                   = 1003
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = var.icinga_allowed_ip_range
+    destination_address_prefix = "*"
+  }
+
+  # Icinga API
+  security_rule {
+    name                       = "IcingaAPI"
+    priority                   = 1004
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "5665"
+    source_address_prefix      = var.icinga_allowed_ip_range
+    destination_address_prefix = "*"
+  }
+
+  tags = local.common_tags
+}
+
+# Associate NSG with NIC
+resource "azurerm_network_interface_security_group_association" "icinga" {
+  network_interface_id      = azurerm_network_interface.icinga.id
+  network_security_group_id = azurerm_network_security_group.icinga.id
 }
 
 # Function App module
@@ -188,26 +295,7 @@ module "function_app" {
   resource_prefix      = local.resource_prefix
   storage_account_name = azurerm_storage_account.main.name
   storage_account_key  = azurerm_storage_account.main.primary_access_key
-  app_insights_key     = module.app_insights.instrumentation_key
-
-  tags = local.common_tags
-}
-
-# Key Vault module for secrets management
-module "key_vault" {
-  source = "./modules/key-vault"
-
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  resource_prefix     = local.resource_prefix
-  unique_suffix       = local.unique_suffix
-
-  # Store critical secrets
-  secrets = {
-    postgresql-connection-string = module.postgresql.connection_string
-    sendgrid-api-key             = var.sendgrid_api_key
-    storage-account-key          = azurerm_storage_account.main.primary_access_key
-  }
+  app_insights_key     = "" # Icinga handles monitoring instead
 
   tags = local.common_tags
 }

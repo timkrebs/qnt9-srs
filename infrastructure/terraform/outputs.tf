@@ -27,24 +27,6 @@ output "reports_container_name" {
   value       = azurerm_storage_container.reports.name
 }
 
-# PostgreSQL Database
-output "postgresql_server_fqdn" {
-  description = "FQDN of the PostgreSQL server"
-  value       = module.postgresql.server_fqdn
-  sensitive   = true
-}
-
-output "postgresql_database_name" {
-  description = "Name of the PostgreSQL database"
-  value       = module.postgresql.database_name
-}
-
-output "postgresql_connection_string" {
-  description = "PostgreSQL connection string (sensitive)"
-  value       = module.postgresql.connection_string
-  sensitive   = true
-}
-
 # AKS Cluster
 output "aks_cluster_name" {
   description = "Name of the AKS cluster"
@@ -67,17 +49,25 @@ output "aks_get_credentials_command" {
   value       = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
 }
 
-# Application Insights
-output "app_insights_instrumentation_key" {
-  description = "Application Insights instrumentation key"
-  value       = module.app_insights.instrumentation_key
-  sensitive   = true
+# Icinga Monitoring
+output "icinga_vm_public_ip" {
+  description = "Public IP address of Icinga monitoring server"
+  value       = azurerm_public_ip.icinga.ip_address
 }
 
-output "app_insights_connection_string" {
-  description = "Application Insights connection string"
-  value       = module.app_insights.connection_string
-  sensitive   = true
+output "icinga_vm_fqdn" {
+  description = "FQDN of Icinga monitoring server"
+  value       = azurerm_public_ip.icinga.fqdn
+}
+
+output "icinga_web_url" {
+  description = "Icinga Web interface URL"
+  value       = "https://${azurerm_public_ip.icinga.ip_address}"
+}
+
+output "icinga_ssh_command" {
+  description = "SSH command to connect to Icinga server"
+  value       = "ssh ${var.icinga_admin_username}@${azurerm_public_ip.icinga.ip_address}"
 }
 
 # Function App
@@ -89,17 +79,6 @@ output "function_app_name" {
 output "function_app_url" {
   description = "Default hostname of the Function App"
   value       = module.function_app.function_app_url
-}
-
-# Key Vault
-output "key_vault_name" {
-  description = "Name of the Key Vault"
-  value       = module.key_vault.key_vault_name
-}
-
-output "key_vault_uri" {
-  description = "URI of the Key Vault"
-  value       = module.key_vault.key_vault_uri
 }
 
 # Azure Container Registry
@@ -153,10 +132,9 @@ output "quick_start_commands" {
   value = {
     configure_kubectl = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
     view_function_app = "az functionapp show --name ${module.function_app.function_app_name} --resource-group ${azurerm_resource_group.main.name}"
-    list_secrets      = "az keyvault secret list --vault-name ${module.key_vault.key_vault_name}"
     acr_login         = "az acr login --name ${module.acr.acr_name}"
-    # Note: Use 'az acr login' or retrieve credentials from Key Vault for docker login
+    ssh_icinga        = "ssh ${var.icinga_admin_username}@${azurerm_public_ip.icinga.ip_address}"
+    icinga_web        = "https://${azurerm_public_ip.icinga.ip_address}"
   }
-  # Mark as sensitive since it contains resource names that might be considered sensitive
   sensitive = true
 }

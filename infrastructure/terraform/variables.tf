@@ -67,35 +67,6 @@ variable "data_residency" {
   type        = string
 }
 
-# Database Configuration
-variable "db_name" {
-  description = "PostgreSQL database name"
-  type        = string
-}
-
-variable "db_username" {
-  description = "PostgreSQL administrator username"
-  type        = string
-}
-
-variable "db_sku_name" {
-  description = "PostgreSQL SKU name (e.g., B_Standard_B1ms)"
-  type        = string
-  default     = "B_Standard_B1ms"
-}
-
-variable "db_storage_mb" {
-  description = "PostgreSQL storage size in MB"
-  type        = number
-  default     = 32768
-}
-
-variable "db_version" {
-  description = "PostgreSQL version"
-  type        = string
-  default     = "16"
-}
-
 # AKS Configuration
 variable "aks_node_count" {
   description = "Number of nodes in the AKS cluster"
@@ -144,21 +115,36 @@ variable "vault_token" {
 variable "enable_vault_integration" {
   description = "Enable HCP Vault integration for storing secrets"
   type        = bool
-  default     = false
+  default     = true
 }
 
-# Monitoring Configuration (Optional)
-variable "datadog_api_key" {
-  description = "Datadog API key for monitoring"
+# Icinga Monitoring Configuration
+variable "icinga_vm_size" {
+  description = "VM size for Icinga monitoring server"
   type        = string
-  default     = ""
-  sensitive   = true
+  default     = "Standard_B2s"
 }
 
-variable "datadog_site" {
-  description = "Datadog site (e.g., datadoghq.com, datadoghq.eu)"
+variable "icinga_admin_username" {
+  description = "Admin username for Icinga VM"
   type        = string
-  default     = "datadoghq.com"
+  default     = "icingaadmin"
+}
+
+variable "icinga_ssh_public_key" {
+  description = "SSH public key for Icinga VM access"
+  type        = string
+}
+
+variable "icinga_allowed_ip_range" {
+  description = "IP range allowed to access Icinga (CIDR notation)"
+  type        = string
+  default     = "*"
+
+  validation {
+    condition     = can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", var.icinga_allowed_ip_range)) || var.icinga_allowed_ip_range == "*"
+    error_message = "Must be a valid CIDR notation or '*' for all IPs (not recommended for production)."
+  }
 }
 
 # Networking (Optional for future)

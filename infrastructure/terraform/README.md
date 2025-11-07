@@ -100,7 +100,7 @@ Or create `terraform.tfvars.secret`:
 
 # QNT9 SRS - Azure Infrastructure (Terraform)
 
-This directory contains Terraform configurations for deploying the Stock Recommendation System (SRS) infrastructure on **Microsoft Azure**.
+This directory contains Terraform configurations for deploying the Stock Recommendation System (SRS) infrastructure on Microsoft Azure.
 
 ## Table of Contents
 
@@ -110,23 +110,24 @@ This directory contains Terraform configurations for deploying the Stock Recomme
 - [Infrastructure Components](#infrastructure-components)
 - [Configuration](#configuration)
 - [Deployment](#deployment)
+- [Icinga Monitoring Setup](#icinga-monitoring-setup)
 - [Outputs](#outputs)
 - [Cost Optimization](#cost-optimization)
 - [Troubleshooting](#troubleshooting)
 
 ## Architecture Overview
 
-This infrastructure replaces the AWS-based setup with cost-effective Azure services:
+This infrastructure uses cost-effective Azure services with self-hosted open-source monitoring:
 
-| Component | Azure Service | Purpose |
-|-----------|--------------|---------|
+| Component | Service | Purpose |
+|-----------|---------|---------|
 | Container Orchestration | Azure Kubernetes Service (AKS) | Managed Kubernetes cluster for microservices |
-| Database | PostgreSQL Flexible Server | Managed database with automatic backups |
-| Storage | Azure Blob Storage | Object storage for reports and Terraform state |
+| Container Registry | Azure Container Registry (ACR) | Docker image storage |
 | Serverless Compute | Azure Functions | Scheduled jobs and background processing |
-| Secrets Management | Azure Key Vault + HCP Vault | Secure secrets storage |
-| Monitoring | Application Insights | Application performance monitoring |
-| Logging | Log Analytics Workspace | Centralized logging and analytics |
+| Monitoring | Icinga (self-hosted) | Open-source infrastructure and application monitoring |
+| Secrets Management | HCP Vault | External secrets management (HashiCorp Cloud Platform) |
+| Storage | Azure Blob Storage | Object storage for reports and Terraform state |
+| Database | Supabase | Managed PostgreSQL (external service) |
 
 ## Prerequisites
 
@@ -165,9 +166,19 @@ This infrastructure replaces the AWS-based setup with cost-effective Azure servi
 Ensure you have an active Azure subscription with sufficient permissions:
 - Resource Group creation
 - AKS cluster management
-- PostgreSQL server creation
 - Storage account management
-- Key Vault access
+- Virtual Machine creation (for Icinga)
+- Network resource management
+
+### SSH Key for Icinga
+
+Generate an SSH key pair for Icinga VM access:
+
+```bash
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/icinga_rsa -C "icinga@qnt9-srs"
+```
+
+Add the public key to your tfvars file or use the `TF_VAR_icinga_ssh_public_key` environment variable.
 
 ### HCP Vault Setup
 
@@ -182,6 +193,15 @@ Ensure you have an active Azure subscription with sufficient permissions:
    vault secrets enable -version=2 kv
    ```
 
+### Supabase Setup
+
+1. Create a Supabase project at https://supabase.com
+2. Note down:
+   - Project URL
+   - Service Role Key
+   - Anon Key
+3. Configure these in your application services (not in Terraform)
+
 ## Quick Start
 
 ### 1. Clone and Navigate
@@ -190,7 +210,13 @@ Ensure you have an active Azure subscription with sufficient permissions:
 cd infrastructure/terraform
 ```
 
-### 2. Configure Environment Variables
+### 2. Generate SSH Key for Icinga
+
+```bash
+ssh-keygen -t rsa -b 4096 -f ~/.ssh/icinga_rsa -C "icinga@qnt9-srs"
+```
+
+### 3. Configure Environment Variables
 
 Create a `.env` file or export variables:
 
@@ -201,9 +227,10 @@ export VAULT_TOKEN="your-vault-token"
 export TF_VAR_vault_address=$VAULT_ADDR
 export TF_VAR_vault_namespace=$VAULT_NAMESPACE
 export TF_VAR_vault_token=$VAULT_TOKEN
+export TF_VAR_icinga_ssh_public_key=$(cat ~/.ssh/icinga_rsa.pub)
 ```
 
-### 3. Initialize Terraform
+### 4. Initialize Terraform
 
 ```bash
 make init ENV=dev
@@ -211,7 +238,7 @@ make init ENV=dev
 terraform init
 ```
 
-### 4. Review the Plan
+### 5. Review the Plan
 
 ```bash
 make plan ENV=dev
@@ -219,7 +246,7 @@ make plan ENV=dev
 terraform plan -var-file="environments/dev.tfvars"
 ```
 
-### 5. Apply Infrastructure
+### 6. Apply Infrastructure
 
 ```bash
 make apply ENV=dev
@@ -227,13 +254,28 @@ make apply ENV=dev
 terraform apply -var-file="environments/dev.tfvars"
 ```
 
-### 6. Configure kubectl
+### 7. Configure kubectl
 
 ```bash
 make configure-kubectl
 # or
 az aks get-credentials --resource-group <resource-group> --name <aks-cluster>
 ```
+
+### 8. Setup Icinga Monitoring
+
+```bash
+# Get Icinga VM IP
+ICINGA_IP=$(terraform output -raw icinga_vm_public_ip)
+
+# SSH to Icinga VM
+ssh -i ~/.ssh/icinga_rsa icingaadmin@$ICINGA_IP
+
+# Run installation script
+sudo bash /tmp/install-icinga.sh
+```
+
+See [Icinga Monitoring Setup](#icinga-monitoring-setup) for detailed configuration.
 
 ## Infrastructure Components
 
@@ -247,21 +289,28 @@ az aks get-credentials --resource-group <resource-group> --name <aks-cluster>
 #### 2. Azure Kubernetes Service (AKS)
 - **Purpose**: Managed Kubernetes cluster for microservices
 - **Node Pool**: Auto-scaling (min: 1, max: node_count + 3)
-- **VM Size**: `Standard_B2s` (dev), `Standard_D4s_v3` (prod)
+- **VM Size**: `Standard_B2s` (dev), `Standard_D2s_v3` (staging/prod)
 - **Features**:
   - Azure AD integration
   - Azure RBAC
-  - Container Insights monitoring
   - Auto-scaling enabled
+  - Integration with ACR
 
-#### 3. PostgreSQL Flexible Server
-- **Purpose**: Managed relational database
-- **Version**: PostgreSQL 16
-- **SKU**: `B_Standard_B1ms` (dev), `GP_Standard_D2s_v3` (prod)
-- **Backup**: 7-day retention
-- **Security**: SSL required, Azure firewall rules
+#### 3. Azure Container Registry (ACR)
+- **Purpose**: Private Docker image registry
+- **SKU**: Basic (dev), Standard (staging/prod)
+- **Features**:
+  - Admin user enabled for CI/CD
+  - AKS pull permissions configured
+  - Geo-replication (production only)
 
-#### 4. Azure Blob Storage
+#### 4. Azure Functions
+- **Purpose**: Serverless compute for scheduled jobs
+- **Runtime**: Python 3.11
+- **Plan**: Consumption (Y1)
+- **Use Cases**: Weekly reports, data aggregation
+
+#### 5. Azure Blob Storage
 - **Purpose**: Object storage for reports and Terraform state
 - **Tier**: Standard with LRS replication
 - **Features**:
@@ -270,25 +319,22 @@ az aks get-credentials --resource-group <resource-group> --name <aks-cluster>
   - Private access only
   - TLS 1.2 minimum
 
-#### 5. Azure Functions
-- **Purpose**: Serverless compute for scheduled jobs
-- **Runtime**: Python 3.11
-- **Plan**: Consumption (Y1)
-- **Integration**: Application Insights for monitoring
-
-#### 6. Azure Key Vault
-- **Purpose**: Secrets management
+#### 6. Icinga Monitoring Server
+- **Purpose**: Self-hosted open-source infrastructure and application monitoring
+- **Platform**: Ubuntu 22.04 LTS VM
+- **VM Size**: `Standard_B1s` (dev), `Standard_B2s` (staging), `Standard_B2ms` (prod)
 - **Features**:
-  - Soft delete enabled
-  - Access policies for Terraform
-  - Integration with HCP Vault
-
-#### 7. Application Insights
-- **Purpose**: Application monitoring and telemetry
-- **Features**:
-  - Log Analytics workspace integration
-  - 30-day retention
-  - Custom metrics and traces
+  - Icinga2 core monitoring engine
+  - Icinga Web 2 interface
+  - Kubernetes cluster monitoring
+  - Application performance monitoring
+  - Custom check plugins
+  - API for automation
+- **Networking**:
+  - Dedicated VNet and subnet
+  - Public IP with static allocation
+  - NSG rules for SSH (22), HTTP (80), HTTPS (443), Icinga API (5665)
+  - Configurable IP whitelist for security
 
 ### Modules Structure
 
@@ -298,11 +344,7 @@ modules/
 │   ├── main.tf
 │   ├── variables.tf
 │   └── outputs.tf
-├── postgresql/             # PostgreSQL Flexible Server
-│   ├── main.tf
-│   ├── variables.tf
-│   └── outputs.tf
-├── app-insights/           # Application Insights
+├── acr/                    # Azure Container Registry
 │   ├── main.tf
 │   ├── variables.tf
 │   └── outputs.tf
@@ -310,10 +352,10 @@ modules/
 │   ├── main.tf
 │   ├── variables.tf
 │   └── outputs.tf
-└── key-vault/              # Azure Key Vault
-    ├── main.tf
-    ├── variables.tf
-    └── outputs.tf
+└── (removed modules)
+    ├── postgresql/         # REMOVED - Using Supabase instead
+    ├── app-insights/       # REMOVED - Using Icinga instead
+    └── key-vault/          # REMOVED - Using HCP Vault instead
 ```
 
 ## Configuration
@@ -324,21 +366,24 @@ Three environment configurations are provided:
 
 #### Development (`environments/dev.tfvars`)
 - Minimal resources for cost savings
-- 1 AKS node
-- Burstable PostgreSQL tier
+- 1 AKS node (`Standard_B2s`)
+- Icinga monitoring (`Standard_B1s`)
 - Internal data classification
+- Open IP access for Icinga (development only)
 
 #### Staging (`environments/staging.tfvars`)
 - Production-like configuration
-- 2 AKS nodes
-- General Purpose PostgreSQL tier
+- 2 AKS nodes (`Standard_D2s_v3`)
+- Icinga monitoring (`Standard_B2s`)
 - Confidential data classification
+- Restricted IP access recommended
 
 #### Production (`environments/prd.tfvars`)
 - High availability configuration
-- 3 AKS nodes
-- General Purpose PostgreSQL tier with higher storage
+- 2-3 AKS nodes (`Standard_D2s_v3`)
+- Icinga monitoring (`Standard_B2ms`)
 - Confidential data classification
+- Strict IP whitelisting required
 
 ### Required Variables
 
@@ -363,17 +408,16 @@ criticality              # System criticality
 compliance_requirements  # Comma-separated compliance standards
 data_residency          # Data residency requirement
 
-# Database
-db_name                 # PostgreSQL database name
-db_username             # PostgreSQL admin username
-db_sku_name            # PostgreSQL SKU
-db_storage_mb          # Storage size in MB
-db_version             # PostgreSQL version
-
 # AKS
 aks_node_count         # Number of AKS nodes
 aks_vm_size            # VM size for nodes
 aks_kubernetes_version # Kubernetes version
+
+# Icinga Monitoring
+icinga_vm_size          # VM size for Icinga server
+icinga_admin_username   # Admin username for Icinga VM
+icinga_ssh_public_key   # SSH public key for access
+icinga_allowed_ip_range # IP range allowed to access Icinga
 ```
 
 ### Sensitive Variables
@@ -383,7 +427,7 @@ Store sensitive values in HCP Vault or environment variables:
 ```bash
 export TF_VAR_vault_address="https://your-vault.hashicorp.cloud:8200"
 export TF_VAR_vault_token="your-vault-token"
-export TF_VAR_sendgrid_api_key="your-sendgrid-key"
+export TF_VAR_icinga_ssh_public_key=$(cat ~/.ssh/icinga_rsa.pub)
 ```
 
 ## Deployment
@@ -423,13 +467,13 @@ make destroy ENV=dev
 terraform init
 
 # Plan
-terraform plan -var-file="environments/dev.tfvars" -out=tfplan
+terraform plan -var-file="environments/dev.tfvars" -var="icinga_ssh_public_key=$(cat ~/.ssh/icinga_rsa.pub)" -out=tfplan
 
 # Apply
 terraform apply tfplan
 
 # Destroy
-terraform destroy -var-file="environments/dev.tfvars"
+terraform destroy -var-file="environments/dev.tfvars" -var="icinga_ssh_public_key=$(cat ~/.ssh/icinga_rsa.pub)"
 ```
 
 ### Deployment Workflow
@@ -452,6 +496,135 @@ make prd-plan
 make prd-apply
 ```
 
+## Icinga Monitoring Setup
+
+### Initial Installation
+
+After Terraform deploys the Icinga VM, you need to install and configure Icinga:
+
+```bash
+# Get Icinga VM IP address
+ICINGA_IP=$(terraform output -raw icinga_vm_public_ip)
+
+# Copy installation script to VM
+scp -i ~/.ssh/icinga_rsa scripts/install-icinga.sh icingaadmin@$ICINGA_IP:/tmp/
+
+# SSH to Icinga VM
+ssh -i ~/.ssh/icinga_rsa icingaadmin@$ICINGA_IP
+
+# Run installation script
+sudo bash /tmp/install-icinga.sh
+```
+
+The installation script will:
+- Install Icinga2 core engine
+- Install Icinga Web 2 interface
+- Configure PostgreSQL database
+- Enable Icinga2 API
+- Create default API users
+- Configure firewall rules
+
+### Access Icinga Web Interface
+
+After installation completes:
+
+1. Note the setup token displayed at the end of installation
+2. Open browser to: `https://<ICINGA_IP>/icingaweb2/setup`
+3. Complete the web-based setup wizard
+
+Default credentials (change immediately):
+- **Icinga2 DB**: icinga2 / icinga2
+- **Icinga Web 2 DB**: icingaweb2 / icingaweb2
+- **API User**: icingaweb2 / icingaweb2
+
+### Configure Kubernetes Monitoring
+
+To monitor your AKS cluster:
+
+```bash
+# Copy configuration script to Icinga VM
+scp -i ~/.ssh/icinga_rsa scripts/configure-k8s-monitoring.sh icingaadmin@$ICINGA_IP:/tmp/
+
+# SSH to Icinga VM
+ssh -i ~/.ssh/icinga_rsa icingaadmin@$ICINGA_IP
+
+# Run configuration script
+sudo bash /tmp/configure-k8s-monitoring.sh
+```
+
+This configures:
+- Kubernetes API health checks
+- Node status monitoring
+- Pod status monitoring
+- Deployment health checks
+
+### Configure AKS Access from Icinga
+
+On the Icinga VM, configure kubectl to access your AKS cluster:
+
+```bash
+# Install Azure CLI on Icinga VM
+curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+
+# Login to Azure (will require browser authentication)
+az login
+
+# Get AKS credentials
+az aks get-credentials --resource-group <rg-name> --name <aks-name>
+
+# Verify connection
+kubectl get nodes
+```
+
+### Monitoring Microservices
+
+Create custom check scripts for your microservices:
+
+```bash
+# Example: Monitor frontend service
+sudo tee /usr/lib/nagios/plugins/check_frontend_service.sh > /dev/null <<'EOF'
+#!/bin/bash
+FRONTEND_URL="http://your-frontend-url"
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" $FRONTEND_URL/health)
+
+if [ "$HTTP_CODE" == "200" ]; then
+  echo "OK - Frontend service is responding"
+  exit 0
+else
+  echo "CRITICAL - Frontend service returned HTTP $HTTP_CODE"
+  exit 2
+fi
+EOF
+
+sudo chmod +x /usr/lib/nagios/plugins/check_frontend_service.sh
+```
+
+Add to Icinga configuration:
+
+```bash
+sudo tee -a /etc/icinga2/conf.d/services.conf > /dev/null <<'EOF'
+object Service "frontend-service" {
+  import "generic-service"
+  host_name = "kubernetes-cluster"
+  check_command = "check_frontend_service"
+  check_interval = 5m
+}
+EOF
+
+sudo systemctl restart icinga2
+```
+
+### Security Recommendations
+
+For production deployments:
+
+1. **Change default passwords immediately**
+2. **Configure IP whitelisting**: Update `icinga_allowed_ip_range` in tfvars
+3. **Enable HTTPS**: Configure SSL certificate for Icinga Web
+4. **Setup authentication**: Integrate with Azure AD or LDAP
+5. **Configure email notifications**: Setup SMTP for alerts
+6. **Regular backups**: Backup Icinga configuration and database
+
 ## Outputs
 
 After successful deployment, Terraform provides these outputs:
@@ -461,7 +634,7 @@ After successful deployment, Terraform provides these outputs:
 terraform output
 
 # View specific output
-terraform output postgresql_connection_string
+terraform output icinga_vm_public_ip
 
 # Export to JSON
 terraform output -json > outputs.json
@@ -472,12 +645,13 @@ terraform output -json > outputs.json
 - `resource_group_name`: Resource group name
 - `aks_cluster_name`: AKS cluster name
 - `aks_get_credentials_command`: Command to configure kubectl
-- `postgresql_server_fqdn`: PostgreSQL server FQDN
-- `postgresql_connection_string`: Database connection string (sensitive)
+- `acr_name`: Azure Container Registry name
+- `acr_login_server`: ACR login server URL
 - `storage_account_name`: Storage account name
 - `function_app_url`: Function App URL
-- `key_vault_name`: Key Vault name
-- `app_insights_instrumentation_key`: Application Insights key (sensitive)
+- `icinga_vm_public_ip`: Icinga server public IP address
+- `icinga_web_url`: Icinga Web interface URL
+- `icinga_ssh_command`: SSH command to connect to Icinga server
 
 ## Cost Optimization
 
@@ -485,9 +659,27 @@ terraform output -json > outputs.json
 
 | Environment | Configuration | Estimated Cost (USD) |
 |------------|---------------|---------------------|
-| Development | 1 node, Burstable tier | ~$97/month |
-| Staging | 2 nodes, GP tier | ~$350/month |
-| Production | 3 nodes, GP tier, HA | ~$650/month |
+| Development | 1 AKS node, B-series VMs | ~$65/month |
+| Staging | 2 AKS nodes, D-series VMs | ~$280/month |
+| Production | 2 AKS nodes, D-series VMs, HA | ~$350/month |
+
+### Cost Breakdown by Service
+
+**Development Environment:**
+- AKS (1x Standard_B2s): ~$30/month
+- Icinga VM (Standard_B1s): ~$10/month
+- ACR (Basic): ~$5/month
+- Storage Account: ~$5/month
+- Function App (Consumption): ~$5/month
+- Networking: ~$10/month
+
+**Production Environment:**
+- AKS (2x Standard_D2s_v3): ~$250/month
+- Icinga VM (Standard_B2ms): ~$30/month
+- ACR (Standard): ~$20/month
+- Storage Account: ~$15/month
+- Function App (Consumption): ~$10/month
+- Networking: ~$25/month
 
 ### Cost-Saving Features
 
@@ -496,6 +688,10 @@ terraform output -json > outputs.json
 3. **Consumption Plan**: Functions use pay-per-execution model
 4. **Storage Optimization**: Local redundancy for non-critical data
 5. **Resource Tagging**: All resources tagged for cost tracking
+6. **Removed Services**: 
+   - PostgreSQL (~$100-200/month saved - using Supabase free tier)
+   - Application Insights (~$50/month saved - using Icinga)
+   - Key Vault (~$5/month saved - using HCP Vault free tier)
 
 ### Cost Estimation
 
@@ -551,6 +747,35 @@ If resources with the same name exist:
 az aks get-credentials --resource-group <rg-name> --name <aks-name> --overwrite-existing
 ```
 
+#### 6. Icinga VM SSH Connection Issues
+
+```bash
+# Check if SSH key is correct
+ssh-add -l
+
+# Add SSH key to agent
+ssh-add ~/.ssh/icinga_rsa
+
+# Test connection with verbose output
+ssh -vvv -i ~/.ssh/icinga_rsa icingaadmin@<ICINGA_IP>
+
+# Check NSG rules
+az network nsg rule list --resource-group <rg-name> --nsg-name <nsg-name>
+```
+
+#### 7. Icinga Installation Failures
+
+```bash
+# Check Icinga logs
+sudo journalctl -u icinga2 -f
+
+# Verify PostgreSQL is running
+sudo systemctl status postgresql
+
+# Test Icinga API
+curl -k -u icingaweb2:icingaweb2 https://localhost:5665/v1/status
+```
+
 ### Validation Commands
 
 ```bash
@@ -585,22 +810,46 @@ unset TF_LOG_PATH
 ## Security Best Practices
 
 1. **Never commit secrets**: Use `.gitignore` for sensitive files
-2. **Use HCP Vault**: Store all secrets in Vault
+2. **Use HCP Vault**: Store all secrets in Vault (Supabase keys, API tokens)
 3. **Enable RBAC**: Azure AD integration enabled on AKS
-4. **Network isolation**: Use private endpoints in production
-5. **Audit logging**: Enable Azure Monitor for all resources
-6. **Least privilege**: Use managed identities where possible
+4. **Network isolation**: Use NSG rules to restrict access
+5. **SSH key rotation**: Rotate Icinga SSH keys regularly
+6. **IP whitelisting**: Configure strict IP ranges for Icinga in production
 7. **Encryption**: TLS 1.2 minimum, data encrypted at rest
+8. **Least privilege**: Use managed identities where possible
+9. **Audit logging**: Enable Azure Monitor for all resources
+10. **Regular updates**: Keep Icinga, Kubernetes, and all components updated
 
 ## Maintenance
 
 ### Regular Tasks
 
 1. **Update Kubernetes version**: Review AKS release notes monthly
-2. **Patch PostgreSQL**: Apply security patches during maintenance windows
+2. **Update Icinga**: Apply security patches and updates monthly
 3. **Review costs**: Monitor Azure Cost Management weekly
-4. **Backup verification**: Test PostgreSQL backup restoration quarterly
-5. **Security scanning**: Run Terraform security scans before deployment
+4. **Security scanning**: Run Terraform security scans before deployment
+5. **Backup verification**: Test Icinga configuration backups quarterly
+6. **Certificate renewal**: Monitor SSL certificate expiration
+7. **Access review**: Review and audit Icinga user access quarterly
+
+### Icinga Maintenance
+
+```bash
+# Backup Icinga configuration
+ssh -i ~/.ssh/icinga_rsa icingaadmin@<ICINGA_IP>
+sudo tar -czf /tmp/icinga-backup-$(date +%Y%m%d).tar.gz \
+  /etc/icinga2 \
+  /etc/icingaweb2 \
+  /var/lib/icinga2
+
+# Update Icinga
+sudo apt-get update
+sudo apt-get upgrade icinga2 icingaweb2
+
+# Restart services
+sudo systemctl restart icinga2
+sudo systemctl restart apache2
+```
 
 ### Terraform State Management
 
@@ -628,6 +877,17 @@ When making changes to infrastructure:
 For issues or questions:
 - Technical Owner: devops@qnt9.com
 - Business Owner: product@qnt9.com
+- Icinga Documentation: https://icinga.com/docs/
+- Terraform Documentation: https://www.terraform.io/docs/
+
+## Additional Resources
+
+- [Azure AKS Documentation](https://docs.microsoft.com/en-us/azure/aks/)
+- [Azure Container Registry](https://docs.microsoft.com/en-us/azure/container-registry/)
+- [HCP Vault Documentation](https://developer.hashicorp.com/vault)
+- [Icinga Documentation](https://icinga.com/docs/)
+- [Icinga Kubernetes Monitoring](https://github.com/tomrijndorp/icinga2-kubernetes)
+- [Supabase Documentation](https://supabase.com/docs)
 
 ## License
 
