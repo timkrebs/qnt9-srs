@@ -1121,3 +1121,72 @@ class StockAPIClient:
         except Exception as e:
             logger.error(f"Error fetching stock report data for {symbol}: {e}")
             return None
+
+    def get_historical_data_ohlcv(
+        self, symbol: str, period: str = "1d", interval: str = "5m"
+    ) -> Optional[list[Dict[str, Any]]]:
+        """
+        Retrieve historical OHLCV (Open, High, Low, Close, Volume) data for stock.
+
+        This method provides comprehensive OHLCV data suitable for professional
+        charting and technical analysis, including candlestick charts.
+
+        Args:
+            symbol: Stock ticker symbol
+            period: Time period (e.g., '1d', '5d', '1mo', '3mo', '1y', 'max')
+            interval: Data interval (e.g., '1m', '5m', '15m', '1h', '1d')
+
+        Returns:
+            List of OHLCV data points or None if error occurs
+
+        Example:
+            [
+                {
+                    "timestamp": "2024-01-01T09:30:00-05:00",
+                    "open": 150.0,
+                    "high": 152.0,
+                    "low": 149.5,
+                    "close": 151.5,
+                    "volume": 1000000
+                }
+            ]
+        """
+        try:
+            logger.info(f"Fetching {period} OHLCV data for {symbol} (interval: {interval})")
+            
+            # Use Yahoo Finance client directly for historical data
+            import yfinance as yf
+            stock = yf.Ticker(symbol)
+            hist = stock.history(period=period, interval=interval)
+
+            if hist.empty:
+                logger.warning(f"No OHLCV data found for {symbol}")
+                return None
+
+            ohlcv_data = []
+            for index, row in hist.iterrows():
+                # Convert timezone-aware datetime to ISO format with timezone
+                timestamp = index.isoformat()
+                
+                ohlcv_data.append(
+                    {
+                        "timestamp": timestamp,
+                        "open": float(row["Open"]),
+                        "high": float(row["High"]),
+                        "low": float(row["Low"]),
+                        "close": float(row["Close"]),
+                        "volume": int(row["Volume"])
+                        if not pd.isna(row["Volume"])
+                        else None,
+                    }
+                )
+
+            logger.info(
+                f"Retrieved {len(ohlcv_data)} OHLCV data points for {symbol} "
+                f"({period}, {interval})"
+            )
+            return ohlcv_data
+
+        except Exception as e:
+            logger.error(f"Error fetching OHLCV data for {symbol}: {e}")
+            return None

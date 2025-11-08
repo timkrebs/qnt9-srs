@@ -419,6 +419,140 @@ class SearchServiceClient:
             )
             return []
 
+    async def get_historical_data(
+        self, symbol: str, period: str = "1d", interval: str = "5m"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get historical OHLCV data for a stock symbol.
+
+        Args:
+            symbol: Stock ticker symbol (e.g., AAPL, MSFT)
+            period: Time period (1d, 5d, 1mo, 3mo, 1y, etc.)
+            interval: Data interval (1m, 5m, 15m, 1h, 1d, etc.)
+
+        Returns:
+            Dictionary with historical data or None if not found
+        """
+        start_time = time.perf_counter()
+
+        try:
+            logger.debug(
+                "Requesting historical data",
+                extra={
+                    "extra_fields": {
+                        "symbol": symbol,
+                        "period": period,
+                        "interval": interval,
+                    }
+                },
+            )
+
+            params = {"period": period, "interval": interval}
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/api/stocks/{symbol}/historical",
+                    params=params,
+                    headers=self._get_request_headers(),
+                )
+
+                duration_ms = (time.perf_counter() - start_time) * 1000
+
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.debug(
+                        "Historical data retrieved successfully",
+                        extra={
+                            "extra_fields": {
+                                "symbol": symbol,
+                                "period": period,
+                                "interval": interval,
+                                "data_points": data.get("count", 0),
+                                "cached": data.get("cached", False),
+                                "duration_ms": duration_ms,
+                            }
+                        },
+                    )
+                    return data
+
+                elif response.status_code == 404:
+                    logger.warning(
+                        "Historical data not found",
+                        extra={
+                            "extra_fields": {
+                                "symbol": symbol,
+                                "period": period,
+                                "interval": interval,
+                                "duration_ms": duration_ms,
+                            }
+                        },
+                    )
+                    return None
+
+                elif response.status_code == 400:
+                    error_data = response.json()
+                    logger.warning(
+                        "Invalid historical data request",
+                        extra={
+                            "extra_fields": {
+                                "symbol": symbol,
+                                "period": period,
+                                "interval": interval,
+                                "error_message": error_data.get("detail", {}).get("message", "Bad request"),
+                                "duration_ms": duration_ms,
+                            }
+                        },
+                    )
+                    return None
+
+                else:
+                    logger.error(
+                        "Historical data request failed",
+                        extra={
+                            "extra_fields": {
+                                "symbol": symbol,
+                                "period": period,
+                                "interval": interval,
+                                "status_code": response.status_code,
+                                "response_body": response.text[:200],
+                                "duration_ms": duration_ms,
+                            }
+                        },
+                    )
+                    return None
+
+        except httpx.TimeoutException:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.warning(
+                "Historical data request timeout",
+                extra={
+                    "extra_fields": {
+                        "symbol": symbol,
+                        "period": period,
+                        "interval": interval,
+                        "duration_ms": duration_ms,
+                    }
+                },
+            )
+            return None
+
+        except Exception as error:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(
+                "Historical data request error",
+                extra={
+                    "extra_fields": {
+                        "symbol": symbol,
+                        "period": period,
+                        "interval": interval,
+                        "error_type": type(error).__name__,
+                        "error_message": str(error),
+                        "duration_ms": duration_ms,
+                    }
+                },
+            )
+            return None
+
     async def health_check(self) -> bool:
         """
         Check if search service is healthy and responding.
