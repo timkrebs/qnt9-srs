@@ -295,7 +295,6 @@ module "function_app" {
   resource_prefix      = local.resource_prefix
   storage_account_name = azurerm_storage_account.main.name
   storage_account_key  = azurerm_storage_account.main.primary_access_key
-  app_insights_key     = "" # Icinga handles monitoring instead
 
   tags = local.common_tags
 }

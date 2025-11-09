@@ -132,8 +132,14 @@ variable "icinga_admin_username" {
 }
 
 variable "icinga_ssh_public_key" {
-  description = "SSH public key for Icinga VM access"
+  description = "SSH public key for Icinga VM access. Set via HCP Terraform workspace variable or TF_VAR_icinga_ssh_public_key environment variable."
   type        = string
+  default     = ""
+
+  validation {
+    condition     = var.icinga_ssh_public_key != "" ? can(regex("^ssh-(rsa|ed25519|ecdsa)", var.icinga_ssh_public_key)) : true
+    error_message = "Must be a valid SSH public key starting with ssh-rsa, ssh-ed25519, or ssh-ecdsa."
+  }
 }
 
 variable "icinga_allowed_ip_range" {
