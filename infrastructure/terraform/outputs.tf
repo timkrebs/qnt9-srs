@@ -61,13 +61,28 @@ output "icinga_vm_fqdn" {
 }
 
 output "icinga_web_url" {
-  description = "Icinga Web interface URL"
-  value       = "https://${azurerm_public_ip.icinga.ip_address}"
+  description = "Icinga Web interface URL (use HTTP, not HTTPS initially)"
+  value       = "http://${azurerm_public_ip.icinga.ip_address}/icingaweb2"
+}
+
+output "icinga_web_credentials" {
+  description = "Default Icinga Web 2 credentials (CHANGE IN PRODUCTION!)"
+  value = {
+    username = "admin"
+    password = "admin"
+    note     = "These are default credentials set by cloud-init. Change them immediately in production!"
+  }
+  sensitive = true
 }
 
 output "icinga_ssh_command" {
   description = "SSH command to connect to Icinga server"
   value       = "ssh ${var.icinga_admin_username}@${azurerm_public_ip.icinga.ip_address}"
+}
+
+output "icinga_installation_log" {
+  description = "Command to check Icinga installation log on the VM"
+  value       = "ssh ${var.icinga_admin_username}@${azurerm_public_ip.icinga.ip_address} 'cat /var/log/icinga-install-status.txt'"
 }
 
 # Function App

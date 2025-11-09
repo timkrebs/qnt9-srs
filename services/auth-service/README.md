@@ -267,12 +267,12 @@ const refreshResponse = await fetch('http://localhost:8001/auth/refresh', {
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `SUPABASE_URL` | Your Supabase project URL | ✅ |
-| `SUPABASE_SERVICE_KEY` | Service role key from Supabase | ✅ |
-| `SUPABASE_ANON_KEY` | Anonymous key from Supabase | ✅ |
-| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | ❌ |
-| `DEBUG` | Enable debug mode | ❌ |
-| `CORS_ORIGINS` | Allowed CORS origins | ❌ |
+| `SUPABASE_URL` | Your Supabase project URL |  |
+| `SUPABASE_SERVICE_KEY` | Service role key from Supabase |  |
+| `SUPABASE_ANON_KEY` | Anonymous key from Supabase |  |
+| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) |  |
+| `DEBUG` | Enable debug mode |  |
+| `CORS_ORIGINS` | Allowed CORS origins |  |
 
 ## Security Best Practices
 

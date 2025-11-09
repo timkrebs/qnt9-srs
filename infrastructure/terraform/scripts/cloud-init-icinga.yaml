@@ -1,0 +1,255 @@
+#cloud-config
+# Icinga2 Cloud-Init Configuration for Ubuntu 22.04 LTS
+# This script runs automatically on first VM boot
+
+package_update: true
+package_upgrade: true
+
+# Set non-interactive mode for all package installations
+bootcmd:
+  - echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+  - echo '$nrconf{restart} = "a";' >> /etc/needrestart/needrestart.conf
+
+packages:
+  - wget
+  - gnupg
+  - software-properties-common
+  - curl
+
+write_files:
+  - path: /tmp/install-icinga-automated.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -e
+      
+      # Set non-interactive mode
+      export DEBIAN_FRONTEND=noninteractive
+      export NEEDRESTART_MODE=a
+      
+      echo "[$(date)] Starting Icinga2 automated installation..." | tee /var/log/icinga-install.log
+      
+      # Add Icinga repository
+      echo "[$(date)] Adding Icinga repository..." | tee -a /var/log/icinga-install.log
+      wget -O - https://packages.icinga.com/icinga.key | apt-key add -
+      echo "deb https://packages.icinga.com/ubuntu icinga-jammy main" > /etc/apt/sources.list.d/icinga.list
+      echo "deb-src https://packages.icinga.com/ubuntu icinga-jammy main" >> /etc/apt/sources.list.d/icinga.list
+      
+      apt-get update
+      
+      # Install Icinga2 and plugins
+      echo "[$(date)] Installing Icinga2..." | tee -a /var/log/icinga-install.log
+      apt-get install -y icinga2 monitoring-plugins
+      
+      # Install PostgreSQL
+      echo "[$(date)] Installing PostgreSQL..." | tee -a /var/log/icinga-install.log
+      apt-get install -y postgresql postgresql-contrib
+      
+      # Wait for PostgreSQL to be ready
+      systemctl start postgresql
+      sleep 5
+      
+      # Pre-configure IDO package
+      echo "[$(date)] Pre-configuring Icinga2 IDO..." | tee -a /var/log/icinga-install.log
+      debconf-set-selections <<< 'icinga2-ido-pgsql icinga2-ido-pgsql/dbconfig-install boolean false'
+      
+      # Install IDO module
+      apt-get install -y icinga2-ido-pgsql
+      
+      # Setup Icinga2 database manually
+      echo "[$(date)] Setting up Icinga2 database..." | tee -a /var/log/icinga-install.log
+      sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = 'icinga2'" | grep -q 1 || \
+        sudo -u postgres psql -c "CREATE DATABASE icinga2;"
+      sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='icinga2'" | grep -q 1 || \
+        sudo -u postgres psql -c "CREATE USER icinga2 WITH PASSWORD 'icinga2';"
+      sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE icinga2 TO icinga2;"
+      
+      # Import schema
+      TABLE_COUNT=$(sudo -u postgres psql -d icinga2 -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'")
+      if [ "$TABLE_COUNT" -eq "0" ]; then
+        echo "[$(date)] Importing Icinga2 schema..." | tee -a /var/log/icinga-install.log
+        sudo -u postgres psql -d icinga2 < /usr/share/icinga2-ido-pgsql/schema/pgsql.sql
+      fi
+      
+      # Configure IDO
+      cat > /etc/icinga2/features-available/ido-pgsql.conf <<'EOFIDO'
+      library "db_ido_pgsql"
+      
+      object IdoPgsqlConnection "ido-pgsql" {
+        user = "icinga2"
+        password = "icinga2"
+        host = "localhost"
+        database = "icinga2"
+      }
+      EOFIDO
+      
+      icinga2 feature enable ido-pgsql
+      
+      # Install Apache and PHP
+      echo "[$(date)] Installing Apache and PHP..." | tee -a /var/log/icinga-install.log
+      apt-get install -y apache2 php php-gd php-mbstring php-intl php-pgsql php-curl php-xml php-cli
+      
+      # Pre-configure Icinga Web 2
+      debconf-set-selections <<< 'icingaweb2 icingaweb2/dbconfig-install boolean false'
+      
+      # Install Icinga Web 2
+      echo "[$(date)] Installing Icinga Web 2..." | tee -a /var/log/icinga-install.log
+      apt-get install -y icingaweb2 icingacli
+      
+      # Setup Icinga Web 2 database
+      echo "[$(date)] Setting up Icinga Web 2 database..." | tee -a /var/log/icinga-install.log
+      sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = 'icingaweb2'" | grep -q 1 || \
+        sudo -u postgres psql -c "CREATE DATABASE icingaweb2;"
+      sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='icingaweb2'" | grep -q 1 || \
+        sudo -u postgres psql -c "CREATE USER icingaweb2 WITH PASSWORD 'icingaweb2';"
+      sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE icingaweb2 TO icingaweb2;"
+      
+      # Import Icinga Web 2 schema
+      TABLE_COUNT=$(sudo -u postgres psql -d icingaweb2 -tAc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'")
+      if [ "$TABLE_COUNT" -eq "0" ]; then
+        echo "[$(date)] Importing Icinga Web 2 schema..." | tee -a /var/log/icinga-install.log
+        sudo -u postgres psql -d icingaweb2 < /usr/share/icingaweb2/schema/pgsql.schema.sql
+      fi
+      
+      # Create Icinga Web 2 admin user
+      echo "[$(date)] Creating Icinga Web 2 admin user..." | tee -a /var/log/icinga-install.log
+      ADMIN_PASSWORD_HASH=$(openssl passwd -1 "admin")
+      sudo -u postgres psql -d icingaweb2 -c "INSERT INTO icingaweb_user (name, active, password_hash) VALUES ('admin', 1, '$ADMIN_PASSWORD_HASH') ON CONFLICT DO NOTHING;" || true
+      
+      # Configure Icinga Web 2 resources
+      mkdir -p /etc/icingaweb2/
+      
+      cat > /etc/icingaweb2/resources.ini <<'EOFRES'
+      [icingaweb_db]
+      type = "db"
+      db = "pgsql"
+      host = "localhost"
+      dbname = "icingaweb2"
+      username = "icingaweb2"
+      password = "icingaweb2"
+      charset = "UTF8"
+      
+      [icinga_ido]
+      type = "db"
+      db = "pgsql"
+      host = "localhost"
+      dbname = "icinga2"
+      username = "icinga2"
+      password = "icinga2"
+      charset = "UTF8"
+      EOFRES
+      
+      # Configure Icinga Web 2 authentication
+      cat > /etc/icingaweb2/authentication.ini <<'EOFAUTH'
+      [icingaweb2]
+      backend = "db"
+      resource = "icingaweb_db"
+      EOFAUTH
+      
+      # Configure Icinga Web 2 roles
+      cat > /etc/icingaweb2/roles.ini <<'EOFROLES'
+      [Administrators]
+      users = "admin"
+      permissions = "*"
+      EOFROLES
+      
+      # Configure Icinga Web 2 config
+      cat > /etc/icingaweb2/config.ini <<'EOFCONFIG'
+      [global]
+      show_stacktraces = "1"
+      show_application_state_messages = "1"
+      module_path = "/usr/share/icingaweb2/modules"
+      
+      [logging]
+      log = "syslog"
+      level = "ERROR"
+      application = "icingaweb2"
+      EOFCONFIG
+      
+      # Configure monitoring module
+      mkdir -p /etc/icingaweb2/modules/monitoring/
+      
+      cat > /etc/icingaweb2/modules/monitoring/config.ini <<'EOFMON'
+      [security]
+      protected_customvars = "*pw*,*pass*,community"
+      EOFMON
+      
+      cat > /etc/icingaweb2/modules/monitoring/backends.ini <<'EOFBACK'
+      [icinga]
+      type = "ido"
+      resource = "icinga_ido"
+      EOFBACK
+      
+      cat > /etc/icingaweb2/modules/monitoring/commandtransports.ini <<'EOFCMD'
+      [icinga2]
+      transport = "local"
+      path = "/var/run/icinga2/cmd/icinga2.cmd"
+      EOFCMD
+      
+      # Enable monitoring module
+      icingacli module enable monitoring
+      
+      # Set permissions
+      chown -R www-data:icingaweb2 /etc/icingaweb2
+      chmod 2770 /etc/icingaweb2
+      chmod 660 /etc/icingaweb2/*.ini
+      
+      # Enable Icinga2 command feature
+      icinga2 feature enable command
+      
+      # Add www-data to nagios group for command pipe access
+      usermod -a -G nagios www-data
+      
+      # Configure firewall
+      echo "[$(date)] Configuring firewall..." | tee -a /var/log/icinga-install.log
+      ufw allow 22/tcp
+      ufw allow 80/tcp
+      ufw allow 443/tcp
+      ufw allow 5665/tcp
+      echo "y" | ufw enable || true
+      
+      # Restart services
+      echo "[$(date)] Restarting services..." | tee -a /var/log/icinga-install.log
+      systemctl restart icinga2
+      systemctl restart apache2
+      systemctl enable icinga2
+      systemctl enable apache2
+      
+      # Get public IP
+      PUBLIC_IP=$(curl -s ifconfig.me || echo "VM_IP")
+      
+      # Create status file
+      cat > /var/log/icinga-install-status.txt <<EOFSTATUS
+      ========================================
+      Icinga2 Installation Complete!
+      ========================================
+      Installation Date: $(date)
+      Public IP: $PUBLIC_IP
+      
+      Icinga Web 2 Access:
+        URL: http://$PUBLIC_IP/icingaweb2
+        
+      Default Credentials:
+        Username: admin
+        Password: admin
+      
+      Database Credentials:
+        Icinga2 DB: icinga2 / icinga2
+        Icinga Web 2 DB: icingaweb2 / icingaweb2
+      
+      Services Status:
+        Icinga2: $(systemctl is-active icinga2)
+        Apache2: $(systemctl is-active apache2)
+        PostgreSQL: $(systemctl is-active postgresql)
+      
+      IMPORTANT: Change default passwords in production!
+      ========================================
+      EOFSTATUS
+      
+      echo "[$(date)] Installation completed successfully!" | tee -a /var/log/icinga-install.log
+      cat /var/log/icinga-install-status.txt | tee -a /var/log/icinga-install.log
+
+runcmd:
+  - /tmp/install-icinga-automated.sh
+
+final_message: "Icinga2 installation completed. Check /var/log/icinga-install-status.txt for details."

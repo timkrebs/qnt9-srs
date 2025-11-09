@@ -158,6 +158,7 @@ resource "azurerm_linux_virtual_machine" "icinga" {
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = var.environment == "dev" ? "Standard_LRS" : "Premium_LRS"
+    disk_size_gb         = 64 # Increased from default 30GB for logs and monitoring data
   }
 
   source_image_reference {
@@ -166,6 +167,9 @@ resource "azurerm_linux_virtual_machine" "icinga" {
     sku       = "22_04-lts-gen2"
     version   = "latest"
   }
+
+  # Cloud-init configuration for automated Icinga installation
+  custom_data = base64encode(file("${path.module}/scripts/cloud-init-icinga.yaml"))
 
   tags = merge(local.common_tags, {
     Purpose = "Icinga Monitoring Server"
