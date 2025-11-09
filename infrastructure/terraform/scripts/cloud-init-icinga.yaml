@@ -126,52 +126,52 @@ write_files:
       
       cat > /etc/icingaweb2/resources.ini <<'EOFRES'
       [icingaweb_db]
-      type = "db"
-      db = "pgsql"
-      host = "localhost"
-      dbname = "icingaweb2"
-      username = "icingaweb2"
-      password = "icingaweb2"
-      charset = "UTF8"
+      type = db
+      db = pgsql
+      host = localhost
+      dbname = icingaweb2
+      username = icingaweb2
+      password = icingaweb2
+      charset = UTF8
       
       [icinga_ido]
-      type = "db"
-      db = "pgsql"
-      host = "localhost"
-      dbname = "icinga2"
-      username = "icinga2"
-      password = "icinga2"
-      charset = "UTF8"
+      type = db
+      db = pgsql
+      host = localhost
+      dbname = icinga2
+      username = icinga2
+      password = icinga2
+      charset = UTF8
       EOFRES
       
       # Configure Icinga Web 2 authentication
       cat > /etc/icingaweb2/authentication.ini <<'EOFAUTH'
       [icingaweb2]
-      backend = "db"
-      resource = "icingaweb_db"
+      backend = db
+      resource = icingaweb_db
       EOFAUTH
       
       # Configure Icinga Web 2 roles
       cat > /etc/icingaweb2/roles.ini <<'EOFROLES'
       [Administrators]
-      users = "admin"
-      permissions = "*"
+      users = admin
+      permissions = *
       EOFROLES
       
       # Configure Icinga Web 2 config
       cat > /etc/icingaweb2/config.ini <<'EOFCONFIG'
       [global]
-      show_stacktraces = "1"
-      show_application_state_messages = "1"
-      module_path = "/usr/share/icingaweb2/modules"
+      show_stacktraces = 1
+      show_application_state_messages = 1
+      module_path = /usr/share/icingaweb2/modules
       
       [logging]
-      log = "syslog"
-      level = "ERROR"
-      application = "icingaweb2"
+      log = syslog
+      level = ERROR
+      application = icingaweb2
       
       [database]
-      resource = "icingaweb_db"
+      resource = icingaweb_db
       EOFCONFIG
       
       # Configure monitoring module
@@ -179,19 +179,19 @@ write_files:
       
       cat > /etc/icingaweb2/modules/monitoring/config.ini <<'EOFMON'
       [security]
-      protected_customvars = "*pw*,*pass*,community"
+      protected_customvars = *pw*,*pass*,community
       EOFMON
       
       cat > /etc/icingaweb2/modules/monitoring/backends.ini <<'EOFBACK'
       [icinga]
-      type = "ido"
-      resource = "icinga_ido"
+      type = ido
+      resource = icinga_ido
       EOFBACK
       
       cat > /etc/icingaweb2/modules/monitoring/commandtransports.ini <<'EOFCMD'
       [icinga2]
-      transport = "local"
-      path = "/var/run/icinga2/cmd/icinga2.cmd"
+      transport = local
+      path = /var/run/icinga2/cmd/icinga2.cmd
       EOFCMD
       
       # Enable monitoring module
