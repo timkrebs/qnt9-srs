@@ -12,10 +12,5 @@ vault_token     = "your-vault-root-token-here"
 # Get this from your SendGrid account
 sendgrid_api_key = "SG.your-sendgrid-api-key-here"
 
-# Datadog Configuration (optional)
-# Get these from your Datadog account
-datadog_api_key = "your-datadog-api-key-here"
-datadog_site    = "datadoghq.com"
-
 # Note: Most other variables are defined in environment-specific files
 # See environments/dev.tfvars, environments/staging.tfvars, environments/prd.tfvars
