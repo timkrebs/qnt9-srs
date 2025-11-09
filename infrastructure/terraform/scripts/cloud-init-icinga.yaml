@@ -111,6 +111,11 @@ write_files:
         sudo -u postgres psql -d icingaweb2 < /usr/share/icingaweb2/schema/pgsql.schema.sql
       fi
       
+      # Grant permissions on tables and sequences
+      echo "[$(date)] Granting database permissions..." | tee -a /var/log/icinga-install.log
+      sudo -u postgres psql -d icingaweb2 -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO icingaweb2;"
+      sudo -u postgres psql -d icingaweb2 -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO icingaweb2;"
+      
       # Create Icinga Web 2 admin user
       echo "[$(date)] Creating Icinga Web 2 admin user..." | tee -a /var/log/icinga-install.log
       ADMIN_PASSWORD_HASH=$(openssl passwd -1 "admin")
