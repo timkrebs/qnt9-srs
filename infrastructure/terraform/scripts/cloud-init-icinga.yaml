@@ -169,6 +169,9 @@ write_files:
       log = "syslog"
       level = "ERROR"
       application = "icingaweb2"
+      
+      [database]
+      resource = "icingaweb_db"
       EOFCONFIG
       
       # Configure monitoring module
