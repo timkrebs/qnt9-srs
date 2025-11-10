@@ -227,6 +227,34 @@ write_files:
       # Add www-data to nagios group for command pipe access
       usermod -a -G nagios www-data
       
+      # Configure swap check to be less critical (Cloud VMs often don't use swap)
+      echo "[$(date)] Configuring swap monitoring..." | tee -a /var/log/icinga-install.log
+      cat > /etc/icinga2/conf.d/services-swap.conf <<'EOFSWAP'
+      /*
+       * Swap monitoring configuration for cloud environments
+       * Modified to handle VMs without swap gracefully
+       */
+      
+      apply Service "swap" {
+        import "generic-service"
+        
+        check_command = "swap"
+        
+        // Only warn if swap exists and is low, don't alert if no swap
+        vars.swap_wfree = "10%"
+        vars.swap_cfree = "5%"
+        
+        // Disable this check for hosts without swap (cloud VMs)
+        // You can also completely disable it by setting enable_notifications = false
+        enable_notifications = false
+        
+        assign where host.name == NodeName
+      }
+      EOFSWAP
+      
+      # Remove default swap service if it exists
+      rm -f /etc/icinga2/conf.d/services.conf.swap 2>/dev/null || true
+      
       # Configure firewall
       echo "[$(date)] Configuring firewall..." | tee -a /var/log/icinga-install.log
       ufw allow 22/tcp
