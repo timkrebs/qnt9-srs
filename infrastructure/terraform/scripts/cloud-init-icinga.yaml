@@ -111,10 +111,20 @@ write_files:
         sudo -u postgres psql -d icingaweb2 < /usr/share/icingaweb2/schema/pgsql.schema.sql
       fi
       
-      # Grant permissions on tables and sequences
+      # Grant permissions on tables and sequences (PostgreSQL 14+ requires explicit schema usage grant)
       echo "[$(date)] Granting database permissions..." | tee -a /var/log/icinga-install.log
+      sudo -u postgres psql -d icingaweb2 -c "GRANT USAGE ON SCHEMA public TO icingaweb2;"
       sudo -u postgres psql -d icingaweb2 -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO icingaweb2;"
       sudo -u postgres psql -d icingaweb2 -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO icingaweb2;"
+      sudo -u postgres psql -d icingaweb2 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO icingaweb2;"
+      sudo -u postgres psql -d icingaweb2 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO icingaweb2;"
+      
+      # Grant permissions for icinga2 IDO database
+      sudo -u postgres psql -d icinga2 -c "GRANT USAGE ON SCHEMA public TO icinga2;"
+      sudo -u postgres psql -d icinga2 -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO icinga2;"
+      sudo -u postgres psql -d icinga2 -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO icinga2;"
+      sudo -u postgres psql -d icinga2 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO icinga2;"
+      sudo -u postgres psql -d icinga2 -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO icinga2;"
       
       # Create Icinga Web 2 admin user
       echo "[$(date)] Creating Icinga Web 2 admin user..." | tee -a /var/log/icinga-install.log
@@ -129,19 +139,23 @@ write_files:
       type = db
       db = pgsql
       host = localhost
+      port = 5432
       dbname = icingaweb2
       username = icingaweb2
       password = icingaweb2
       charset = UTF8
+      use_ssl = 0
       
       [icinga_ido]
       type = db
       db = pgsql
       host = localhost
+      port = 5432
       dbname = icinga2
       username = icinga2
       password = icinga2
       charset = UTF8
+      use_ssl = 0
       EOFRES
       
       # Configure Icinga Web 2 authentication
@@ -170,7 +184,8 @@ write_files:
       level = ERROR
       application = icingaweb2
       
-      [database]
+      [preferences]
+      type = db
       resource = icingaweb_db
       EOFCONFIG
       
@@ -200,7 +215,11 @@ write_files:
       # Set permissions
       chown -R www-data:icingaweb2 /etc/icingaweb2
       chmod 2770 /etc/icingaweb2
-      chmod 660 /etc/icingaweb2/*.ini
+      find /etc/icingaweb2 -type f -name "*.ini" -exec chmod 660 {} \;
+      find /etc/icingaweb2 -type d -exec chmod 2770 {} \;
+      
+      # Ensure www-data is in icingaweb2 group
+      usermod -a -G icingaweb2 www-data
       
       # Enable Icinga2 command feature
       icinga2 feature enable command
