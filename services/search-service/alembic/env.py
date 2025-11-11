@@ -1,6 +1,7 @@
 """
 Alembic migration configuration for search service
 """
+import os
 from logging.config import fileConfig
 
 from alembic import context  # type: ignore[attr-defined]
@@ -11,6 +12,11 @@ from app.models import Base
 
 # this is the Alembic Config object
 config = context.config
+
+# Override sqlalchemy.url from environment variable if available
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:

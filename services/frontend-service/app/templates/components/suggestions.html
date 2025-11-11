@@ -1,21 +1,57 @@
-{% if suggestions %}
-<div class="modern-card border border-gray-100 max-h-80 overflow-y-auto">
-    {% for suggestion in suggestions %}
-    <div class="suggestion-item cursor-pointer" 
-         data-query="{{ suggestion.query }}">
-        <div class="flex items-center justify-between">
-            <div class="flex-1">
-                <div class="font-semibold text-primary">{{ suggestion.query }}</div>
-                {% if suggestion.result_found %}
-                <div class="text-xs text-secondary mt-1 font-medium">Recent search</div>
-                {% endif %}
+{% if suggestions and suggestions|length > 0 %}
+<div class="modern-card overflow-hidden shadow-lg border border-gray-200">
+    <div class="py-1">
+        {% for suggestion in suggestions %}
+        <div class="suggestion-item px-4 py-3 hover:bg-accent cursor-pointer transition-colors duration-150 border-b border-gray-50 last:border-b-0"
+             data-query="{{ suggestion.symbol }}"
+             onclick="selectSuggestion('{{ suggestion.symbol }}')">
+            <div class="flex items-center justify-between">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center space-x-3">
+                        <div class="flex-shrink-0">
+                            <div class="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center">
+                                <span class="text-white font-bold text-sm">{{ suggestion.symbol[:2] if suggestion.symbol else 'S' }}</span>
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-primary truncate">
+                                {{ suggestion.symbol }}
+                            </p>
+                            <p class="text-xs text-secondary truncate">
+                                {{ suggestion.name[:50] }}{% if suggestion.name|length > 50 %}...{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex-shrink-0 ml-4 text-right">
+                    {% if suggestion.price %}
+                    <p class="text-sm font-semibold text-primary">
+                        {% if suggestion.currency == 'EUR' %}€{% elif suggestion.currency == 'GBP' %}£{% elif suggestion.currency == 'USD' %}${% endif %}{{ "%.2f"|format(suggestion.price) }}
+                    </p>
+                    {% endif %}
+                    <p class="text-xs text-secondary">
+                        {{ suggestion.exchange }}
+                    </p>
+                </div>
             </div>
-            <svg class="w-5 h-5 text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
         </div>
+        {% endfor %}
     </div>
-    {% endfor %}
+    <div class="px-4 py-2 bg-gray-50 border-t border-gray-100">
+        <p class="text-xs text-secondary text-center">
+            Press <kbd class="px-1.5 py-0.5 bg-white border border-gray-300 rounded text-xs font-mono">↑</kbd> 
+            <kbd class="px-1.5 py-0.5 bg-white border border-gray-300 rounded text-xs font-mono">↓</kbd> 
+            to navigate, <kbd class="px-1.5 py-0.5 bg-white border border-gray-300 rounded text-xs font-mono">Enter</kbd> to select
+        </p>
+    </div>
 </div>
-{% endif %}
 
+<script>
+function selectSuggestion(symbol) {
+    const queryInput = document.getElementById('query');
+    queryInput.value = symbol;
+    document.getElementById('suggestions').innerHTML = '';
+    document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+}
+</script>
+{% endif %}

@@ -1,0 +1,153 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: qnt9-postgres
+    environment:
+      POSTGRES_USER: qnt9_user
+      POSTGRES_PASSWORD: qnt9_password
+      POSTGRES_DB: qnt9_search
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qnt9_user -d qnt9_search"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - qnt9-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: qnt9-redis
+    command: redis-server --appendonly yes --requirepass qnt9_redis_password
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - qnt9-network
+
+  # Search Service (Backend API)
+  search-service:
+    build:
+      context: ./services/search-service
+      dockerfile: Dockerfile.dev
+    container_name: qnt9-search-service
+    environment:
+      # Database
+      DATABASE_URL: postgresql://qnt9_user:qnt9_password@postgres:5432/qnt9_search
+      
+      # Redis
+      REDIS_URL: redis://:qnt9_redis_password@redis:6379/0
+      
+      # CORS
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
+      
+      # External APIs
+      YAHOO_FINANCE_TIMEOUT: 5.0
+      YAHOO_FINANCE_MAX_RETRIES: 3
+      YAHOO_FINANCE_RATE_LIMIT: 5
+      
+      # Cache Settings
+      REDIS_CACHE_TTL_SECONDS: 300
+      POSTGRES_CACHE_TTL_MINUTES: 5
+      
+      # Circuit Breaker
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
+      CIRCUIT_BREAKER_RECOVERY_TIMEOUT: 60
+      
+      # Logging
+      LOG_LEVEL: DEBUG
+      LOG_FORMAT: text
+      
+      # Monitoring
+      PROMETHEUS_ENABLED: true
+      METRICS_PORT: 9090
+    ports:
+      - "8000:8000"
+      - "9090:9090"  # Prometheus metrics
+    volumes:
+      # Mount source code for hot-reload
+      - ./services/search-service/app:/app/app:ro
+      - ./services/search-service/alembic:/app/alembic:ro
+      - ./services/search-service/alembic.ini:/app/alembic.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - qnt9-network
+    restart: unless-stopped
+
+  # Frontend Service (Web UI)
+  frontend-service:
+    build:
+      context: ./services/frontend-service
+      dockerfile: Dockerfile.dev
+    container_name: qnt9-frontend-service
+    environment:
+      # Service URLs
+      SEARCH_SERVICE_URL: http://search-service:8000
+      AUTH_SERVICE_URL: http://localhost:8002  # Update when auth service is added
+      
+      # Application Configuration
+      APP_NAME: QNT9 Stock Search
+      DEBUG: true
+      
+      # Server Configuration
+      HOST: 0.0.0.0
+      PORT: 8080
+      
+      # Logging
+      LOG_LEVEL: DEBUG
+      
+      # Tracing
+      ENABLE_REQUEST_TRACING: true
+      
+      # HTTP Client
+      REQUEST_TIMEOUT: 10.0
+      MAX_RETRIES: 3
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount source code for hot-reload
+      - ./services/frontend-service/app:/app/app:ro
+    depends_on:
+      search-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - qnt9-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  qnt9-network:
+    driver: bridge

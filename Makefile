@@ -2,23 +2,40 @@
 # Convenience targets for the entire project
 
 .PHONY: help test-docker-local test-source test-build test-runtime test-all lint-all clean install-dev
+.PHONY: up down restart logs build-dev rebuild status health migrate test shell-search shell-frontend dev
 
 # Default target
 help:
 	@echo "QNT9-SRS Project Commands"
 	@echo "=========================="
 	@echo ""
-	@echo "Native Testing:"
+	@echo "  Docker Compose (Local Development):"
+	@echo "  make up                 - Start all services (frontend, search, postgres, redis)"
+	@echo "  make down               - Stop all services"
+	@echo "  make restart            - Restart all services"
+	@echo "  make logs               - Follow logs from all services"
+	@echo "  make status             - Show status of all services"
+	@echo "  make health             - Check health of all services"
+	@echo "  make dev                - Start services and follow logs"
+	@echo ""
+	@echo "  Development Tools:"
+	@echo "  make shell-search       - Open shell in search service container"
+	@echo "  make shell-frontend     - Open shell in frontend service container"
+	@echo "  make migrate            - Run database migrations"
+	@echo "  make test               - Run all tests in containers"
+	@echo "  make rebuild            - Rebuild and restart all services"
+	@echo ""
+	@echo "  Native Testing:"
 	@echo "  make test-all           - Run all service tests natively (no Docker)"
 	@echo ""
-	@echo "Code Quality:"
+	@echo "  Code Quality:"
 	@echo "  make format-all         - Auto-format all services with Black and isort"
 	@echo ""
-	@echo "Development:"
+	@echo "  Maintenance:"
 	@echo "  make install-dev        - Install development dependencies"
 	@echo "  make clean              - Clean up test artifacts and caches"
 	@echo ""
-	@echo "Infrastructure:"
+	@echo "  Infrastructure:"
 	@echo "  make terraform-init     - Initialize Terraform"
 	@echo "  make terraform-plan     - Plan Terraform changes (dev environment)"
 	@echo ""
@@ -68,3 +85,148 @@ terraform-init:
 
 terraform-plan:
 	@cd infrastructure/terraform && make plan ENV=dev
+
+# ============================================================================
+# Docker Compose Commands (Local Development)
+# ============================================================================
+
+up: ## Start all services in detached mode
+	docker-compose up -d
+	@echo ""
+	@echo "All services started successfully!"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "Frontend:     http://localhost:8080"
+	@echo "Search API:   http://localhost:8000"
+	@echo "API Docs:     http://localhost:8000/api/docs"
+	@echo "Metrics:      http://localhost:9090/metrics"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "Tips:"
+	@echo "  - Run 'make logs' to view logs"
+	@echo "  - Run 'make health' to check service health"
+	@echo "  - Run 'make status' to see service status"
+	@echo "  - Code changes will auto-reload"
+	@echo ""
+
+down: ## Stop all services
+	docker-compose down
+	@echo "All services stopped"
+
+restart: ## Restart all services
+	docker-compose restart
+	@echo "All services restarted"
+
+build-dev: ## Rebuild all service images
+	docker-compose build --no-cache
+	@echo " All images rebuilt"
+
+rebuild: down build-dev up ## Rebuild and restart all services
+
+clean-docker: ## Stop services and remove volumes (destroys data!)
+	@echo "WARNING: This will delete all Docker data. Press Ctrl+C to cancel, or Enter to continue..."
+	@read dummy
+	docker-compose down -v
+	@echo "All services stopped and volumes removed"
+
+# Logs
+logs: ## Follow logs from all services
+	docker-compose logs -f
+
+logs-search: ## Follow logs from search service only
+	docker-compose logs -f search-service
+
+logs-frontend: ## Follow logs from frontend service only
+	docker-compose logs -f frontend-service
+
+logs-db: ## Follow logs from PostgreSQL only
+	docker-compose logs -f postgres
+
+# Service Status
+status: ## Show status of all services
+	@docker-compose ps
+
+health: ## Check health of all services
+	@echo "Checking service health..."
+	@echo ""
+	@echo "Frontend Service:"
+	@curl -sf http://localhost:8080/health | jq '.' 2>/dev/null || echo "  Not responding"
+	@echo ""
+	@echo "Search Service:"
+	@curl -sf http://localhost:8000/api/v1/health | jq '.' 2>/dev/null || echo "  Not responding"
+	@echo ""
+	@echo "PostgreSQL:"
+	@docker-compose exec -T postgres pg_isready -U qnt9_user -d qnt9_search 2>/dev/null || echo "  Not responding"
+	@echo ""
+	@echo "Redis:"
+	@docker-compose exec -T redis redis-cli -a qnt9_redis_password ping 2>/dev/null || echo "  Not responding"
+	@echo ""
+
+# Shell Access
+shell-search: ## Open shell in search service container
+	docker-compose exec search-service /bin/bash
+
+shell-frontend: ## Open shell in frontend service container
+	docker-compose exec frontend-service /bin/bash
+
+shell-db: ## Open PostgreSQL shell
+	docker-compose exec postgres psql -U qnt9_user -d qnt9_search
+
+shell-redis: ## Open Redis CLI
+	docker-compose exec redis redis-cli -a qnt9_redis_password
+
+# Database Operations
+migrate: ## Run database migrations
+	@echo "Running database migrations..."
+	docker-compose exec search-service alembic upgrade head
+	@echo "Database migrations completed"
+
+migrate-create: ## Create a new migration (use: make migrate-create MSG="description")
+	@if [ -z "$(MSG)" ]; then \
+		echo "ERROR: MSG is required. Usage: make migrate-create MSG='your description'"; \
+		exit 1; \
+	fi
+	docker-compose exec search-service alembic revision --autogenerate -m "$(MSG)"
+	@echo "Migration created: $(MSG)"
+
+db-reset: ## Reset database (destroys data!)
+	@echo "WARNING: This will delete all database data. Press Ctrl+C to cancel, or Enter to continue..."
+	@read dummy
+	docker-compose down postgres
+	docker volume rm qnt9-srs_postgres_data || true
+	docker-compose up -d postgres
+	@echo "Waiting for PostgreSQL to be ready..."
+	@sleep 5
+	$(MAKE) migrate
+	@echo "Database reset complete"
+
+# Testing in Docker
+test: ## Run all tests in containers
+	@echo "Testing search service..."
+	@docker-compose exec -T search-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
+	@echo ""
+	@echo "Testing frontend service..."
+	@docker-compose exec -T frontend-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
+	@echo ""
+	@echo "All tests completed!"
+
+test-search-docker: ## Run search service tests in container
+	docker-compose exec search-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
+
+test-frontend-docker: ## Run frontend service tests in container
+	docker-compose exec frontend-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
+
+# Development workflow
+dev: up logs ## Start services and follow logs
+
+# Quick access
+open-frontend: ## Open frontend in browser
+	@python3 -m webbrowser http://localhost:8080 2>/dev/null || \
+	open http://localhost:8080 2>/dev/null || \
+	xdg-open http://localhost:8080 2>/dev/null || \
+	echo "Visit: http://localhost:8080"
+
+open-docs: ## Open API documentation in browser
+	@python3 -m webbrowser http://localhost:8000/api/docs 2>/dev/null || \
+	open http://localhost:8000/api/docs 2>/dev/null || \
+	xdg-open http://localhost:8000/api/docs 2>/dev/null || \
+	echo "Visit: http://localhost:8000/api/docs"

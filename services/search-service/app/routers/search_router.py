@@ -239,6 +239,86 @@ async def search_by_name(
 
 
 @router.get(
+    "/suggestions",
+    response_model=dict,
+    responses={
+        200: {"description": "Autocomplete suggestions"},
+        400: {"description": "Invalid request", "model": ErrorResponse},
+    },
+    summary="Get autocomplete suggestions",
+    description="Get stock autocomplete suggestions as user types (min 2 characters)",
+)
+async def get_suggestions(
+    query: str = Query(
+        ...,
+        min_length=2,
+        max_length=100,
+        description="Partial stock name, symbol, or ISIN",
+        examples=["App", "MSFT", "DE000"],
+    ),
+    limit: int = Query(
+        default=5,
+        ge=1,
+        le=10,
+        description="Maximum number of suggestions",
+    ),
+    service: StockSearchService = Depends(get_stock_service),
+):
+    """
+    Get autocomplete suggestions for stock search.
+
+    Returns quick suggestions based on partial input to provide
+    a Yahoo Finance-like autocomplete experience.
+    Optimized for speed - uses cache-first strategy.
+    """
+    try:
+        if len(query.strip()) < 2:
+            return {
+                "success": True,
+                "suggestions": [],
+                "count": 0,
+            }
+
+        stocks = await service.search_by_name(query, limit=limit)
+
+        suggestions = [
+            {
+                "symbol": stock.identifier.symbol,
+                "name": stock.identifier.name,
+                "exchange": stock.metadata.exchange or "N/A",
+                "price": float(stock.price.current) if stock.price.current else None,
+                "currency": stock.price.currency,
+                "query": stock.identifier.symbol,
+            }
+            for stock in stocks
+        ]
+
+        return {
+            "success": True,
+            "suggestions": suggestions,
+            "count": len(suggestions),
+        }
+
+    except ValidationException as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "error": "validation_error",
+                "message": e.message,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting suggestions: {e}", exc_info=True)
+        return {
+            "success": True,
+            "suggestions": [],
+            "count": 0,
+        }
+
+
+@router.get(
     "/stats/cache",
     response_model=CacheStatsResponse,
     summary="Get cache statistics",

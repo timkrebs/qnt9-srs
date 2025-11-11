@@ -3,7 +3,8 @@
           hx-target="#search-results" 
           hx-indicator="#loading-overlay"
           hx-trigger="submit"
-          class="flex flex-col space-y-6">
+          class="flex flex-col space-y-6"
+          id="search-form">
         
         <div class="relative">
             <div class="relative">
@@ -17,7 +18,7 @@
                     minlength="1"
                     maxlength="100"
                     hx-get="/api/suggestions"
-                    hx-trigger="keyup changed delay:300ms"
+                    hx-trigger="keyup changed delay:300ms, focus"
                     hx-target="#suggestions"
                     class="w-full px-6 py-4 pl-14 pr-6 bg-accent border border-primary rounded-2xl focus:ring-2 focus:ring-primary focus:ring-offset-2 transition text-base font-medium text-primary placeholder-secondary"
                 />
@@ -27,7 +28,7 @@
             </div>
             
             <!-- Suggestions Dropdown -->
-            <div id="suggestions" class="absolute z-10 w-full mt-2">
+            <div id="suggestions" class="absolute z-50 w-full mt-2">
                 <!-- Suggestions will be loaded here via HTMX -->
             </div>
         </div>
@@ -43,7 +44,7 @@
             </button>
             <button 
                 type="button" 
-                onclick="document.getElementById('query').value=''; document.getElementById('suggestions').innerHTML=''; document.getElementById('search-results').innerHTML='<div class=\'text-center text-secondary py-20\'><div class=\'w-20 h-20 mx-auto mb-6 bg-accent rounded-full flex items-center justify-center\'><svg class=\'w-10 h-10 text-secondary\' fill=\'none\' stroke=\'currentColor\' viewBox=\'0 0 24 24\'><path stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z\'/></svg></div><p class=\'text-lg font-medium\'>Enter a search query to find stocks</p></div>';"
+                onclick="clearSearch()"
                 class="btn-secondary">
                 Clear
             </button>
@@ -54,19 +55,19 @@
     <div class="mt-6">
         <p class="text-sm font-semibold text-secondary mb-3">Try these examples:</p>
         <div class="flex flex-wrap gap-2">
-            <button onclick="document.getElementById('query').value='Amazon'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
+            <button onclick="searchExample('Amazon')" 
                     class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">
                 Amazon
             </button>
-            <button onclick="document.getElementById('query').value='Microsoft'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
+            <button onclick="searchExample('Microsoft')" 
                     class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">
                 Microsoft
             </button>
-            <button onclick="document.getElementById('query').value='Deutsche Bank'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
+            <button onclick="searchExample('Deutsche Bank')" 
                     class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">
                 Deutsche Bank
             </button>
-            <button onclick="document.getElementById('query').value='DBK.DE'; document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));" 
+            <button onclick="searchExample('DBK.DE')" 
                     class="px-4 py-2 bg-white hover:bg-accent rounded-full text-primary text-sm font-medium transition border border-gray-100">
                 DBK.DE
             </button>
@@ -75,24 +76,103 @@
 </div>
 
 <script>
-    // Close suggestions when clicking outside
-    document.addEventListener('click', function(event) {
-        const suggestions = document.getElementById('suggestions');
-        const queryInput = document.getElementById('query');
-        
-        if (!suggestions.contains(event.target) && event.target !== queryInput) {
-            suggestions.innerHTML = '';
-        }
-    });
+// Keyboard navigation state
+let selectedSuggestionIndex = -1;
+let totalSuggestions = 0;
 
-    // Handle suggestion selection
-    document.body.addEventListener('click', function(event) {
-        if (event.target.closest('.suggestion-item')) {
-            const query = event.target.closest('.suggestion-item').dataset.query;
-            document.getElementById('query').value = query;
-            document.getElementById('suggestions').innerHTML = '';
-            // Trigger search
-            document.querySelector('form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+function clearSearch() {
+    document.getElementById('query').value = '';
+    document.getElementById('suggestions').innerHTML = '';
+    document.getElementById('search-results').innerHTML = `
+        <div class='text-center text-secondary py-20'>
+            <div class='w-20 h-20 mx-auto mb-6 bg-accent rounded-full flex items-center justify-center'>
+                <svg class='w-10 h-10 text-secondary' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                    <path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'/>
+                </svg>
+            </div>
+            <p class='text-lg font-medium'>Enter a search query to find stocks</p>
+        </div>
+    `;
+}
+
+function searchExample(query) {
+    document.getElementById('query').value = query;
+    document.querySelector('#search-form').dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+}
+
+// Close suggestions when clicking outside
+document.addEventListener('click', function(event) {
+    const suggestions = document.getElementById('suggestions');
+    const queryInput = document.getElementById('query');
+    
+    if (!suggestions.contains(event.target) && event.target !== queryInput) {
+        suggestions.innerHTML = '';
+        selectedSuggestionIndex = -1;
+    }
+});
+
+// Keyboard navigation for suggestions
+document.getElementById('query').addEventListener('keydown', function(event) {
+    const suggestions = document.querySelectorAll('.suggestion-item');
+    totalSuggestions = suggestions.length;
+    
+    if (totalSuggestions === 0) {
+        return;
+    }
+    
+    // Arrow Down
+    if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        selectedSuggestionIndex = (selectedSuggestionIndex + 1) % totalSuggestions;
+        updateSuggestionSelection(suggestions);
+    }
+    
+    // Arrow Up
+    else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        selectedSuggestionIndex = selectedSuggestionIndex <= 0 
+            ? totalSuggestions - 1 
+            : selectedSuggestionIndex - 1;
+        updateSuggestionSelection(suggestions);
+    }
+    
+    // Enter on selected suggestion
+    else if (event.key === 'Enter' && selectedSuggestionIndex >= 0) {
+        event.preventDefault();
+        const selectedItem = suggestions[selectedSuggestionIndex];
+        if (selectedItem) {
+            const symbol = selectedItem.getAttribute('data-query');
+            selectSuggestion(symbol);
+        }
+    }
+    
+    // Escape to close
+    else if (event.key === 'Escape') {
+        event.preventDefault();
+        document.getElementById('suggestions').innerHTML = '';
+        selectedSuggestionIndex = -1;
+    }
+});
+
+function updateSuggestionSelection(suggestions) {
+    suggestions.forEach((item, index) => {
+        if (index === selectedSuggestionIndex) {
+            item.classList.add('bg-accent');
+            item.classList.add('ring-2');
+            item.classList.add('ring-primary');
+            item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        } else {
+            item.classList.remove('bg-accent');
+            item.classList.remove('ring-2');
+            item.classList.remove('ring-primary');
         }
     });
+}
+
+// Reset selection when suggestions change
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'suggestions') {
+        selectedSuggestionIndex = -1;
+    }
+});
 </script>

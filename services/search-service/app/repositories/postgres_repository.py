@@ -23,7 +23,11 @@ from ..domain.entities import (
 )
 from ..domain.exceptions import CacheException
 from ..models import SearchHistory, StockCache
-from .stock_repository import ISearchHistoryRepository, IStockRepository, ISymbolMappingRepository
+from .stock_repository import (
+    ISearchHistoryRepository,
+    IStockRepository,
+    ISymbolMappingRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +120,9 @@ class PostgresStockRepository(IStockRepository):
                 )
             elif stock.identifier.wkn:
                 existing = (
-                    self.db.query(StockCache).filter(StockCache.wkn == stock.identifier.wkn).first()
+                    self.db.query(StockCache)
+                    .filter(StockCache.wkn == stock.identifier.wkn)
+                    .first()
                 )
             elif stock.identifier.symbol:
                 existing = (
@@ -144,7 +150,11 @@ class PostgresStockRepository(IStockRepository):
     async def delete_expired(self, before: datetime) -> int:
         """Delete expired cache entries."""
         try:
-            deleted = self.db.query(StockCache).filter(StockCache.expires_at < before).delete()
+            deleted = (
+                self.db.query(StockCache)
+                .filter(StockCache.expires_at < before)
+                .delete()
+            )
             self.db.commit()
             return deleted
         except Exception as e:
@@ -197,7 +207,7 @@ class PostgresStockRepository(IStockRepository):
             current=Decimal(str(cache_entry.current_price)),
             currency=cache_entry.currency or "USD",
             previous_close=Decimal(str(cache_entry.previous_close))
-            if cache_entry.previous_close
+            if hasattr(cache_entry, "previous_close") and cache_entry.previous_close
             else None,
         )
 
@@ -205,7 +215,9 @@ class PostgresStockRepository(IStockRepository):
             exchange=cache_entry.exchange,
             sector=cache_entry.sector,
             industry=cache_entry.industry,
-            market_cap=Decimal(str(cache_entry.market_cap)) if cache_entry.market_cap else None,
+            market_cap=Decimal(str(cache_entry.market_cap))
+            if cache_entry.market_cap
+            else None,
         )
 
         return Stock(
@@ -217,7 +229,9 @@ class PostgresStockRepository(IStockRepository):
             cache_age_seconds=cache_age,
         )
 
-    def _create_cache_entry(self, stock: Stock, now: datetime, expires_at: datetime) -> StockCache:
+    def _create_cache_entry(
+        self, stock: Stock, now: datetime, expires_at: datetime
+    ) -> StockCache:
         """Create new cache entry from stock entity."""
         return StockCache(
             isin=stock.identifier.isin,
@@ -227,7 +241,9 @@ class PostgresStockRepository(IStockRepository):
             current_price=float(stock.price.current),
             currency=stock.price.currency,
             exchange=stock.metadata.exchange,
-            market_cap=float(stock.metadata.market_cap) if stock.metadata.market_cap else None,
+            market_cap=float(stock.metadata.market_cap)
+            if stock.metadata.market_cap
+            else None,
             sector=stock.metadata.sector,
             industry=stock.metadata.industry,
             data_source=stock.data_source.value,
@@ -238,14 +254,18 @@ class PostgresStockRepository(IStockRepository):
             cache_hits=0,
         )
 
-    def _update_cache_entry(self, entry: StockCache, stock: Stock, expires_at: datetime) -> None:
+    def _update_cache_entry(
+        self, entry: StockCache, stock: Stock, expires_at: datetime
+    ) -> None:
         """Update existing cache entry."""
         entry.current_price = float(stock.price.current)
         entry.currency = stock.price.currency
         entry.exchange = stock.metadata.exchange
         entry.sector = stock.metadata.sector
         entry.industry = stock.metadata.industry
-        entry.market_cap = float(stock.metadata.market_cap) if stock.metadata.market_cap else None
+        entry.market_cap = (
+            float(stock.metadata.market_cap) if stock.metadata.market_cap else None
+        )
         entry.data_source = stock.data_source.value
         entry.raw_data = json.dumps(stock.to_dict())
         entry.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -304,7 +324,9 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
         """Get most popular searches."""
         try:
             results = (
-                self.db.query(SearchHistory.query, func.count(SearchHistory.id).label("count"))
+                self.db.query(
+                    SearchHistory.query, func.count(SearchHistory.id).label("count")
+                )
                 .group_by(SearchHistory.query)
                 .order_by(func.count(SearchHistory.id).desc())
                 .limit(limit)
@@ -315,7 +337,9 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
             logger.error(f"Error getting popular searches: {e}")
             return []
 
-    async def get_autocomplete_suggestions(self, prefix: str, limit: int = 10) -> List[str]:
+    async def get_autocomplete_suggestions(
+        self, prefix: str, limit: int = 10
+    ) -> List[str]:
         """Get autocomplete suggestions."""
         try:
             results = (

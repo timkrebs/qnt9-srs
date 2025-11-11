@@ -114,6 +114,34 @@ class StockSearchService:
             stock = await self.api_client.fetch_stock(identifier)
 
             if not stock:
+                # Fallback for ISIN/WKN: Try name search if available
+                if identifier_type in [IdentifierType.ISIN, IdentifierType.WKN]:
+                    logger.info(
+                        f"{identifier_type.value} lookup failed for {query}, "
+                        f"trying alternative search methods"
+                    )
+
+                    # Try to get company name from PostgreSQL cache (partial match)
+                    # This might help if we've seen this ISIN before with a different query
+                    try:
+                        name_results = await self.postgres_repo.find_by_name(
+                            query[:8], limit=5
+                        )
+                        if name_results:
+                            logger.info(
+                                f"Found {len(name_results)} potential matches in cache "
+                                f"for {identifier_type.value} {query}"
+                            )
+                            # Return first match and cache it with the new identifier
+                            stock = name_results[0]
+                            await self.redis_repo.save(stock)
+                            await self._record_search(
+                                query, identifier_type, True, start_time
+                            )
+                            return stock
+                    except Exception as e:
+                        logger.debug(f"Cache lookup failed during fallback: {e}")
+
                 await self._record_search(query, identifier_type, False, start_time)
                 raise StockNotFoundException(query, identifier_type.value)
 
@@ -148,7 +176,9 @@ class StockSearchService:
 
         # Validate
         if not name or len(name) < 3:
-            raise ValidationException("name", name, "Name must be at least 3 characters")
+            raise ValidationException(
+                "name", name, "Name must be at least 3 characters"
+            )
 
         try:
             # Check PostgreSQL cache first

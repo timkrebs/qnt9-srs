@@ -380,7 +380,7 @@ class SearchServiceClient:
                 )
 
                 response = await client.get(
-                    f"{self.base_url}/api/stocks/suggestions",
+                    f"{self.base_url}/api/v1/suggestions",
                     params={"query": query, "limit": limit},
                     headers=self._get_request_headers(),
                 )
@@ -432,7 +432,7 @@ class SearchServiceClient:
         try:
             async with httpx.AsyncClient(timeout=1.0) as client:
                 response = await client.get(
-                    f"{self.base_url}/health",
+                    f"{self.base_url}/api/v1/health",
                     headers=self._get_request_headers(),
                 )
                 is_healthy = response.status_code == 200
