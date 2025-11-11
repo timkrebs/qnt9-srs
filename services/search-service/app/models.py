@@ -71,9 +71,7 @@ class StockCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -159,9 +157,7 @@ class SearchHistory(Base):
     result_found = Column(Integer, default=0, nullable=False)
     search_count = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    last_searched = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    last_searched = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         Index("idx_query_type", "query", "query_type"),
@@ -244,15 +240,13 @@ class StockReportCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
     # Indexes for faster lookups
     __table_args__ = (
-        Index("idx_symbol_expires", "symbol", "expires_at"),
+        Index("idx_report_symbol_expires", "symbol", "expires_at"),
         Index("idx_isin_expires_report", "isin", "expires_at"),
     )
 
