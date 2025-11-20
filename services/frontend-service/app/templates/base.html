@@ -12,6 +12,9 @@
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
     
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/css/styles.css">
     
@@ -35,6 +38,55 @@
                 }
             }
         }
+    </script>
+    
+    <!-- Alpine.js Auth State Management -->
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.store('auth', {
+                user: null,
+                session: null,
+                isAuthenticated: false,
+                tier: 'free',
+                
+                init() {
+                    // Load session from localStorage
+                    const session = localStorage.getItem('qnt9_session');
+                    const user = localStorage.getItem('qnt9_user');
+                    
+                    if (session && user) {
+                        this.session = JSON.parse(session);
+                        this.user = JSON.parse(user);
+                        this.isAuthenticated = true;
+                        this.tier = this.user.tier || 'free';
+                    }
+                },
+                
+                setAuth(user, session) {
+                    this.user = user;
+                    this.session = session;
+                    this.isAuthenticated = true;
+                    this.tier = user.tier || 'free';
+                    
+                    localStorage.setItem('qnt9_session', JSON.stringify(session));
+                    localStorage.setItem('qnt9_user', JSON.stringify(user));
+                },
+                
+                clearAuth() {
+                    this.user = null;
+                    this.session = null;
+                    this.isAuthenticated = false;
+                    this.tier = 'free';
+                    
+                    localStorage.removeItem('qnt9_session');
+                    localStorage.removeItem('qnt9_user');
+                },
+                
+                getAuthHeader() {
+                    return this.session ? `Bearer ${this.session.access_token}` : '';
+                }
+            });
+        });
     </script>
     
     <style>
@@ -64,7 +116,7 @@
         }
     </style>
 </head>
-<body class="bg-accent min-h-screen">
+<body class="bg-accent min-h-screen" x-data x-init="$store.auth.init()">
     <!-- Navigation -->
     <nav class="bg-white border-b border-gray-100">
         <div class="container mx-auto px-6 lg:px-8">
@@ -81,7 +133,57 @@
                 </div>
                 <div class="flex items-center space-x-8">
                     <a href="/" class="text-primary hover:text-secondary transition font-medium">Search</a>
-                    <a href="/about" class="text-secondary hover:text-primary transition font-medium">About</a>
+                    
+                    <!-- Show for authenticated users -->
+                    <template x-if="$store.auth.isAuthenticated">
+                        <div class="flex items-center space-x-6">
+                            <a href="/watchlist" class="text-secondary hover:text-primary transition font-medium">
+                                My Watchlist
+                            </a>
+                            <a href="/predictions" class="text-secondary hover:text-primary transition font-medium">
+                                Predictions
+                            </a>
+                            
+                            <!-- User dropdown -->
+                            <div x-data="{ open: false }" class="relative">
+                                <button @click="open = !open" class="flex items-center space-x-2 text-secondary hover:text-primary transition">
+                                    <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                                        <span class="text-white text-sm font-bold" x-text="$store.auth.user?.email?.charAt(0).toUpperCase()"></span>
+                                    </div>
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                    </svg>
+                                </button>
+                                
+                                <div x-show="open" @click.away="open = false" 
+                                     class="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-lg border border-gray-100 py-2 z-50"
+                                     x-transition>
+                                    <div class="px-4 py-3 border-b border-gray-100">
+                                        <p class="text-sm font-medium text-primary" x-text="$store.auth.user?.email"></p>
+                                        <p class="text-xs text-secondary mt-1">
+                                            <span x-text="$store.auth.tier === 'paid' ? 'Premium' : 'Free'"></span> Plan
+                                        </p>
+                                    </div>
+                                    <a href="/account" class="block px-4 py-2 text-sm text-secondary hover:bg-accent transition">
+                                        Account Settings
+                                    </a>
+                                    <button @click="handleLogout()" class="w-full text-left px-4 py-2 text-sm text-danger hover:bg-red-50 transition">
+                                        Sign Out
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <!-- Show for non-authenticated users -->
+                    <template x-if="!$store.auth.isAuthenticated">
+                        <div class="flex items-center space-x-4">
+                            <a href="/login" class="text-secondary hover:text-primary transition font-medium">Sign In</a>
+                            <a href="/signup" class="bg-primary text-white px-6 py-2 rounded-full hover:bg-opacity-90 transition font-medium">
+                                Get Started
+                            </a>
+                        </div>
+                    </template>
                 </div>
             </div>
         </div>
@@ -108,6 +210,27 @@
     
     <!-- Custom JS (if needed) -->
     <script src="/static/js/main.js"></script>
+    
+    <!-- Auth Functions -->
+    <script>
+        async function handleLogout() {
+            const authHeader = Alpine.store('auth').getAuthHeader();
+            
+            try {
+                await fetch('/auth/signout', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': authHeader
+                    }
+                });
+            } catch (e) {
+                console.error('Logout error:', e);
+            } finally {
+                Alpine.store('auth').clearAuth();
+                window.location.href = '/';
+            }
+        }
+    </script>
     
     {% block extra_js %}{% endblock %}
 </body>

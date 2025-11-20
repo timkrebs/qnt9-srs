@@ -63,6 +63,8 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     email_confirmed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    tier: str = "free"
+    subscription_end: Optional[datetime] = None
 
 
 class SessionResponse(BaseModel):
@@ -93,8 +95,6 @@ class ErrorResponse(BaseModel):
     detail: str
     success: bool = False
 
-    new_password: str
-
 
 class PasswordReset(BaseModel):
     """Model for admin password reset"""
@@ -106,3 +106,18 @@ class UserStatusUpdate(BaseModel):
     """Model for updating user active status"""
 
     is_active: bool
+
+
+class UserTierUpdate(BaseModel):
+    """Model for updating user subscription tier."""
+
+    tier: str
+
+
+class UserTierResponse(BaseModel):
+    """Model for user tier response."""
+
+    user_id: str
+    tier: str
+    subscription_end: Optional[datetime] = None
+    success: bool = True

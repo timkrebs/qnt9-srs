@@ -271,6 +271,79 @@ class PostgresStockRepository(IStockRepository):
         entry.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         entry.expires_at = expires_at
 
+    async def count_user_favorites(self, user_id: str) -> int:
+        """Count number of favorites for a user."""
+        try:
+            from ..models import UserFavorite
+
+            count = (
+                self.db.query(func.count(UserFavorite.id))
+                .filter(UserFavorite.user_id == user_id)
+                .scalar()
+            )
+            return count or 0
+        except Exception as e:
+            logger.error(f"Error counting user favorites: {e}")
+            return 0
+
+    async def add_favorite(self, user_id: str, symbol: str) -> None:
+        """Add stock to user favorites."""
+        try:
+            from ..models import UserFavorite
+
+            # Check if already exists
+            existing = (
+                self.db.query(UserFavorite)
+                .filter(UserFavorite.user_id == user_id, UserFavorite.symbol == symbol)
+                .first()
+            )
+
+            if not existing:
+                favorite = UserFavorite(
+                    user_id=user_id,
+                    symbol=symbol,
+                    added_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                )
+                self.db.add(favorite)
+                self.db.commit()
+                logger.info(f"Added favorite {symbol} for user {user_id}")
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error adding favorite: {e}")
+            raise
+
+    async def remove_favorite(self, user_id: str, symbol: str) -> None:
+        """Remove stock from user favorites."""
+        try:
+            from ..models import UserFavorite
+
+            self.db.query(UserFavorite).filter(
+                UserFavorite.user_id == user_id, UserFavorite.symbol == symbol
+            ).delete()
+            self.db.commit()
+            logger.info(f"Removed favorite {symbol} for user {user_id}")
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error removing favorite: {e}")
+            raise
+
+    async def get_user_favorites(self, user_id: str) -> List[str]:
+        """Get list of user's favorite symbols."""
+        try:
+            from ..models import UserFavorite
+
+            favorites = (
+                self.db.query(UserFavorite.symbol)
+                .filter(UserFavorite.user_id == user_id)
+                .order_by(UserFavorite.added_at.desc())
+                .all()
+            )
+
+            return [f.symbol for f in favorites]
+        except Exception as e:
+            logger.error(f"Error getting user favorites: {e}")
+            return []
+
 
 class PostgresSearchHistoryRepository(ISearchHistoryRepository):
     """PostgreSQL implementation for search history tracking."""
@@ -284,6 +357,7 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
         query_type: IdentifierType,
         found: bool,
         response_time_ms: float,
+        user_id: Optional[str] = None,
     ) -> None:
         """Record search query."""
         try:
@@ -302,6 +376,8 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
                 existing.search_count += 1
                 existing.result_found = 1 if found else 0
                 existing.last_searched = datetime.now(timezone.utc).replace(tzinfo=None)
+                if user_id and not existing.user_id:
+                    existing.user_id = user_id
             else:
                 # Create new entry
                 history_entry = SearchHistory(
@@ -309,6 +385,7 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
                     query_type=query_type.value,
                     result_found=1 if found else 0,
                     search_count=1,
+                    user_id=user_id,
                     created_at=datetime.now(timezone.utc).replace(tzinfo=None),
                     last_searched=datetime.now(timezone.utc).replace(tzinfo=None),
                 )
@@ -353,6 +430,33 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
             return [r.query for r in results]
         except Exception as e:
             logger.error(f"Error getting autocomplete suggestions: {e}")
+            return []
+
+    async def get_user_history(self, user_id: str, limit: int = 10) -> List[dict]:
+        """Get user's search history."""
+        try:
+            results = (
+                self.db.query(SearchHistory)
+                .filter(SearchHistory.user_id == user_id)
+                .order_by(SearchHistory.last_searched.desc())
+                .limit(limit)
+                .all()
+            )
+
+            return [
+                {
+                    "query": r.query,
+                    "query_type": r.query_type,
+                    "found": bool(r.result_found),
+                    "search_count": r.search_count,
+                    "last_searched": r.last_searched.isoformat()
+                    if r.last_searched
+                    else None,
+                }
+                for r in results
+            ]
+        except Exception as e:
+            logger.error(f"Error getting user history: {e}")
             return []
 
 

@@ -5,6 +5,7 @@ Provides business logic for user authentication, registration,
 and profile management using Supabase Auth.
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from gotrue.errors import AuthApiError
@@ -69,12 +70,15 @@ class AuthService:
 
             logger.info(f"User registered successfully: {email}")
 
+            # Note: user_profiles entry is automatically created by Supabase trigger
+
             return {
                 "user": {
                     "id": response.user.id,
                     "email": response.user.email,
                     "full_name": response.user.user_metadata.get("full_name"),
                     "created_at": response.user.created_at,
+                    "tier": "free",
                 },
                 "session": {
                     "access_token": response.session.access_token
@@ -192,12 +196,30 @@ class AuthService:
             if not response.user:
                 return None
 
+            # Fetch tier from Supabase user_profiles table
+            tier = "free"
+            subscription_end = None
+            try:
+                profile_response = (
+                    self.client.table("user_profiles")
+                    .select("tier, subscription_end")
+                    .eq("id", response.user.id)
+                    .execute()
+                )
+                if profile_response.data and len(profile_response.data) > 0:
+                    tier = profile_response.data[0].get("tier", "free")
+                    subscription_end = profile_response.data[0].get("subscription_end")
+            except Exception as e:
+                logger.error(f"Failed to fetch tier from Supabase: {e}")
+
             return {
                 "id": response.user.id,
                 "email": response.user.email,
                 "full_name": response.user.user_metadata.get("full_name"),
                 "email_confirmed_at": response.user.email_confirmed_at,
                 "created_at": response.user.created_at,
+                "tier": tier,
+                "subscription_end": subscription_end,
             }
 
         except AuthApiError as e:
@@ -334,6 +356,94 @@ class AuthService:
             raise
         except Exception as e:
             logger.exception(f"Unexpected error requesting password reset: {e}")
+            raise
+
+    async def get_user_tier(self, user_id: str) -> Dict[str, Any]:
+        """
+        Get user tier information from Supabase user_profiles table.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Dictionary containing tier information
+
+        Raises:
+            Exception: If query fails
+        """
+        try:
+            logger.info(f"Fetching tier for user: {user_id}")
+
+            response = (
+                self.client.table("user_profiles")
+                .select("*")
+                .eq("id", user_id)
+                .single()
+                .execute()
+            )
+
+            if not response.data:
+                logger.warning(f"No tier data found for user: {user_id}")
+                return {
+                    "id": user_id,
+                    "tier": "free",
+                    "subscription_start": None,
+                    "subscription_end": None,
+                }
+
+            logger.info(f"Tier fetched successfully for user: {user_id}")
+            return response.data
+
+        except Exception as e:
+            logger.error(f"Failed to fetch tier for user {user_id}: {e}")
+            raise
+
+    async def update_user_tier(self, user_id: str, tier: str) -> Dict[str, Any]:
+        """
+        Update user tier in Supabase user_profiles table.
+
+        Args:
+            user_id: User UUID
+            tier: New tier ('free', 'paid', 'enterprise')
+
+        Returns:
+            Dictionary containing updated tier information
+
+        Raises:
+            Exception: If update fails
+        """
+        try:
+            logger.info(f"Updating tier for user {user_id} to: {tier}")
+
+            subscription_start = datetime.now().isoformat()
+            subscription_end = None
+
+            if tier == "paid":
+                subscription_end = (datetime.now() + timedelta(days=365)).isoformat()
+            elif tier == "enterprise":
+                subscription_end = (datetime.now() + timedelta(days=365)).isoformat()
+
+            response = (
+                self.client.table("user_profiles")
+                .update(
+                    {
+                        "tier": tier,
+                        "subscription_start": subscription_start,
+                        "subscription_end": subscription_end,
+                    }
+                )
+                .eq("id", user_id)
+                .execute()
+            )
+
+            if not response.data or len(response.data) == 0:
+                raise ValueError(f"Failed to update tier for user: {user_id}")
+
+            logger.info(f"Tier updated successfully for user: {user_id}")
+            return response.data[0]
+
+        except Exception as e:
+            logger.error(f"Failed to update tier for user {user_id}: {e}")
             raise
 
 

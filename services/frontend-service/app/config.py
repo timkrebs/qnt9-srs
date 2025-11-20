@@ -38,8 +38,23 @@ class Settings(BaseSettings):
         description="Base URL for the search service API",
     )
     AUTH_SERVICE_URL: str = Field(
-        default="http://localhost:8001",
+        default="http://localhost:8010",
         description="Base URL for the authentication service API",
+    )
+
+    WATCHLIST_SERVICE_URL: str = Field(
+        default="http://localhost:8012",
+        description="Base URL for the watchlist service API",
+    )
+
+    PREDICTION_SERVICE_URL: str = Field(
+        default="http://localhost:8007",
+        description="Base URL for the price prediction service API",
+    )
+
+    USER_SERVICE_URL: str = Field(
+        default="http://localhost:8011",
+        description="Base URL for the user service API",
     )
 
     # Application configuration
@@ -88,6 +103,30 @@ class Settings(BaseSettings):
         ge=0,
         le=5,
         description="Maximum number of retry attempts for failed requests",
+    )
+
+    # Consul Service Discovery
+    CONSUL_ENABLED: bool = Field(
+        default=False,
+        description="Enable Consul service discovery",
+    )
+    CONSUL_HOST: str = Field(
+        default="consul",
+        description="Consul server hostname",
+    )
+    CONSUL_PORT: int = Field(
+        default=8500,
+        ge=1,
+        le=65535,
+        description="Consul HTTP API port",
+    )
+    USE_SERVICE_DISCOVERY: bool = Field(
+        default=False,
+        description="Use Consul for service discovery instead of hardcoded URLs",
+    )
+    SERVICE_NAME: str = Field(
+        default="frontend-service",
+        description="Service name for Consul registration",
     )
 
     model_config = SettingsConfigDict(

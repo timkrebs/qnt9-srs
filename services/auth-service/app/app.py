@@ -25,6 +25,8 @@ from .models import (
     UserResponse,
     UserSignIn,
     UserSignUp,
+    UserTierResponse,
+    UserTierUpdate,
     UserUpdate,
 )
 
@@ -501,4 +503,109 @@ async def request_password_reset(reset_request: PasswordResetRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred",
+        )
+
+
+@app.get(
+    "/auth/me/tier",
+    response_model=UserTierResponse,
+    tags=["User Management"],
+    summary="Get user tier information",
+)
+async def get_user_tier(authorization: str = Header(None)):
+    """
+    Get current user's subscription tier.
+
+    Requires a valid access token in the Authorization header.
+
+    Args:
+        authorization: Bearer token in Authorization header
+
+    Returns:
+        User tier information
+
+    Raises:
+        HTTPException: If token is invalid or tier fetch fails
+    """
+    try:
+        token = get_token_from_header(authorization)
+        user = await auth_service.get_user(token)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+        # Fetch tier from Supabase
+        tier_data = await auth_service.get_user_tier(user["id"])
+
+        return UserTierResponse(
+            id=user["id"],
+            email=user["email"],
+            tier=tier_data["tier"],
+            subscription_start=tier_data.get("subscription_start"),
+            subscription_end=tier_data.get("subscription_end"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error getting user tier: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve tier information",
+        )
+
+
+@app.patch(
+    "/auth/me/tier",
+    response_model=UserTierResponse,
+    tags=["User Management"],
+    summary="Update user tier (upgrade/downgrade)",
+)
+async def update_user_tier(
+    tier_update: UserTierUpdate, authorization: str = Header(None)
+):
+    """
+    Update user's subscription tier.
+
+    Requires a valid access token in the Authorization header.
+
+    Args:
+        tier_update: New tier information
+        authorization: Bearer token in Authorization header
+
+    Returns:
+        Updated user tier information
+
+    Raises:
+        HTTPException: If token is invalid or tier update fails
+    """
+    try:
+        token = get_token_from_header(authorization)
+        user = await auth_service.get_user(token)
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+        # Update tier in Supabase
+        updated_tier = await auth_service.update_user_tier(user["id"], tier_update.tier)
+
+        return UserTierResponse(
+            id=updated_tier["id"],
+            email=user["email"],
+            tier=updated_tier["tier"],
+            subscription_start=updated_tier.get("subscription_start"),
+            subscription_end=updated_tier.get("subscription_end"),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error updating user tier: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update tier",
         )

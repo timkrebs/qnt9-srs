@@ -24,6 +24,7 @@ if env_path.exists():
 logger = logging.getLogger(__name__)
 
 # Database configuration
+# Default for local development (overridden by DATABASE_URL env var in production/Docker)
 DEFAULT_DATABASE_URL = "postgresql://qnt9_user:qnt9_password@localhost:5432/qnt9_search"
 POOL_SIZE = 5
 MAX_OVERFLOW = 10

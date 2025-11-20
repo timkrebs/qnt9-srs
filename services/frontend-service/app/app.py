@@ -10,13 +10,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+import httpx
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .api_client import search_client
 from .config import settings
+from .consul import ConsulClient, get_service_id
 from .logging_config import get_logger, setup_logging
 from .middleware import PerformanceMonitoringMiddleware, RequestLoggingMiddleware
 
@@ -28,6 +30,13 @@ setup_logging(
     use_json=use_json_logging,
 )
 logger = get_logger(__name__)
+
+# Initialize Consul client
+consul_client = ConsulClient(
+    enabled=settings.CONSUL_ENABLED,
+    host=settings.CONSUL_HOST,
+    port=settings.CONSUL_PORT,
+)
 
 
 @asynccontextmanager
@@ -42,6 +51,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("=" * 80)
     logger.info("Starting Frontend Service")
     logger.info("=" * 80)
+
+    # Register with Consul
+    service_id = get_service_id(settings.SERVICE_NAME)
+    consul_client.register_service(
+        service_id=service_id,
+        service_name=settings.SERVICE_NAME,
+        port=settings.PORT,
+        health_check_path="/health",
+        tags=["v1", "http", "frontend", "ui"],
+        meta={"version": "1.0.0"},
+    )
     logger.info(
         "Configuration loaded",
         extra={
@@ -93,6 +113,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("=" * 80)
     logger.info("Shutting down Frontend Service")
     logger.info("=" * 80)
+
+    # Deregister from Consul
+    consul_client.deregister_service(service_id)
 
 
 # Initialize FastAPI app
@@ -408,6 +431,166 @@ def _get_search_suggestions() -> List[str]:
         "Check if the stock symbol includes the exchange (e.g., DBK.DE for Deutsche Bank)",
         "Try searching with a different identifier type",
     ]
+
+
+# ==================== AUTH PAGES & PROXY ENDPOINTS ====================
+
+
+@app.get("/login", response_class=HTMLResponse, tags=["Pages"])
+async def login_page(request: Request):
+    """Render login page."""
+    return templates.TemplateResponse(
+        request=request, name="login.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.get("/signup", response_class=HTMLResponse, tags=["Pages"])
+async def signup_page(request: Request):
+    """Render signup page."""
+    return templates.TemplateResponse(
+        request=request, name="signup.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.post("/auth/signup", tags=["Auth"])
+async def signup_proxy(request: Request):
+    """Proxy signup request to auth-service."""
+    body = await request.json()
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.AUTH_SERVICE_URL}/auth/signup", json=body, timeout=30.0
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.post("/auth/signin", tags=["Auth"])
+async def signin_proxy(request: Request):
+    """Proxy signin request to auth-service."""
+    body = await request.json()
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.AUTH_SERVICE_URL}/auth/signin", json=body, timeout=30.0
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.post("/auth/signout", tags=["Auth"])
+async def signout_proxy(request: Request):
+    """Proxy signout request to auth-service."""
+    auth_header = request.headers.get("Authorization")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.AUTH_SERVICE_URL}/auth/signout",
+            headers={"Authorization": auth_header} if auth_header else {},
+            timeout=30.0,
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.get("/auth/me", tags=["Auth"])
+async def get_user_proxy(request: Request):
+    """Proxy get user request to auth-service."""
+    auth_header = request.headers.get("Authorization")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{settings.AUTH_SERVICE_URL}/auth/me",
+            headers={"Authorization": auth_header} if auth_header else {},
+            timeout=30.0,
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+# ==================== WATCHLIST PAGES & PROXY ENDPOINTS ====================
+
+
+@app.get("/watchlist", response_class=HTMLResponse, tags=["Pages"])
+async def watchlist_page(request: Request):
+    """Render watchlist page."""
+    return templates.TemplateResponse(
+        request=request, name="watchlist.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.get("/api/watchlist", tags=["Watchlist"])
+async def get_watchlist_proxy(request: Request):
+    """Proxy get watchlist request to watchlist-service."""
+    auth_header = request.headers.get("Authorization")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+            headers={"Authorization": auth_header} if auth_header else {},
+            timeout=30.0,
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.post("/api/watchlist", tags=["Watchlist"])
+async def add_to_watchlist_proxy(request: Request):
+    """Proxy add to watchlist request to watchlist-service."""
+    auth_header = request.headers.get("Authorization")
+    body = await request.json()
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+            headers={"Authorization": auth_header} if auth_header else {},
+            json=body,
+            timeout=30.0,
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.delete("/api/watchlist/{symbol}", tags=["Watchlist"])
+async def remove_from_watchlist_proxy(symbol: str, request: Request):
+    """Proxy remove from watchlist request to watchlist-service."""
+    auth_header = request.headers.get("Authorization")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.delete(
+            f"{settings.WATCHLIST_SERVICE_URL}/watchlists/{symbol}",
+            headers={"Authorization": auth_header} if auth_header else {},
+            timeout=30.0,
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+# ==================== UPGRADE PAGE & ENDPOINT ====================
+
+
+@app.get("/upgrade", response_class=HTMLResponse, tags=["Pages"])
+async def upgrade_page(request: Request):
+    """Render upgrade page."""
+    return templates.TemplateResponse(
+        request=request, name="upgrade.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.post("/api/upgrade", tags=["User"])
+async def upgrade_user_proxy(request: Request):
+    """Proxy upgrade request to auth-service."""
+    auth_header = request.headers.get("Authorization")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.patch(
+            f"{settings.AUTH_SERVICE_URL}/auth/me/tier",
+            headers={"Authorization": auth_header} if auth_header else {},
+            json={"tier": "paid"},
+            timeout=30.0,
+        )
+
+    return JSONResponse(status_code=response.status_code, content=response.json())
 
 
 if __name__ == "__main__":

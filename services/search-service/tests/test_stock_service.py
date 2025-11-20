@@ -95,7 +95,9 @@ class TestSearch:
     """Test search method with multi-layer caching."""
 
     @pytest.mark.asyncio
-    async def test_search_redis_cache_hit(self, search_service, mock_repositories, sample_stock):
+    async def test_search_redis_cache_hit(
+        self, search_service, mock_repositories, sample_stock
+    ):
         """Test search returns from Redis cache (Layer 1)."""
         redis_repo, postgres_repo, history_repo = mock_repositories
 
@@ -110,7 +112,9 @@ class TestSearch:
         postgres_repo.find_by_identifier.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_search_postgres_cache_hit(self, search_service, mock_repositories, sample_stock):
+    async def test_search_postgres_cache_hit(
+        self, search_service, mock_repositories, sample_stock
+    ):
         """Test search falls back to PostgreSQL cache (Layer 2)."""
         redis_repo, postgres_repo, history_repo = mock_repositories
 
@@ -173,7 +177,9 @@ class TestSearch:
         assert "empty" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_search_records_history(self, search_service, mock_repositories, sample_stock):
+    async def test_search_records_history(
+        self, search_service, mock_repositories, sample_stock
+    ):
         """Test search records to history."""
         redis_repo, postgres_repo, history_repo = mock_repositories
         redis_repo.find_by_identifier.return_value = sample_stock
@@ -265,7 +271,9 @@ class TestBuildIdentifier:
 
     def test_build_identifier_isin(self, search_service):
         """Test building identifier from ISIN."""
-        identifier = search_service._build_identifier("US0378331005", IdentifierType.ISIN)
+        identifier = search_service._build_identifier(
+            "US0378331005", IdentifierType.ISIN
+        )
 
         assert identifier.isin == "US0378331005"
         assert identifier.symbol is None
@@ -307,7 +315,9 @@ class TestErrorHandling:
     """Test error handling and resilience."""
 
     @pytest.mark.asyncio
-    async def test_service_error_handling(self, search_service, mock_repositories, sample_stock):
+    async def test_service_error_handling(
+        self, search_service, mock_repositories, sample_stock
+    ):
         """Test service handles errors gracefully and falls back."""
         redis_repo, postgres_repo, history_repo = mock_repositories
 
@@ -337,7 +347,9 @@ class TestRecordSearch:
     """Test search history recording."""
 
     @pytest.mark.asyncio
-    async def test_search_records_success(self, search_service, mock_repositories, sample_stock):
+    async def test_search_records_success(
+        self, search_service, mock_repositories, sample_stock
+    ):
         """Test successful searches are recorded."""
         redis_repo, postgres_repo, history_repo = mock_repositories
         redis_repo.find_by_identifier.return_value = sample_stock
@@ -348,7 +360,9 @@ class TestRecordSearch:
         history_repo.record_search.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_search_records_failure(self, search_service, mock_repositories, mock_api_client):
+    async def test_search_records_failure(
+        self, search_service, mock_repositories, mock_api_client
+    ):
         """Test failed searches are recorded."""
         redis_repo, postgres_repo, history_repo = mock_repositories
 
@@ -369,7 +383,9 @@ class TestPerformanceTracking:
     """Test performance tracking and metrics."""
 
     @pytest.mark.asyncio
-    async def test_search_tracks_duration(self, search_service, mock_repositories, sample_stock):
+    async def test_search_tracks_duration(
+        self, search_service, mock_repositories, sample_stock
+    ):
         """Test search tracks execution duration."""
         redis_repo, postgres_repo, history_repo = mock_repositories
         redis_repo.find_by_identifier.return_value = sample_stock

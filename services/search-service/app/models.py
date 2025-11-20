@@ -5,10 +5,12 @@ This module defines SQLAlchemy ORM models for managing stock data cache,
 API rate limiting, and search history tracking.
 """
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
@@ -71,7 +73,9 @@ class StockCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -145,6 +149,7 @@ class SearchHistory(Base):
         query_type: Type of query ('isin', 'wkn', or 'symbol')
         result_found: Whether result was found (1) or not (0)
         search_count: Number of times this query has been searched
+        user_id: Optional user ID for tracking user-specific history
         created_at: Timestamp of first search
         last_searched: Timestamp of most recent search
     """
@@ -156,12 +161,16 @@ class SearchHistory(Base):
     query_type = Column(String(10), nullable=False)
     result_found = Column(Integer, default=0, nullable=False)
     search_count = Column(Integer, default=1, nullable=False)
+    user_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    last_searched = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    last_searched = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     __table_args__ = (
         Index("idx_query_type", "query", "query_type"),
         Index("idx_search_count", "search_count"),
+        Index("idx_user_id", "user_id"),
     )
 
 
@@ -240,7 +249,9 @@ class StockReportCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -266,3 +277,30 @@ class StockReportCache(Base):
         Tracks how many times this cached entry has been served to requests.
         """
         self.cache_hits += CACHE_HIT_INCREMENT
+
+
+class UserFavorite(Base):
+    """
+    User favorite stocks model.
+
+    Tracks user's favorite stocks for quick access.
+
+    Attributes:
+        id: Primary key identifier (UUID)
+        user_id: User UUID from Supabase
+        symbol: Stock ticker symbol
+        added_at: Timestamp when favorite was added
+    """
+
+    __tablename__ = "user_favorites"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    symbol = Column(String(10), nullable=False, index=True)
+    added_at = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_user_favorites_user_id", "user_id"),
+        Index("idx_user_favorites_symbol", "symbol"),
+        Index("idx_user_favorites_user_symbol", "user_id", "symbol", unique=True),
+    )

@@ -83,6 +83,54 @@ class IStockRepository(ABC):
         """
         pass
 
+    @abstractmethod
+    async def count_user_favorites(self, user_id: str) -> int:
+        """
+        Count number of favorites for a user.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Number of favorites
+        """
+        pass
+
+    @abstractmethod
+    async def add_favorite(self, user_id: str, symbol: str) -> None:
+        """
+        Add stock to user favorites.
+
+        Args:
+            user_id: User UUID
+            symbol: Stock symbol
+        """
+        pass
+
+    @abstractmethod
+    async def remove_favorite(self, user_id: str, symbol: str) -> None:
+        """
+        Remove stock from user favorites.
+
+        Args:
+            user_id: User UUID
+            symbol: Stock symbol
+        """
+        pass
+
+    @abstractmethod
+    async def get_user_favorites(self, user_id: str) -> List[str]:
+        """
+        Get list of user's favorite symbols.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            List of stock symbols
+        """
+        pass
+
 
 class ISymbolMappingRepository(ABC):
     """
@@ -151,6 +199,7 @@ class ISearchHistoryRepository(ABC):
         query_type: IdentifierType,
         found: bool,
         response_time_ms: float,
+        user_id: Optional[str] = None,
     ) -> None:
         """
         Record a search query for analytics.
@@ -160,6 +209,7 @@ class ISearchHistoryRepository(ABC):
             query_type: Type of identifier
             found: Whether the search was successful
             response_time_ms: Response time in milliseconds
+            user_id: Optional user ID for tracking user-specific history
         """
         pass
 
@@ -177,7 +227,9 @@ class ISearchHistoryRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_autocomplete_suggestions(self, prefix: str, limit: int = 10) -> List[str]:
+    async def get_autocomplete_suggestions(
+        self, prefix: str, limit: int = 10
+    ) -> List[str]:
         """
         Get autocomplete suggestions based on search history.
 
@@ -187,5 +239,19 @@ class ISearchHistoryRepository(ABC):
 
         Returns:
             List of suggested completions
+        """
+        pass
+
+    @abstractmethod
+    async def get_user_history(self, user_id: str, limit: int = 10) -> List[dict]:
+        """
+        Get user's search history.
+
+        Args:
+            user_id: User UUID
+            limit: Maximum number of results
+
+        Returns:
+            List of search history entries
         """
         pass

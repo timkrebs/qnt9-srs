@@ -5,9 +5,10 @@ Orchestrates stock search operations using repositories and external APIs,
 implementing multi-layer caching and fault tolerance.
 """
 
+import asyncio
 import logging
 import time
-from typing import List
+from typing import List, Optional
 
 from ..domain.entities import IdentifierType, Stock, StockIdentifier
 from ..domain.exceptions import StockNotFoundException, ValidationException
@@ -49,7 +50,7 @@ class StockSearchService:
         self.api_client = api_client
         self.history_repo = history_repo
 
-    async def search(self, query: str) -> Stock:
+    async def search(self, query: str, user_id: Optional[str] = None) -> Stock:
         """
         Search for stock by any identifier.
 
@@ -83,10 +84,14 @@ class StockSearchService:
             logger.info(f"Detected name search for: {query}")
             results = await self.search_by_name(query, limit=1)
             if results:
-                await self._record_search(query, identifier_type, True, start_time)
+                await self._record_search(
+                    query, identifier_type, True, start_time, user_id
+                )
                 return results[0]
             else:
-                await self._record_search(query, identifier_type, False, start_time)
+                await self._record_search(
+                    query, identifier_type, False, start_time, user_id
+                )
                 raise StockNotFoundException(query, "name")
 
         # Build identifier object for ISIN/WKN/Symbol searches
@@ -97,7 +102,9 @@ class StockSearchService:
             stock = await self.redis_repo.find_by_identifier(identifier)
             if stock:
                 logger.info(f"Found in Redis: {query}")
-                await self._record_search(query, identifier_type, True, start_time)
+                await self._record_search(
+                    query, identifier_type, True, start_time, user_id
+                )
                 return stock
 
             # Layer 2: Check PostgreSQL
@@ -106,7 +113,9 @@ class StockSearchService:
                 logger.info(f"Found in PostgreSQL: {query}")
                 # Save to Redis for next time
                 await self.redis_repo.save(stock)
-                await self._record_search(query, identifier_type, True, start_time)
+                await self._record_search(
+                    query, identifier_type, True, start_time, user_id
+                )
                 return stock
 
             # Layer 3: Fetch from external API
@@ -136,27 +145,31 @@ class StockSearchService:
                             stock = name_results[0]
                             await self.redis_repo.save(stock)
                             await self._record_search(
-                                query, identifier_type, True, start_time
+                                query, identifier_type, True, start_time, user_id
                             )
                             return stock
                     except Exception as e:
                         logger.debug(f"Cache lookup failed during fallback: {e}")
 
-                await self._record_search(query, identifier_type, False, start_time)
+                await self._record_search(
+                    query, identifier_type, False, start_time, user_id
+                )
                 raise StockNotFoundException(query, identifier_type.value)
 
             # Save to both caches
             await self.postgres_repo.save(stock)
             await self.redis_repo.save(stock)
 
-            await self._record_search(query, identifier_type, True, start_time)
+            await self._record_search(query, identifier_type, True, start_time, user_id)
             return stock
 
         except StockNotFoundException:
             raise
         except Exception as e:
             logger.error(f"Error during stock search: {e}")
-            await self._record_search(query, identifier_type, False, start_time)
+            await self._record_search(
+                query, identifier_type, False, start_time, user_id
+            )
             raise
 
     async def search_by_name(self, name: str, limit: int = 10) -> List[Stock]:
@@ -240,7 +253,12 @@ class StockSearchService:
             return StockIdentifier(name=query)
 
     async def _record_search(
-        self, query: str, query_type: IdentifierType, found: bool, start_time: float
+        self,
+        query: str,
+        query_type: IdentifierType,
+        found: bool,
+        start_time: float,
+        user_id: Optional[str] = None,
     ) -> None:
         """Record search in history for analytics."""
         try:
@@ -250,7 +268,137 @@ class StockSearchService:
                 query_type=query_type,
                 found=found,
                 response_time_ms=response_time_ms,
+                user_id=user_id,
             )
         except Exception as e:
             # Don't fail the request if history recording fails
             logger.warning(f"Failed to record search history: {e}")
+
+    async def batch_search(
+        self, symbols: List[str], user_id: Optional[str] = None
+    ) -> List[Stock]:
+        """
+        Search multiple stocks efficiently using concurrent requests.
+
+        Args:
+            symbols: List of stock symbols to search
+            user_id: Optional user ID for history tracking
+
+        Returns:
+            List of Stock objects (excludes symbols that failed)
+
+        Example:
+            stocks = await service.batch_search(["AAPL", "MSFT", "GOOGL"], user_id="user123")
+        """
+        logger.info(f"Batch search for {len(symbols)} symbols")
+
+        # Create concurrent search tasks
+        tasks = [self.search(symbol, user_id=user_id) for symbol in symbols]
+
+        # Execute all searches concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Filter out exceptions and return only successful Stock objects
+        stocks = []
+        for i, result in enumerate(results):
+            if isinstance(result, Stock):
+                stocks.append(result)
+            elif isinstance(result, Exception):
+                logger.warning(f"Failed to fetch {symbols[i]}: {result}")
+
+        logger.info(f"Batch search completed: {len(stocks)}/{len(symbols)} successful")
+        return stocks
+
+    async def get_user_search_history(
+        self, user_id: str, limit: int = 10
+    ) -> List[dict]:
+        """
+        Get user's recent search history.
+
+        Args:
+            user_id: User UUID
+            limit: Maximum number of results
+
+        Returns:
+            List of search history entries with query, timestamp, and result
+
+        Example:
+            history = await service.get_user_search_history("user123", limit=20)
+        """
+        try:
+            history = await self.history_repo.get_user_history(user_id, limit)
+            logger.info(f"Retrieved {len(history)} history entries for user {user_id}")
+            return history
+        except Exception as e:
+            logger.error(f"Error fetching user history: {e}")
+            return []
+
+    async def add_to_favorites(self, user_id: str, symbol: str, tier: str) -> None:
+        """
+        Add stock to user favorites with tier limits.
+
+        Args:
+            user_id: User UUID
+            symbol: Stock symbol
+            tier: User tier (free or paid)
+
+        Raises:
+            ValidationException: If user exceeds tier limit
+
+        Example:
+            await service.add_to_favorites("user123", "AAPL", "free")
+        """
+        max_favorites = 20 if tier == "paid" else 5
+
+        # Check current favorites count
+        current_count = await self.postgres_repo.count_user_favorites(user_id)
+
+        if current_count >= max_favorites:
+            raise ValidationException(
+                "favorites",
+                symbol,
+                f"{tier.title()} tier limited to {max_favorites} favorites. Upgrade for more.",
+            )
+
+        # Add to favorites
+        await self.postgres_repo.add_favorite(user_id, symbol)
+        logger.info(f"Added {symbol} to favorites for user {user_id}")
+
+    async def remove_from_favorites(self, user_id: str, symbol: str) -> None:
+        """
+        Remove stock from user favorites.
+
+        Args:
+            user_id: User UUID
+            symbol: Stock symbol
+
+        Example:
+            await service.remove_from_favorites("user123", "AAPL")
+        """
+        await self.postgres_repo.remove_favorite(user_id, symbol)
+        logger.info(f"Removed {symbol} from favorites for user {user_id}")
+
+    async def get_favorites(self, user_id: str) -> List[Stock]:
+        """
+        Get user's favorite stocks with current prices.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            List of Stock objects for favorited symbols
+
+        Example:
+            favorites = await service.get_favorites("user123")
+        """
+        # Get favorite symbols from database
+        symbols = await self.postgres_repo.get_user_favorites(user_id)
+
+        if not symbols:
+            return []
+
+        # Batch search for all favorites to get current prices
+        stocks = await self.batch_search(symbols, user_id=user_id)
+
+        logger.info(f"Retrieved {len(stocks)} favorites for user {user_id}")
+        return stocks

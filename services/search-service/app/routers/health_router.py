@@ -85,7 +85,9 @@ async def readiness_check():
     return response
 
 
-@router.get("/metrics", summary="Prometheus metrics", description="Prometheus metrics endpoint")
+@router.get(
+    "/metrics", summary="Prometheus metrics", description="Prometheus metrics endpoint"
+)
 async def metrics():
     """
     Prometheus metrics endpoint.

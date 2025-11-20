@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
 from sqlalchemy.orm import Session
 
+from .consul import ConsulClient, get_service_id
 from .database import get_db, init_db
 from .dependencies import set_stock_service
 from .infrastructure.yahoo_finance_client import YahooFinanceClient
@@ -65,11 +66,21 @@ REQUEST_LATENCY = Histogram(
     ["method", "endpoint"],
 )
 
-CACHE_HITS = Counter("search_service_cache_hits_total", "Total cache hits", ["cache_layer"])
+CACHE_HITS = Counter(
+    "search_service_cache_hits_total", "Total cache hits", ["cache_layer"]
+)
 
 # Global state
 redis_client: Optional[redis.Redis] = None
 stock_service: Optional[StockSearchService] = None
+
+# Initialize Consul client
+consul_enabled = os.getenv("CONSUL_ENABLED", "false").lower() == "true"
+consul_host = os.getenv("CONSUL_HOST", "consul")
+consul_port = int(os.getenv("CONSUL_PORT", "8500"))
+use_service_discovery = os.getenv("USE_SERVICE_DISCOVERY", "false").lower() == "true"
+
+consul_client = ConsulClient(enabled=consul_enabled, host=consul_host, port=consul_port)
 
 
 @asynccontextmanager
@@ -78,6 +89,20 @@ async def lifespan(app: FastAPI):
     global redis_client, stock_service
 
     logger.info("Starting Search Service 2.0...")
+
+    # Register with Consul
+    service_name = os.getenv("SERVICE_NAME", "search-service")
+    service_port = int(os.getenv("PORT", "8000"))
+    service_id = get_service_id(service_name)
+
+    consul_client.register_service(
+        service_id=service_id,
+        service_name=service_name,
+        port=service_port,
+        health_check_path="/api/v1/health",  # Correct health endpoint
+        tags=["v1", "http", "search", "api"],
+        meta={"version": "2.0.0"},
+    )
 
     # Initialize PostgreSQL
     try:
@@ -90,7 +115,9 @@ async def lifespan(app: FastAPI):
     # Initialize Redis
     try:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        redis_client = await redis.from_url(redis_url, encoding="utf-8", decode_responses=False)
+        redis_client = await redis.from_url(
+            redis_url, encoding="utf-8", decode_responses=False
+        )
         await redis_client.ping()
         logger.info("Redis connected successfully", url=redis_url)
     except Exception as e:
@@ -112,6 +139,9 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down Search Service...")
+
+    # Deregister from Consul
+    consul_client.deregister_service(service_id)
 
     if redis_client:
         await redis_client.close()
@@ -214,7 +244,9 @@ async def track_metrics(request: Request, call_next):
         method=request.method, endpoint=request.url.path, status=response.status_code
     ).inc()
 
-    REQUEST_LATENCY.labels(method=request.method, endpoint=request.url.path).observe(duration)
+    REQUEST_LATENCY.labels(method=request.method, endpoint=request.url.path).observe(
+        duration
+    )
 
     return response
 
@@ -275,4 +307,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app.app_v2:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
+    uvicorn.run(
+        "app.app_v2:app", host="0.0.0.0", port=8000, reload=True, log_level="info"
+    )

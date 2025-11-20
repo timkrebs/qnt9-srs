@@ -12,7 +12,13 @@ from typing import List, Optional
 
 import redis.asyncio as redis
 
-from ..domain.entities import DataSource, Stock, StockIdentifier, StockMetadata, StockPrice
+from ..domain.entities import (
+    DataSource,
+    Stock,
+    StockIdentifier,
+    StockMetadata,
+    StockPrice,
+)
 from .stock_repository import IStockRepository
 
 logger = logging.getLogger(__name__)
@@ -163,8 +169,12 @@ class RedisStockRepository(IStockRepository):
                 "open": str(stock.price.open_price) if stock.price.open_price else None,
                 "day_high": str(stock.price.day_high) if stock.price.day_high else None,
                 "day_low": str(stock.price.day_low) if stock.price.day_low else None,
-                "week_52_high": str(stock.price.week_52_high) if stock.price.week_52_high else None,
-                "week_52_low": str(stock.price.week_52_low) if stock.price.week_52_low else None,
+                "week_52_high": str(stock.price.week_52_high)
+                if stock.price.week_52_high
+                else None,
+                "week_52_low": str(stock.price.week_52_low)
+                if stock.price.week_52_low
+                else None,
                 "volume": stock.price.volume,
                 "avg_volume": stock.price.avg_volume,
             },
@@ -172,8 +182,12 @@ class RedisStockRepository(IStockRepository):
                 "exchange": stock.metadata.exchange,
                 "sector": stock.metadata.sector,
                 "industry": stock.metadata.industry,
-                "market_cap": str(stock.metadata.market_cap) if stock.metadata.market_cap else None,
-                "pe_ratio": str(stock.metadata.pe_ratio) if stock.metadata.pe_ratio else None,
+                "market_cap": str(stock.metadata.market_cap)
+                if stock.metadata.market_cap
+                else None,
+                "pe_ratio": str(stock.metadata.pe_ratio)
+                if stock.metadata.pe_ratio
+                else None,
                 "dividend_yield": str(stock.metadata.dividend_yield)
                 if stock.metadata.dividend_yield
                 else None,
@@ -207,8 +221,12 @@ class RedisStockRepository(IStockRepository):
             if price_data.get("previous_close")
             else None,
             open_price=Decimal(price_data["open"]) if price_data.get("open") else None,
-            day_high=Decimal(price_data["day_high"]) if price_data.get("day_high") else None,
-            day_low=Decimal(price_data["day_low"]) if price_data.get("day_low") else None,
+            day_high=Decimal(price_data["day_high"])
+            if price_data.get("day_high")
+            else None,
+            day_low=Decimal(price_data["day_low"])
+            if price_data.get("day_low")
+            else None,
             week_52_high=Decimal(price_data["week_52_high"])
             if price_data.get("week_52_high")
             else None,
@@ -227,7 +245,9 @@ class RedisStockRepository(IStockRepository):
             market_cap=Decimal(metadata_data["market_cap"])
             if metadata_data.get("market_cap")
             else None,
-            pe_ratio=Decimal(metadata_data["pe_ratio"]) if metadata_data.get("pe_ratio") else None,
+            pe_ratio=Decimal(metadata_data["pe_ratio"])
+            if metadata_data.get("pe_ratio")
+            else None,
             dividend_yield=Decimal(metadata_data["dividend_yield"])
             if metadata_data.get("dividend_yield")
             else None,
@@ -246,3 +266,19 @@ class RedisStockRepository(IStockRepository):
             last_updated=datetime.fromisoformat(data["last_updated"]),
             cache_age_seconds=cache_age,
         )
+
+    async def count_user_favorites(self, user_id: str) -> int:
+        """Not supported in Redis - use PostgreSQL."""
+        return 0
+
+    async def add_favorite(self, user_id: str, symbol: str) -> None:
+        """Not supported in Redis - use PostgreSQL."""
+        pass
+
+    async def remove_favorite(self, user_id: str, symbol: str) -> None:
+        """Not supported in Redis - use PostgreSQL."""
+        pass
+
+    async def get_user_favorites(self, user_id: str) -> List[str]:
+        """Not supported in Redis - use PostgreSQL."""
+        return []
