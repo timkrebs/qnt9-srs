@@ -8,8 +8,10 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from threading import Lock
 from typing import List, Optional
 
+from cachetools import TTLCache  # type: ignore[import-untyped]
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -23,13 +25,73 @@ from ..domain.entities import (
 )
 from ..domain.exceptions import CacheException
 from ..models import SearchHistory, StockCache
-from .stock_repository import (
-    ISearchHistoryRepository,
-    IStockRepository,
-    ISymbolMappingRepository,
-)
+from .stock_repository import ISearchHistoryRepository, IStockRepository, ISymbolMappingRepository
 
 logger = logging.getLogger(__name__)
+
+
+class QueryResultCache:
+    """
+    In-memory cache for query results with TTL.
+
+    Phase 5 optimization to reduce database load for frequent queries.
+    """
+
+    def __init__(self, maxsize: int = 1000, ttl: int = 300):
+        """
+        Initialize query result cache.
+
+        Args:
+            maxsize: Maximum number of cached queries
+            ttl: Time-to-live in seconds (default 5 minutes)
+        """
+        self.cache = TTLCache(maxsize=maxsize, ttl=ttl)
+        self.lock = Lock()
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, key: str):
+        """Get cached result."""
+        with self.lock:
+            if key in self.cache:
+                self.hits += 1
+                return self.cache[key]
+            self.misses += 1
+            return None
+
+    def set(self, key: str, value):
+        """Cache a result."""
+        with self.lock:
+            self.cache[key] = value
+
+    def invalidate(self, pattern: Optional[str] = None):
+        """
+        Invalidate cache entries.
+
+        Args:
+            pattern: If provided, only invalidate keys matching pattern
+        """
+        with self.lock:
+            if pattern:
+                keys_to_delete = [k for k in self.cache.keys() if pattern in k]
+                for key in keys_to_delete:
+                    del self.cache[key]
+            else:
+                self.cache.clear()
+
+    def get_stats(self) -> dict:
+        """Get cache statistics."""
+        with self.lock:
+            total = self.hits + self.misses
+            hit_rate = (self.hits / total * 100) if total > 0 else 0
+
+            return {
+                "hits": self.hits,
+                "misses": self.misses,
+                "hit_rate_percent": round(hit_rate, 2),
+                "size": len(self.cache),
+                "maxsize": self.cache.maxsize,
+            }
 
 
 class PostgresStockRepository(IStockRepository):
@@ -45,9 +107,18 @@ class PostgresStockRepository(IStockRepository):
         """
         self.db = db
         self.cache_ttl_minutes = cache_ttl_minutes
+        # Phase 5: Query result cache
+        self.query_cache = QueryResultCache(maxsize=1000, ttl=300)
 
     async def find_by_identifier(self, identifier: StockIdentifier) -> Optional[Stock]:
         """Find stock by identifier from PostgreSQL cache."""
+        # Phase 5: Check query result cache first
+        cache_key = f"stock:{identifier.isin or identifier.wkn or identifier.symbol}"
+        cached_result = self.query_cache.get(cache_key)
+        if cached_result:
+            logger.debug(f"Query cache hit for {cache_key}")
+            return cached_result
+
         try:
             now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -70,7 +141,12 @@ class PostgresStockRepository(IStockRepository):
                 cache_entry.cache_hits += 1
                 self.db.commit()
 
-                return self._map_to_entity(cache_entry)
+                result = self._map_to_entity(cache_entry)
+
+                # Phase 5: Cache the result
+                self.query_cache.set(cache_key, result)
+
+                return result
 
             return None
 
@@ -138,6 +214,13 @@ class PostgresStockRepository(IStockRepository):
                 self.db.add(cache_entry)
 
             self.db.commit()
+
+            # Phase 5: Invalidate query cache for this stock
+            cache_key = (
+                f"stock:{stock.identifier.isin or stock.identifier.wkn or stock.identifier.symbol}"
+            )
+            self.query_cache.invalidate(cache_key)
+
             return stock
 
         except Exception as e:
@@ -330,6 +413,10 @@ class PostgresStockRepository(IStockRepository):
             logger.error(f"Error getting user favorites: {e}")
             return []
 
+    def get_query_cache_stats(self) -> dict:
+        """Get query result cache statistics (Phase 5)."""
+        return self.query_cache.get_stats()
+
 
 class PostgresSearchHistoryRepository(ISearchHistoryRepository):
     """PostgreSQL implementation for search history tracking."""
@@ -438,6 +525,30 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
         except Exception as e:
             logger.error(f"Error getting user history: {e}")
             return []
+
+    async def get_search_stats(self) -> dict:
+        """Get search statistics for relevance scoring."""
+        try:
+            # Get search counts grouped by query (assuming queries are symbols/names)
+            results = (
+                self.db.query(
+                    SearchHistory.query, func.sum(SearchHistory.search_count).label("total_count")
+                )
+                .filter(SearchHistory.result_found == 1)  # Only successful searches
+                .group_by(SearchHistory.query)
+                .order_by(func.sum(SearchHistory.search_count).desc())
+                .limit(1000)  # Top 1000 most searched
+                .all()
+            )
+
+            # Convert to dictionary
+            stats = {r.query.upper(): int(r.total_count) for r in results}
+            logger.info(f"Loaded search stats for {len(stats)} symbols")
+            return stats
+
+        except Exception as e:
+            logger.error(f"Error getting search stats: {e}")
+            return {}
 
 
 class PostgresSymbolMappingRepository(ISymbolMappingRepository):

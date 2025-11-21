@@ -7,13 +7,23 @@ Covers:
 - Fallback strategies
 - Error handling
 - Search history tracking
+
+Note: Advanced features like intelligent_search() and get_search_suggestions()
+require integration tests due to complex interactions between:
+- Entity validation (StockIdentifier, Stock, StockMetadata)
+- Relevance scorer with popularity metrics
+- Fuzzy matcher integration
+- Multi-repository orchestration
+
+These should be tested in end-to-end integration test suite.
 """
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from app.domain.entities import (
     DataSource,
     IdentifierType,
@@ -39,8 +49,25 @@ def sample_stock():
     metadata = StockMetadata(
         exchange="NASDAQ",
         sector="Technology",
+        market_cap=Decimal("2800000000000"),  # $2.8T
     )
 
+    return Stock(
+        identifier=identifier,
+        price=price,
+        metadata=metadata,
+        data_source=DataSource.YAHOO_FINANCE,
+        last_updated=datetime.now(timezone.utc),
+    )
+
+
+def create_test_stock(
+    symbol: str, name: str, exchange: str = "NYSE", market_cap: Decimal = Decimal("1000000000")
+) -> Stock:
+    """Helper to create test stocks with proper structure."""
+    identifier = StockIdentifier(isin=f"TEST{symbol}", symbol=symbol, name=name)
+    price = StockPrice(current=Decimal("100.00"), currency="USD")
+    metadata = StockMetadata(exchange=exchange, sector="Technology", market_cap=market_cap)
     return Stock(
         identifier=identifier,
         price=price,
@@ -69,12 +96,34 @@ def mock_api_client():
 def search_service(mock_repositories, mock_api_client):
     """Create stock search service with mocks."""
     redis_repo, postgres_repo, history_repo = mock_repositories
-    return StockSearchService(
-        redis_repo=redis_repo,
-        postgres_repo=postgres_repo,
-        api_client=mock_api_client,
-        history_repo=history_repo,
-    )
+
+    # Mock the memory cache to always return None (cache miss)
+    # Individual tests can override this behavior
+    with patch("app.services.stock_service.get_memory_cache") as mock_get_cache:
+        mock_memory_cache = MagicMock()
+        mock_memory_cache.get.return_value = None
+        mock_memory_cache.get_stats.return_value = {
+            "size": 0,
+            "max_size": 1000,
+            "hits": 0,
+            "misses": 0,
+            "hit_rate_percent": 0.0,
+        }
+        mock_get_cache.return_value = mock_memory_cache
+
+        service = StockSearchService(
+            redis_repo=redis_repo,
+            postgres_repo=postgres_repo,
+            api_client=mock_api_client,
+            history_repo=history_repo,
+        )
+        # Store reference to mock for tests that need to modify it
+        service._mock_memory_cache = mock_memory_cache
+
+        # Mock get_search_stats to prevent async issues
+        history_repo.get_search_stats = AsyncMock(return_value={})
+
+        return service
 
 
 class TestServiceInitialization:

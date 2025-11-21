@@ -97,21 +97,14 @@ class StockIdentifier:
         if " " in query:
             return IdentifierType.NAME
 
+        # SYMBOL: Short codes (1-10 chars) matching symbol pattern
+        # This includes pure alpha symbols like AAPL, MSFT, GOOGL
+        if len(query_upper) <= 10 and cls.SYMBOL_PATTERN.match(query_upper):
+            return IdentifierType.SYMBOL
+
+        # NAME: Alphabetic strings with hyphens or ampersands (e.g., "T-Mobile", "AT&T")
         if query.replace("-", "").replace("&", "").isalpha():
             return IdentifierType.NAME
-
-        # SYMBOL: Short codes (1-10 chars) with symbol pattern
-        # Extended from 5 to 10 to handle longer international symbols
-        if len(query_upper) <= 10 and cls.SYMBOL_PATTERN.match(query_upper):
-            if any(c in query_upper for c in ".-"):
-                return IdentifierType.SYMBOL
-
-            if len(query_upper) <= 5 and any(c.isdigit() for c in query_upper):
-                return IdentifierType.SYMBOL
-
-        # SYMBOL: If it matches symbol pattern and contains digits (e.g., VOW3, BAS11)
-        if cls.SYMBOL_PATTERN.match(query_upper) and any(c.isdigit() for c in query_upper):
-            return IdentifierType.SYMBOL
 
         return IdentifierType.NAME
 

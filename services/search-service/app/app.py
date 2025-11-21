@@ -30,7 +30,7 @@ from .repositories.postgres_repository import (
     PostgresStockRepository,
 )
 from .repositories.redis_repository import RedisStockRepository
-from .routers import health_router, legacy_router, search_router
+from .routers import health_router, instant_search_router, legacy_router, search_router
 from .services.stock_service import StockSearchService
 
 # Configure structured logging
@@ -247,6 +247,7 @@ async def track_metrics(request: Request, call_next):
 
 # Include routers
 app.include_router(search_router.router)
+app.include_router(instant_search_router.router)  # Phase 4: Intelligent instant search
 app.include_router(health_router.router)
 app.include_router(legacy_router.router)  # Legacy endpoints for backwards compatibility
 

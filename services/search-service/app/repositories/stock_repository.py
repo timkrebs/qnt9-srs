@@ -250,6 +250,17 @@ class ISearchHistoryRepository(ABC):
             limit: Maximum number of results
 
         Returns:
-            List of search history entries
+            List of search history entries with query and timestamp
+        """
+        pass
+
+    @abstractmethod
+    async def get_search_stats(self) -> dict:
+        """
+        Get search statistics for relevance scoring.
+
+        Returns:
+            Dictionary mapping stock symbols to search counts
+            Format: {"AAPL": 1000, "MSFT": 800, ...}
         """
         pass

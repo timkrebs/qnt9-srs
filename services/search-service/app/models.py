@@ -9,8 +9,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import BigInteger, Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
@@ -297,4 +297,80 @@ class UserFavorite(Base):
         Index("idx_user_favorites_user_id", "user_id"),
         Index("idx_user_favorites_symbol", "symbol"),
         Index("idx_user_favorites_user_symbol", "user_id", "symbol", unique=True),
+    )
+
+
+class StockSearchIndex(Base):
+    """
+    Optimized stock search index model.
+
+    Denormalized table optimized for ultra-fast search with full-text
+    and fuzzy matching capabilities. Includes pre-computed popularity scores
+    and PostgreSQL tsvector for intelligent search ranking.
+
+    This table is designed for read-heavy workloads with comprehensive indices
+    for exact, prefix, and fuzzy matching. The search_vector column is
+    automatically maintained via database triggers.
+
+    Attributes:
+        id: Primary key identifier
+        symbol: Stock ticker symbol (e.g., AAPL, TSLA)
+        name: Company name (e.g., Apple Inc.)
+        exchange: Stock exchange (e.g., NASDAQ, NYSE)
+        security_type: Security type (e.g., Common Stock, ETF, REIT)
+        market_cap: Market capitalization in USD
+        avg_volume: Average daily trading volume
+        sector: Business sector (e.g., Technology, Healthcare)
+        industry: Industry classification (e.g., Consumer Electronics)
+        isin: International Securities Identification Number
+        wkn: German securities identification number
+        popularity_score: Computed popularity score (0-200) based on:
+            - Search frequency (0-100)
+            - Market cap percentile (0-100)
+        search_vector: PostgreSQL tsvector for full-text search
+            - Symbol weighted 'A' (highest)
+            - Name weighted 'B'
+            - Exchange weighted 'C'
+            - Sector weighted 'D' (lowest)
+        created_at: Timestamp of index entry creation
+        updated_at: Timestamp of last update
+    """
+
+    __tablename__ = "stock_search_index"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Core identifiers
+    symbol = Column(String(20), nullable=False, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    exchange = Column(String(50), nullable=True)
+    security_type = Column(String(50), nullable=True)
+
+    # Market data
+    market_cap = Column(Float, nullable=True)
+    avg_volume = Column(BigInteger, nullable=True)
+    sector = Column(String(100), nullable=True)
+    industry = Column(String(100), nullable=True)
+
+    # Alternative identifiers
+    isin = Column(String(12), nullable=True, index=True)
+    wkn = Column(String(6), nullable=True, index=True)
+
+    # Search optimization fields
+    popularity_score = Column(Float, nullable=False, default=0, server_default="0")
+    search_vector = Column(TSVECTOR, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Composite indices defined in migration
+    __table_args__ = (
+        Index("idx_search_symbol", "symbol"),
+        Index("idx_search_name", "name"),
+        Index("idx_search_isin", "isin"),
+        Index("idx_search_wkn", "wkn"),
+        Index("idx_search_symbol_exchange", "symbol", "exchange", unique=True),
+        Index("idx_search_popularity", "popularity_score"),
+        # GIN indices for full-text and trigram search defined in migration
     )

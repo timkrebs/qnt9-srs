@@ -8,12 +8,14 @@ implementing multi-layer caching and fault tolerance.
 import asyncio
 import logging
 import time
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
+from ..cache.memory_cache import get_memory_cache
 from ..domain.entities import IdentifierType, Stock, StockIdentifier
 from ..domain.exceptions import StockNotFoundException, ValidationException
 from ..infrastructure.stock_api_client import IStockAPIClient
 from ..repositories.stock_repository import ISearchHistoryRepository, IStockRepository
+from ..search import FuzzyMatcher, RelevanceScorer, SearchMatch
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +25,11 @@ class StockSearchService:
     Stock search service with multi-layer caching.
 
     Implements the following caching strategy:
-    1. Check Redis (fast in-memory)
-    2. Check PostgreSQL (persistent cache)
-    3. Fetch from external API (Yahoo Finance)
-    4. Save to both caches
+    0. Check In-Memory LRU (ultra-fast, ~1μs)
+    1. Check Redis (fast in-memory, ~1ms)
+    2. Check PostgreSQL (persistent cache, ~10ms)
+    3. Fetch from external API (Yahoo Finance, ~500ms)
+    4. Save to all caches
     """
 
     def __init__(
@@ -49,15 +52,23 @@ class StockSearchService:
         self.postgres_repo = postgres_repo
         self.api_client = api_client
         self.history_repo = history_repo
+        self.memory_cache = get_memory_cache()  # Layer 0 cache
+
+        # Phase 4: Intelligent search components
+        self.fuzzy_matcher = FuzzyMatcher(symbol_threshold=0.75, name_threshold=0.70)
+        self.relevance_scorer = RelevanceScorer()
+        self._search_stats_cache: Optional[Dict[str, Any]] = None
+        self._stats_last_updated = 0.0
 
     async def search(self, query: str, user_id: Optional[str] = None) -> Stock:
         """
         Search for stock by any identifier.
 
         Implements multi-layer caching:
-        - Layer 1: Redis (5 min TTL)
-        - Layer 2: PostgreSQL (5 min TTL)
-        - Layer 3: External API
+        - Layer 0: In-Memory LRU (~1μs)
+        - Layer 1: Redis (5 min TTL, ~1ms)
+        - Layer 2: PostgreSQL (5 min TTL, ~10ms)
+        - Layer 3: External API (~500ms)
 
         Args:
             query: Search query (ISIN, WKN, Symbol, or Name)
@@ -92,12 +103,22 @@ class StockSearchService:
 
         # Build identifier object for ISIN/WKN/Symbol searches
         identifier = self._build_identifier(query, identifier_type)
+        cache_key = query.upper()
 
         try:
+            # Layer 0: Check In-Memory LRU Cache
+            cached_stock = self.memory_cache.get(cache_key)
+            if cached_stock:
+                logger.info(f"Found in MEMORY cache: {query}")
+                await self._record_search(query, identifier_type, True, start_time, user_id)
+                return cached_stock
+
             # Layer 1: Check Redis
             stock = await self.redis_repo.find_by_identifier(identifier)
             if stock:
                 logger.info(f"Found in Redis: {query}")
+                # Save to memory cache for next time
+                self.memory_cache.set(cache_key, stock)
                 await self._record_search(query, identifier_type, True, start_time, user_id)
                 return stock
 
@@ -105,8 +126,9 @@ class StockSearchService:
             stock = await self.postgres_repo.find_by_identifier(identifier)
             if stock:
                 logger.info(f"Found in PostgreSQL: {query}")
-                # Save to Redis for next time
+                # Save to Redis and Memory for next time
                 await self.redis_repo.save(stock)
+                self.memory_cache.set(cache_key, stock)
                 await self._record_search(query, identifier_type, True, start_time, user_id)
                 return stock
 
@@ -134,6 +156,7 @@ class StockSearchService:
                             # Return first match and cache it with the new identifier
                             stock = name_results[0]
                             await self.redis_repo.save(stock)
+                            self.memory_cache.set(cache_key, stock)
                             await self._record_search(
                                 query, identifier_type, True, start_time, user_id
                             )
@@ -144,9 +167,10 @@ class StockSearchService:
                 await self._record_search(query, identifier_type, False, start_time, user_id)
                 raise StockNotFoundException(query, identifier_type.value)
 
-            # Save to both caches
+            # Save to all caches (PostgreSQL, Redis, Memory)
             await self.postgres_repo.save(stock)
             await self.redis_repo.save(stock)
+            self.memory_cache.set(cache_key, stock)
 
             await self._record_search(query, identifier_type, True, start_time, user_id)
             return stock
@@ -382,3 +406,202 @@ class StockSearchService:
 
         logger.info(f"Retrieved {len(stocks)} favorites for user {user_id}")
         return stocks
+
+    def get_cache_stats(self) -> dict:
+        """
+        Get statistics from all cache layers.
+
+        Returns:
+            Dictionary with cache statistics
+        """
+        return {
+            "memory_cache": self.memory_cache.get_stats(),
+        }
+
+    async def intelligent_search(
+        self, query: str, limit: int = 10, user_id: Optional[str] = None, include_fuzzy: bool = True
+    ) -> List[SearchMatch]:
+        """
+        Intelligent search with fuzzy matching and relevance scoring.
+
+        Multi-stage search strategy:
+        1. Exact symbol match
+        2. Exact name match
+        3. Prefix matching
+        4. Fuzzy symbol matching
+        5. Fuzzy name matching
+
+        All results ranked by relevance score.
+
+        Args:
+            query: Search query
+            limit: Maximum results to return
+            user_id: Optional user ID for personalization
+            include_fuzzy: Whether to include fuzzy matches
+
+        Returns:
+            List of SearchMatch objects sorted by relevance
+        """
+        start_time = time.time()
+
+        # Validate query
+        query = query.strip()
+        if not query or len(query) < 1:
+            raise ValidationException("query", query, "Query cannot be empty")
+
+        query_upper = query.upper()
+        matches: List[Tuple[Stock, str, str, float]] = []
+
+        # Stage 1: Try exact searches first
+        try:
+            # Exact symbol match
+            identifier = StockIdentifier(symbol=query_upper)
+            stock = await self.redis_repo.find_by_identifier(identifier)
+            if not stock:
+                stock = await self.postgres_repo.find_by_identifier(identifier)
+            if stock:
+                matches.append((stock, "exact", "symbol", 1.0))
+                logger.info(f"Exact symbol match: {query_upper}")
+        except Exception as e:
+            logger.debug(f"No exact symbol match: {e}")
+
+        # Stage 2: Search by name in database
+        try:
+            name_results = await self.postgres_repo.find_by_name(query, limit=limit)
+            for stock in name_results:
+                # Check if exact name match
+                if stock.identifier.name and query.lower() in stock.identifier.name.lower():
+                    match_type = (
+                        "exact" if query.lower() == stock.identifier.name.lower() else "contains"
+                    )
+                    matches.append((stock, match_type, "name", 1.0))
+        except Exception as e:
+            logger.debug(f"Name search error: {e}")
+
+        # Stage 3: Fuzzy matching (if enabled and not enough exact matches)
+        if include_fuzzy and len(matches) < limit:
+            await self._add_fuzzy_matches(query, query_upper, matches, limit)
+
+        # Stage 4: Rank results with relevance scoring
+        await self._refresh_search_stats()
+
+        # Get user history for recency boost
+        user_history = []
+        if user_id:
+            try:
+                history_entries = await self.get_user_search_history(user_id, limit=20)
+                user_history = [entry.get("query", "").upper() for entry in history_entries]
+            except Exception as e:
+                logger.debug(f"Could not load user history: {e}")
+
+        # Score and rank
+        ranked_matches = self.relevance_scorer.score_batch(
+            matches, user_search_history=user_history  # type: ignore[arg-type]
+        )
+
+        # Limit results
+        ranked_matches = ranked_matches[:limit]
+
+        # Record search
+        latency_ms = (time.time() - start_time) * 1000
+        found = len(ranked_matches) > 0
+        await self._record_search(query, IdentifierType.NAME, found, start_time, user_id)
+
+        logger.info(
+            f"Intelligent search: query={query}, results={len(ranked_matches)}, "
+            f"latency={latency_ms:.1f}ms"
+        )
+
+        return ranked_matches
+
+    async def _add_fuzzy_matches(
+        self, query: str, query_upper: str, matches: List[Tuple[Stock, str, str, float]], limit: int
+    ) -> None:
+        """Add fuzzy matches to results list."""
+        try:
+            # Get candidates from database (wider search)
+            candidates = await self.postgres_repo.find_by_name(query[:3], limit=50)
+
+            # Fuzzy match against candidates
+            for stock in candidates:
+                # Skip if already matched
+                if any(m[0].identifier.symbol == stock.identifier.symbol for m in matches):
+                    continue
+
+                # Try fuzzy symbol match
+                if stock.identifier.symbol:
+                    is_match, similarity = self.fuzzy_matcher.match_symbol(
+                        query_upper, stock.identifier.symbol
+                    )
+                    if is_match:
+                        matches.append((stock, "fuzzy", "symbol", similarity))
+                        continue
+
+                # Try fuzzy name match
+                if stock.identifier.name:
+                    is_match, similarity = self.fuzzy_matcher.match_name(
+                        query, stock.identifier.name
+                    )
+                    if is_match:
+                        matches.append((stock, "fuzzy", "name", similarity))
+
+        except Exception as e:
+            logger.debug(f"Fuzzy matching error: {e}")
+
+    async def _refresh_search_stats(self) -> None:
+        """Refresh search statistics for relevance scoring."""
+        current_time = time.time()
+
+        # Refresh every 5 minutes
+        if current_time - self._stats_last_updated > 300:
+            try:
+                stats = await self.history_repo.get_search_stats()
+                if stats:
+                    self.relevance_scorer.update_search_stats(stats)
+                    self._search_stats_cache = stats
+                    self._stats_last_updated = int(current_time)
+                    logger.info(f"Updated search stats: {len(stats)} symbols")
+            except Exception as e:
+                logger.warning(f"Failed to refresh search stats: {e}")
+
+    async def get_search_suggestions(
+        self, query: str, limit: int = 5, user_id: Optional[str] = None
+    ) -> List[dict]:
+        """
+        Get autocomplete suggestions for partial query.
+
+        Optimized for speed with minimal metadata.
+
+        Args:
+            query: Partial search query (min 1 character)
+            limit: Maximum suggestions (default 5, max 10)
+            user_id: Optional user ID for personalization
+
+        Returns:
+            List of suggestion dictionaries with symbol, name, and score
+        """
+        if limit > 10:
+            limit = 10
+
+        # Use intelligent search
+        matches = await self.intelligent_search(
+            query,
+            limit=limit,
+            user_id=user_id,
+            include_fuzzy=len(query) >= 2,  # Only fuzzy match for 2+ chars
+        )
+
+        # Convert to lightweight suggestion format
+        suggestions = []
+        for match in matches:
+            suggestions.append(
+                {
+                    "symbol": match.stock.identifier.symbol,
+                    "name": match.stock.identifier.name,
+                    "exchange": match.stock.metadata.exchange,
+                    "relevance_score": round(match.score, 2),
+                    "match_type": match.match_type,
+                }
+            )
+
+        return suggestions
