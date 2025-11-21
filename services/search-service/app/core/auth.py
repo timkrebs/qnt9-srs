@@ -79,9 +79,7 @@ async def get_current_user(
             )
 
             if auth_response.status_code != 200:
-                logger.warning(
-                    "Token validation failed", status_code=auth_response.status_code
-                )
+                logger.warning("Token validation failed", status_code=auth_response.status_code)
                 return None
 
             user_data = auth_response.json()
@@ -110,13 +108,9 @@ async def get_current_user(
                         profiles = tier_response.json()
                         if profiles and len(profiles) > 0:
                             tier = profiles[0].get("tier", "free")
-                            logger.debug(
-                                "User tier fetched", user_id=user_id, tier=tier
-                            )
+                            logger.debug("User tier fetched", user_id=user_id, tier=tier)
                 except Exception as e:
-                    logger.warning(
-                        "Failed to fetch user tier, using default", error=str(e)
-                    )
+                    logger.warning("Failed to fetch user tier, using default", error=str(e))
 
             user = User(id=user_id, email=email, tier=tier)
             logger.info("User authenticated", user_id=user_id, tier=tier)

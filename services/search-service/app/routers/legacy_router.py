@@ -78,9 +78,7 @@ async def legacy_search_stock(
             "day_high": float(stock.price.day_high)
             if stock.price and stock.price.day_high
             else None,
-            "day_low": float(stock.price.day_low)
-            if stock.price and stock.price.day_low
-            else None,
+            "day_low": float(stock.price.day_low) if stock.price and stock.price.day_low else None,
             "week_52_high": float(stock.price.week_52_high)
             if stock.price and stock.price.week_52_high
             else None,
@@ -102,9 +100,7 @@ async def legacy_search_stock(
             "dividend_yield": float(stock.metadata.dividend_yield)
             if stock.metadata and stock.metadata.dividend_yield
             else None,
-            "beta": float(stock.metadata.beta)
-            if stock.metadata and stock.metadata.beta
-            else None,
+            "beta": float(stock.metadata.beta) if stock.metadata and stock.metadata.beta else None,
             # Company information
             "description": stock.metadata.description if stock.metadata else None,
             "employees": stock.metadata.employees if stock.metadata else None,
@@ -112,8 +108,7 @@ async def legacy_search_stock(
             "headquarters": stock.metadata.headquarters if stock.metadata else None,
             "website": stock.metadata.website if stock.metadata else None,
             # Cache info
-            "cached": stock.cache_age_seconds is not None
-            and stock.cache_age_seconds > 0,
+            "cached": stock.cache_age_seconds is not None and stock.cache_age_seconds > 0,
             "cache_age_seconds": stock.cache_age_seconds or 0,
         }
 

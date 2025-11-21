@@ -84,14 +84,10 @@ class StockSearchService:
             logger.info(f"Detected name search for: {query}")
             results = await self.search_by_name(query, limit=1)
             if results:
-                await self._record_search(
-                    query, identifier_type, True, start_time, user_id
-                )
+                await self._record_search(query, identifier_type, True, start_time, user_id)
                 return results[0]
             else:
-                await self._record_search(
-                    query, identifier_type, False, start_time, user_id
-                )
+                await self._record_search(query, identifier_type, False, start_time, user_id)
                 raise StockNotFoundException(query, "name")
 
         # Build identifier object for ISIN/WKN/Symbol searches
@@ -102,9 +98,7 @@ class StockSearchService:
             stock = await self.redis_repo.find_by_identifier(identifier)
             if stock:
                 logger.info(f"Found in Redis: {query}")
-                await self._record_search(
-                    query, identifier_type, True, start_time, user_id
-                )
+                await self._record_search(query, identifier_type, True, start_time, user_id)
                 return stock
 
             # Layer 2: Check PostgreSQL
@@ -113,9 +107,7 @@ class StockSearchService:
                 logger.info(f"Found in PostgreSQL: {query}")
                 # Save to Redis for next time
                 await self.redis_repo.save(stock)
-                await self._record_search(
-                    query, identifier_type, True, start_time, user_id
-                )
+                await self._record_search(query, identifier_type, True, start_time, user_id)
                 return stock
 
             # Layer 3: Fetch from external API
@@ -133,9 +125,7 @@ class StockSearchService:
                     # Try to get company name from PostgreSQL cache (partial match)
                     # This might help if we've seen this ISIN before with a different query
                     try:
-                        name_results = await self.postgres_repo.find_by_name(
-                            query[:8], limit=5
-                        )
+                        name_results = await self.postgres_repo.find_by_name(query[:8], limit=5)
                         if name_results:
                             logger.info(
                                 f"Found {len(name_results)} potential matches in cache "
@@ -151,9 +141,7 @@ class StockSearchService:
                     except Exception as e:
                         logger.debug(f"Cache lookup failed during fallback: {e}")
 
-                await self._record_search(
-                    query, identifier_type, False, start_time, user_id
-                )
+                await self._record_search(query, identifier_type, False, start_time, user_id)
                 raise StockNotFoundException(query, identifier_type.value)
 
             # Save to both caches
@@ -167,9 +155,7 @@ class StockSearchService:
             raise
         except Exception as e:
             logger.error(f"Error during stock search: {e}")
-            await self._record_search(
-                query, identifier_type, False, start_time, user_id
-            )
+            await self._record_search(query, identifier_type, False, start_time, user_id)
             raise
 
     async def search_by_name(self, name: str, limit: int = 10) -> List[Stock]:
@@ -189,9 +175,7 @@ class StockSearchService:
 
         # Validate
         if not name or len(name) < 3:
-            raise ValidationException(
-                "name", name, "Name must be at least 3 characters"
-            )
+            raise ValidationException("name", name, "Name must be at least 3 characters")
 
         try:
             # Check PostgreSQL cache first
@@ -274,9 +258,7 @@ class StockSearchService:
             # Don't fail the request if history recording fails
             logger.warning(f"Failed to record search history: {e}")
 
-    async def batch_search(
-        self, symbols: List[str], user_id: Optional[str] = None
-    ) -> List[Stock]:
+    async def batch_search(self, symbols: List[str], user_id: Optional[str] = None) -> List[Stock]:
         """
         Search multiple stocks efficiently using concurrent requests.
 
@@ -309,9 +291,7 @@ class StockSearchService:
         logger.info(f"Batch search completed: {len(stocks)}/{len(symbols)} successful")
         return stocks
 
-    async def get_user_search_history(
-        self, user_id: str, limit: int = 10
-    ) -> List[dict]:
+    async def get_user_search_history(self, user_id: str, limit: int = 10) -> List[dict]:
         """
         Get user's recent search history.
 

@@ -48,9 +48,7 @@ def upgrade():
         ),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("symbol", sa.String(length=10), nullable=False),
-        sa.Column(
-            "added_at", sa.DateTime(), server_default=sa.text("NOW()"), nullable=False
-        ),
+        sa.Column("added_at", sa.DateTime(), server_default=sa.text("NOW()"), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("user_id", "symbol", name="uq_user_favorites_user_symbol"),
     )
@@ -61,9 +59,7 @@ def upgrade():
     op.create_index("idx_user_favorites_symbol", "user_favorites", ["symbol"])
 
     # Create composite index for efficient lookups
-    op.create_index(
-        "idx_user_favorites_user_symbol", "user_favorites", ["user_id", "symbol"]
-    )
+    op.create_index("idx_user_favorites_user_symbol", "user_favorites", ["user_id", "symbol"])
 
 
 def downgrade():

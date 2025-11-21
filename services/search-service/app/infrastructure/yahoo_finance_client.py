@@ -125,9 +125,7 @@ class YahooFinanceClient(IStockAPIClient):
                 return None
 
             # Fetch with circuit breaker and rate limiting
-            return self.circuit_breaker.call(
-                self._fetch_with_retry, yahoo_symbol, identifier
-            )
+            return self.circuit_breaker.call(self._fetch_with_retry, yahoo_symbol, identifier)
 
         except StockNotFoundException:
             return None
@@ -156,14 +154,10 @@ class YahooFinanceClient(IStockAPIClient):
             logger.info(f"Searching Yahoo Finance for: {name}")
 
             try:
-                search_results = yf.Search(
-                    name, max_results=limit * 3
-                )  # Get more to filter
+                search_results = yf.Search(name, max_results=limit * 3)  # Get more to filter
 
                 if hasattr(search_results, "quotes") and search_results.quotes:
-                    logger.info(
-                        f"Yahoo Search API returned {len(search_results.quotes)} results"
-                    )
+                    logger.info(f"Yahoo Search API returned {len(search_results.quotes)} results")
 
                     for quote in search_results.quotes:
                         # Filter for equities and ETFs only
@@ -286,9 +280,7 @@ class YahooFinanceClient(IStockAPIClient):
         # Check ISIN hardcoded mappings first (fast path)
         if identifier.isin and identifier.isin in self.ISIN_MAPPINGS:
             symbol = self.ISIN_MAPPINGS[identifier.isin]
-            logger.info(
-                f"Resolved ISIN {identifier.isin} to {symbol} via hardcoded mapping"
-            )
+            logger.info(f"Resolved ISIN {identifier.isin} to {symbol} via hardcoded mapping")
             return symbol
 
         # Try to resolve ISIN/WKN via Yahoo Search API
@@ -306,9 +298,7 @@ class YahooFinanceClient(IStockAPIClient):
             return None
 
         if search_query:
-            logger.info(
-                f"Attempting to resolve {query_type} {search_query} using Yahoo Search API"
-            )
+            logger.info(f"Attempting to resolve {query_type} {search_query} using Yahoo Search API")
             try:
                 # Use Yahoo Finance Search to find symbol by ISIN/WKN
                 search_results = yf.Search(search_query, max_results=10)
@@ -330,18 +320,14 @@ class YahooFinanceClient(IStockAPIClient):
 
                         # For ISIN/WKN searches, take the first valid equity/ETF match
                         # We don't verify ISIN in the ticker data to avoid slow API calls
-                        logger.info(
-                            f"Resolved {query_type} {search_query} to symbol {symbol}"
-                        )
+                        logger.info(f"Resolved {query_type} {search_query} to symbol {symbol}")
                         return symbol
 
                     logger.warning(
                         f"No valid equity/ETF found in search results for {search_query}"
                     )
                 else:
-                    logger.warning(
-                        f"Yahoo Search returned no results for {search_query}"
-                    )
+                    logger.warning(f"Yahoo Search returned no results for {search_query}")
 
             except AttributeError:
                 logger.warning("yf.Search not available, trying OpenFIGI fallback")
@@ -412,17 +398,13 @@ class YahooFinanceClient(IStockAPIClient):
                                 elif exchange_code == "IM":  # Italy
                                     ticker = f"{ticker}.MI"
 
-                                logger.info(
-                                    f"OpenFIGI resolved ISIN {isin} to {ticker}"
-                                )
+                                logger.info(f"OpenFIGI resolved ISIN {isin} to {ticker}")
                                 return ticker
 
                         # If no equity found, return first ticker
                         if figi_data and figi_data[0].get("ticker"):
                             ticker = figi_data[0]["ticker"]
-                            logger.info(
-                                f"OpenFIGI resolved ISIN {isin} to {ticker} (non-equity)"
-                            )
+                            logger.info(f"OpenFIGI resolved ISIN {isin} to {ticker} (non-equity)")
                             return ticker
                 else:
                     logger.warning(
@@ -468,9 +450,7 @@ class YahooFinanceClient(IStockAPIClient):
         wait=wait_exponential(multiplier=1, min=1, max=4),
         reraise=True,
     )
-    def _fetch_with_retry(
-        self, yahoo_symbol: str, identifier: StockIdentifier
-    ) -> Stock:
+    def _fetch_with_retry(self, yahoo_symbol: str, identifier: StockIdentifier) -> Stock:
         """
         Fetch stock data with retry logic.
 
@@ -508,9 +488,7 @@ class YahooFinanceClient(IStockAPIClient):
             logger.error(f"Yahoo Finance fetch failed for {yahoo_symbol}: {e}")
             raise
 
-    def _map_to_entity(
-        self, info: dict, identifier: StockIdentifier, yahoo_symbol: str
-    ) -> Stock:
+    def _map_to_entity(self, info: dict, identifier: StockIdentifier, yahoo_symbol: str) -> Stock:
         """Map Yahoo Finance response to Stock entity."""
         # Build complete identifier
         complete_identifier = StockIdentifier(
@@ -528,30 +506,38 @@ class YahooFinanceClient(IStockAPIClient):
         price = StockPrice(
             current=Decimal(str(current_price)),
             currency=info.get("currency", "USD"),
-            change_absolute=Decimal(str(info["regularMarketChange"]))
-            if info.get("regularMarketChange")
-            else None,
-            change_percent=Decimal(str(info["regularMarketChangePercent"]))
-            if info.get("regularMarketChangePercent")
-            else None,
-            previous_close=Decimal(str(info["previousClose"]))
-            if info.get("previousClose")
-            else None,
-            open_price=Decimal(str(info["regularMarketOpen"]))
-            if info.get("regularMarketOpen")
-            else None,
-            day_high=Decimal(str(info["regularMarketDayHigh"]))
-            if info.get("regularMarketDayHigh")
-            else None,
-            day_low=Decimal(str(info["regularMarketDayLow"]))
-            if info.get("regularMarketDayLow")
-            else None,
-            week_52_high=Decimal(str(info["fiftyTwoWeekHigh"]))
-            if info.get("fiftyTwoWeekHigh")
-            else None,
-            week_52_low=Decimal(str(info["fiftyTwoWeekLow"]))
-            if info.get("fiftyTwoWeekLow")
-            else None,
+            change_absolute=(
+                Decimal(str(info["regularMarketChange"]))
+                if info.get("regularMarketChange")
+                else None
+            ),
+            change_percent=(
+                Decimal(str(info["regularMarketChangePercent"]))
+                if info.get("regularMarketChangePercent")
+                else None
+            ),
+            previous_close=(
+                Decimal(str(info["previousClose"])) if info.get("previousClose") else None
+            ),
+            open_price=(
+                Decimal(str(info["regularMarketOpen"])) if info.get("regularMarketOpen") else None
+            ),
+            day_high=(
+                Decimal(str(info["regularMarketDayHigh"]))
+                if info.get("regularMarketDayHigh")
+                else None
+            ),
+            day_low=(
+                Decimal(str(info["regularMarketDayLow"]))
+                if info.get("regularMarketDayLow")
+                else None
+            ),
+            week_52_high=(
+                Decimal(str(info["fiftyTwoWeekHigh"])) if info.get("fiftyTwoWeekHigh") else None
+            ),
+            week_52_low=(
+                Decimal(str(info["fiftyTwoWeekLow"])) if info.get("fiftyTwoWeekLow") else None
+            ),
             volume=info.get("regularMarketVolume"),
             avg_volume=info.get("averageVolume"),
         )
@@ -561,15 +547,11 @@ class YahooFinanceClient(IStockAPIClient):
             exchange=info.get("exchange"),
             sector=info.get("sector"),
             industry=info.get("industry"),
-            market_cap=Decimal(str(info["marketCap"]))
-            if info.get("marketCap")
-            else None,
-            pe_ratio=Decimal(str(info["trailingPE"]))
-            if info.get("trailingPE")
-            else None,
-            dividend_yield=Decimal(str(info["dividendYield"]))
-            if info.get("dividendYield")
-            else None,
+            market_cap=Decimal(str(info["marketCap"])) if info.get("marketCap") else None,
+            pe_ratio=Decimal(str(info["trailingPE"])) if info.get("trailingPE") else None,
+            dividend_yield=(
+                Decimal(str(info["dividendYield"])) if info.get("dividendYield") else None
+            ),
             beta=Decimal(str(info["beta"])) if info.get("beta") else None,
             description=info.get("longBusinessSummary"),
             employees=info.get("fullTimeEmployees"),

@@ -6,9 +6,15 @@ Includes mock data fixtures and test environment setup.
 """
 
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
+
+# Add parent directory (frontend-service) to sys.path so 'app' can be imported
+service_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(service_dir))
 
 
 @pytest.fixture(scope="session")

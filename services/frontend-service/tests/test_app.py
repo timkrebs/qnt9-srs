@@ -9,9 +9,8 @@ from typing import Any, Dict
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from app.app import app
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.mark.asyncio
@@ -187,9 +186,7 @@ async def test_suggestions_endpoint() -> None:
             response = await client.get("/api/suggestions?query=DE")
 
             assert response.status_code == 200
-            assert (
-                "DE0005140008" in response.text or "suggestion" in response.text.lower()
-            )
+            assert "DE0005140008" in response.text or "suggestion" in response.text.lower()
 
 
 @pytest.mark.asyncio
@@ -374,9 +371,30 @@ async def test_suggestions_with_results() -> None:
     Verifies that suggestions are properly formatted and rendered.
     """
     mock_suggestions = [
-        {"query": "APPLE INC", "result_found": True},
-        {"query": "AMAZON.COM", "result_found": True},
-        {"query": "MICROSOFT CORP", "result_found": False},
+        {
+            "symbol": "AAPL",
+            "name": "APPLE INC",
+            "exchange": "NASDAQ",
+            "price": 175.50,
+            "currency": "USD",
+            "query": "AAPL",
+        },
+        {
+            "symbol": "AMZN",
+            "name": "AMAZON.COM",
+            "exchange": "NASDAQ",
+            "price": 142.30,
+            "currency": "USD",
+            "query": "AMZN",
+        },
+        {
+            "symbol": "MSFT",
+            "name": "MICROSOFT CORP",
+            "exchange": "NASDAQ",
+            "price": 378.91,
+            "currency": "USD",
+            "query": "MSFT",
+        },
     ]
 
     with patch(
@@ -393,9 +411,9 @@ async def test_suggestions_with_results() -> None:
             assert "APPLE INC" in response.text
             assert "AMAZON.COM" in response.text
             assert "MICROSOFT CORP" in response.text
-            assert (
-                "Recent search" in response.text
-            )  # Should appear for result_found=True
+            assert "AAPL" in response.text
+            assert "AMZN" in response.text
+            assert "MSFT" in response.text
 
 
 @pytest.mark.asyncio

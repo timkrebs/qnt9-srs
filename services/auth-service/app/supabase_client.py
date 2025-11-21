@@ -58,9 +58,7 @@ def get_supabase_client() -> Client:
     global _supabase_client
 
     if not config.is_configured:
-        raise ValueError(
-            "Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY"
-        )
+        raise ValueError("Supabase not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY")
 
     if _supabase_client is None:
         logger.info("Initializing Supabase client...")

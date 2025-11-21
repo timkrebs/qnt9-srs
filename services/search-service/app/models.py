@@ -73,9 +73,7 @@ class StockCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -163,9 +161,7 @@ class SearchHistory(Base):
     search_count = Column(Integer, default=1, nullable=False)
     user_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    last_searched = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    last_searched = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         Index("idx_query_type", "query", "query_type"),
@@ -249,9 +245,7 @@ class StockReportCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 

@@ -14,7 +14,6 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
-
 from app.domain.entities import (
     DataSource,
     IdentifierType,

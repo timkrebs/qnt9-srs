@@ -71,13 +71,9 @@ def upgrade():
     )
 
     # Create composite indexes for faster lookups
-    op.create_index(
-        "idx_symbol_expires", "stock_report_cache", ["symbol", "expires_at"]
-    )
+    op.create_index("idx_symbol_expires", "stock_report_cache", ["symbol", "expires_at"])
 
-    op.create_index(
-        "idx_isin_expires_report", "stock_report_cache", ["isin", "expires_at"]
-    )
+    op.create_index("idx_isin_expires_report", "stock_report_cache", ["isin", "expires_at"])
 
 
 def downgrade():

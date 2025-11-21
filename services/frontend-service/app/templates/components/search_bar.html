@@ -157,14 +157,16 @@ document.getElementById('query').addEventListener('keydown', function(event) {
 function updateSuggestionSelection(suggestions) {
     suggestions.forEach((item, index) => {
         if (index === selectedSuggestionIndex) {
-            item.classList.add('bg-accent');
+            item.classList.add('bg-blue-50');
+            item.classList.add('selected');
             item.classList.add('ring-2');
-            item.classList.add('ring-primary');
+            item.classList.add('ring-blue-400');
             item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         } else {
-            item.classList.remove('bg-accent');
+            item.classList.remove('bg-blue-50');
+            item.classList.remove('selected');
             item.classList.remove('ring-2');
-            item.classList.remove('ring-primary');
+            item.classList.remove('ring-blue-400');
         }
     });
 }
@@ -173,6 +175,9 @@ function updateSuggestionSelection(suggestions) {
 document.body.addEventListener('htmx:afterSwap', function(evt) {
     if (evt.detail.target.id === 'suggestions') {
         selectedSuggestionIndex = -1;
+        // Re-initialize suggestion count
+        const newSuggestions = document.querySelectorAll('.suggestion-item');
+        totalSuggestions = newSuggestions.length;
     }
 });
 </script>

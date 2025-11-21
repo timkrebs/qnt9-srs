@@ -83,8 +83,7 @@ class CircuitBreaker:
             else:
                 retry_after = self._get_retry_after_seconds()
                 logger.warning(
-                    f"Circuit breaker '{self.name}' is OPEN, "
-                    f"retry after {retry_after}s"
+                    f"Circuit breaker '{self.name}' is OPEN, " f"retry after {retry_after}s"
                 )
                 raise CircuitBreakerOpenException(
                     service=self.name,
@@ -128,16 +127,13 @@ class CircuitBreaker:
 
         if self.state == CircuitState.HALF_OPEN:
             # Failed during recovery - back to OPEN
-            logger.warning(
-                f"Circuit breaker '{self.name}' failed during recovery, reopening"
-            )
+            logger.warning(f"Circuit breaker '{self.name}' failed during recovery, reopening")
             self.state = CircuitState.OPEN
             self.opened_at = datetime.now()
         elif self.failure_count >= self.failure_threshold:
             # Too many failures - OPEN the circuit
             logger.error(
-                f"Circuit breaker '{self.name}' OPENING after "
-                f"{self.failure_count} failures"
+                f"Circuit breaker '{self.name}' OPENING after " f"{self.failure_count} failures"
             )
             self.state = CircuitState.OPEN
             self.opened_at = datetime.now()

@@ -5,16 +5,17 @@ import os
 from logging.config import fileConfig
 
 from alembic import context  # type: ignore[attr-defined]
-from sqlalchemy import engine_from_config, pool
 
 # Import your models here
 from app.models import Base
+from sqlalchemy import engine_from_config, pool
 
 # this is the Alembic Config object
 config = context.config
 
 # Override sqlalchemy.url from environment variable if available
-database_url = os.getenv("DATABASE_URL")
+# Prioritize SUPABASE_DB_URL, then DATABASE_URL
+database_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL")
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url)
 

@@ -7,9 +7,8 @@ Tests all authentication endpoints with proper mocking of Supabase client.
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.app import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -93,9 +92,7 @@ class TestSignUp:
         """Test signup with already registered email."""
         from gotrue.errors import AuthApiError
 
-        mock_supabase_auth.sign_up.side_effect = AuthApiError(
-            "User already registered", 400
-        )
+        mock_supabase_auth.sign_up.side_effect = AuthApiError("User already registered", 400)
 
         response = client.post(
             "/auth/signup",
@@ -263,9 +260,7 @@ class TestRefreshToken:
         """Test refresh with invalid token."""
         from gotrue.errors import AuthApiError
 
-        mock_supabase_auth.refresh_session.side_effect = AuthApiError(
-            "Invalid refresh token", 400
-        )
+        mock_supabase_auth.refresh_session.side_effect = AuthApiError("Invalid refresh token", 400)
 
         response = client.post(
             "/auth/refresh",

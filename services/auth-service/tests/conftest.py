@@ -1,9 +1,11 @@
 # Test configuration
 import os
 import sys
+from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Add parent directory (auth-service) to sys.path so 'app' can be imported
+service_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(service_dir))
 
 # Set test environment variables
 os.environ["DATABASE_URL"] = "sqlite:///./test.db"

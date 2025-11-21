@@ -69,9 +69,7 @@ class TierBasedRateLimiter:
 
         # Remove old requests outside the time window
         cutoff_time = now - window
-        user_requests[:] = [
-            req_time for req_time in user_requests if req_time > cutoff_time
-        ]
+        user_requests[:] = [req_time for req_time in user_requests if req_time > cutoff_time]
 
         # Check if limit exceeded
         if len(user_requests) >= limit:
@@ -131,9 +129,7 @@ class TierBasedRateLimiter:
 
         # Remove old requests
         cutoff_time = now - window
-        user_requests[:] = [
-            req_time for req_time in user_requests if req_time > cutoff_time
-        ]
+        user_requests[:] = [req_time for req_time in user_requests if req_time > cutoff_time]
 
         remaining = max(0, limit - len(user_requests))
         return remaining

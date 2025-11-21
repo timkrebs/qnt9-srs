@@ -373,7 +373,8 @@ async def get_suggestions(
     """
     logger.debug(f"Suggestions request: query='{query}'")
 
-    suggestions = await search_client.get_suggestions(query, limit=5)
+    # Fetch more suggestions like Yahoo Finance (show up to 8 results)
+    suggestions = await search_client.get_suggestions(query, limit=8)
 
     return templates.TemplateResponse(
         request=request,

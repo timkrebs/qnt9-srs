@@ -4,10 +4,11 @@ Unit tests for infrastructure components.
 Tests for Circuit Breaker, Rate Limiter, and API clients.
 """
 
-
 import pytest
-
-from app.domain.exceptions import CircuitBreakerOpenException, RateLimitExceededException
+from app.domain.exceptions import (
+    CircuitBreakerOpenException,
+    RateLimitExceededException,
+)
 from app.infrastructure.circuit_breaker import CircuitBreaker, CircuitState
 from app.infrastructure.rate_limiter import RateLimiter
 

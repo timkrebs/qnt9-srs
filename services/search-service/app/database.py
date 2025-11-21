@@ -24,7 +24,7 @@ if env_path.exists():
 logger = logging.getLogger(__name__)
 
 # Database configuration
-# Default for local development (overridden by DATABASE_URL env var in production/Docker)
+# Default for local development (overridden by environment variables)
 DEFAULT_DATABASE_URL = "postgresql://qnt9_user:qnt9_password@localhost:5432/qnt9_search"
 POOL_SIZE = 5
 MAX_OVERFLOW = 10
@@ -34,11 +34,12 @@ POOL_RECYCLE_SECONDS = 3600
 def get_database_url() -> str:
     """
     Get database URL from environment.
+    Prioritizes SUPABASE_DB_URL, then DATABASE_URL, then default.
 
     Returns:
         Database connection URL
     """
-    db_url = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    db_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
 
     # Sanitize for logging
     if "@" in db_url:

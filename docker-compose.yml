@@ -1,276 +1,75 @@
 services:
-  # ==================== DATABASES ====================
+  # ==================== MESSAGING ====================
   
-  # PostgreSQL for Search Service
-  postgres:
-    image: postgres:16-alpine
-    container_name: qnt9-postgres
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: qnt9-zookeeper
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: qnt9_search
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/01-init-search.sql:ro
-      # - ./init-mlflow-db.sql:/docker-entrypoint-initdb.d/02-init-mlflow.sql:ro
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - qnt9-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d qnt9_search"]
+      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
       interval: 10s
       timeout: 5s
       retries: 5
-    networks:
-      - qnt9-network
 
-  # # TimescaleDB for Time-Series Data (Ingestion & ETL)
-  # timescaledb:
-  #   image: timescale/timescaledb:latest-pg15
-  #   container_name: qnt9-timescaledb
-  #   environment:
-  #     POSTGRES_USER: postgres
-  #     POSTGRES_PASSWORD: postgres
-  #     POSTGRES_DB: qnt9_timeseries
-  #   ports:
-  #     - "5433:5432"
-  #   volumes:
-  #     - timescale_data:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U postgres -d qnt9_timeseries"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   networks:
-  #     - qnt9-network
-
-  # ==================== CACHE & MESSAGING ====================
-  
-  # Redis Cache for Search Service
-  redis:
-    image: redis:7-alpine
-    container_name: qnt9-redis
-    command: redis-server --appendonly yes --requirepass qnt9_redis_password
+  # Kafka for Event Streaming
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: qnt9-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
     ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CREATE_TOPICS: "raw-stock-data:3:1,processed-stock-data:3:1,ml-features:3:1,raw-news:3:1,enriched-news:3:1"
     networks:
       - qnt9-network
-
-  # # Redis Cache for Ingestion Service
-  # redis-cache:
-  #   image: redis:7-alpine
-  #   container_name: qnt9-redis-cache
-  #   ports:
-  #     - "6380:6379"
-  #   volumes:
-  #     - redis_cache_data:/data
-  #   command: redis-server --appendonly yes
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 10s
-  #     timeout: 3s
-  #     retries: 5
-  #   networks:
-  #     - qnt9-network
-
-  # # Redis Streams for Ingestion Service
-  # redis-streams:
-  #   image: redis:7-alpine
-  #   container_name: qnt9-redis-streams
-  #   ports:
-  #     - "6381:6379"
-  #   volumes:
-  #     - redis_streams_data:/data
-  #   command: redis-server --appendonly yes
-  #   healthcheck:
-  #     test: ["CMD", "redis-cli", "ping"]
-  #     interval: 10s
-  #     timeout: 3s
-  #     retries: 5
-  #   networks:
-  #     - qnt9-network
-
-  # # Zookeeper for Kafka
-  # zookeeper:
-  #   image: confluentinc/cp-zookeeper:7.5.0
-  #   container_name: qnt9-zookeeper
-  #   environment:
-  #     ZOOKEEPER_CLIENT_PORT: 2181
-  #     ZOOKEEPER_TICK_TIME: 2000
-  #   networks:
-  #     - qnt9-network
-  #   healthcheck:
-  #     test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-
-  # # Kafka for Event Streaming
-  # kafka:
-  #   image: confluentinc/cp-kafka:7.5.0
-  #   container_name: qnt9-kafka
-  #   depends_on:
-  #     zookeeper:
-  #       condition: service_healthy
-  #   ports:
-  #     - "9092:9092"
-  #   environment:
-  #     KAFKA_BROKER_ID: 1
-  #     KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-  #     KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-  #     KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-  #     KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-  #     KAFKA_CREATE_TOPICS: "raw-stock-data:3:1,processed-stock-data:3:1,ml-features:3:1,raw-news:3:1,enriched-news:3:1"
-  #   networks:
-  #     - qnt9-network
-  #   healthcheck:
-  #     test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-  #     interval: 10s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 30s
-
-  # # Kafka UI for monitoring and management
-  # kafka-ui:
-  #   image: provectuslabs/kafka-ui:latest
-  #   container_name: qnt9-kafka-ui
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #   ports:
-  #     - "8090:8080"
-  #   environment:
-  #     DYNAMIC_CONFIG_ENABLED: "true"
-  #     KAFKA_CLUSTERS_0_NAME: qnt9-kafka-cluster
-  #     KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-  #     KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-  #   networks:
-  #     - qnt9-network
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 30s
-  #   restart: unless-stopped
-
-  # # ==================== SERVICE DISCOVERY ====================
-  
-  # # Consul for Service Discovery and Service Mesh
-  # consul:
-  #   image: hashicorp/consul:1.17
-  #   container_name: qnt9-consul
-  #   command: agent -server -ui -bootstrap-expect=1 -client=0.0.0.0 -bind=0.0.0.0
-  #   environment:
-  #     CONSUL_BIND_INTERFACE: eth0
-  #     CONSUL_CLIENT_INTERFACE: eth0
-  #   ports:
-  #     - "8500:8500"  # HTTP API & UI
-  #     - "8600:8600/tcp"  # DNS TCP
-  #     - "8600:8600/udp"  # DNS UDP
-  #     - "8301:8301/tcp"  # LAN Serf TCP
-  #     - "8301:8301/udp"  # LAN Serf UDP
-  #   volumes:
-  #     - consul_data:/consul/data
-  #     - consul_config:/consul/config
-  #   healthcheck:
-  #     test: ["CMD", "consul", "members"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 10s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # ==================== MONITORING ====================
-  
-  # # Icinga2 Monitoring Service
-  # icinga2:
-  #   build:
-  #     context: ./services/icinga2-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-icinga2
-  #   environment:
-  #     # Icinga2 IDO Database
-  #     ICINGA_DB_HOST: postgres
-  #     ICINGA_DB_NAME: icinga2
-  #     ICINGA_DB_USER: icinga2
-  #     ICINGA_DB_PASSWORD: icinga2
-  #     
-  #     # Icinga Web 2 Database
-  #     ICINGAWEB_DB_HOST: postgres
-  #     ICINGAWEB_DB_NAME: icingaweb2
-  #     ICINGAWEB_DB_USER: icingaweb2
-  #     ICINGAWEB_DB_PASSWORD: icingaweb2
-  #     
-  #     # Icinga Web 2 Admin Credentials
-  #     ICINGAWEB_ADMIN_USER: admin
-  #     ICINGAWEB_ADMIN_PASSWORD: admin
-  #   ports:
-  #     - "8888:80"    # Icinga Web 2
-  #     - "5665:5665"  # Icinga2 API
-  #   volumes:
-  #     - icinga2_data:/var/lib/icinga2
-  #     - icinga2_logs:/var/log/icinga2
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     search-service:
-  #       condition: service_healthy
-  #     data-ingestion-service:
-  #       condition: service_healthy
-  #     etl-pipeline-service:
-  #       condition: service_healthy
-  #     frontend-service:
-  #       condition: service_healthy
-  #     consul:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost/icingaweb2"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 60s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # ==================== BACKEND SERVICES ====================
   
-  # # User Service (User Profile & Subscription Management)
-  # user-service:
-  #   build:
-  #     context: ./services/user-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-user-service
-  #   environment:
-  #     SERVICE_NAME: user-service
-  #     SERVICE_HOST: 0.0.0.0
-  #     SERVICE_PORT: 8011
-  #     LOG_LEVEL: INFO
-  #     DATABASE_URL: ${SUPABASE_DB_URL}
-  #     SUPABASE_URL: ${SUPABASE_URL}
-  #     SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-  #     STRIPE_API_KEY: ${STRIPE_API_KEY:-sk_test_stub}
-  #     STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
-  #   ports:
-  #     - "8011:8011"
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 20s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
+  # User Service (User Profile & Subscription Management)
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: qnt9-user-service
+    environment:
+      SERVICE_NAME: user-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8011
+      LOG_LEVEL: INFO
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-sk_test_stub}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
+    ports:
+      - "8011:8011"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - qnt9-network
+    restart: unless-stopped
 
   # Auth Service (Authentication & Authorization)
   auth-service:
@@ -309,40 +108,6 @@ services:
       - qnt9-network
     restart: unless-stopped
 
-  # # Watchlist Service (Stock Watchlist Management)
-  # watchlist-service:
-  #   build:
-  #     context: ./services/watchlist-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-watchlist-service
-  #   environment:
-  #     SERVICE_NAME: watchlist-service
-  #     SERVICE_HOST: 0.0.0.0
-  #     SERVICE_PORT: 8012
-  #     LOG_LEVEL: INFO
-  #     DATABASE_URL: ${SUPABASE_DB_URL}
-  #     SUPABASE_URL: ${SUPABASE_URL}
-  #     SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-  #     AUTH_SERVICE_URL: http://auth-service:8010
-  #     USER_SERVICE_URL: http://user-service:8011
-  #     FREE_TIER_WATCHLIST_LIMIT: 3
-  #   ports:
-  #     - "8012:8012"
-  #   depends_on:
-  #     user-service:
-  #       condition: service_healthy
-  #     auth-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8012/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 20s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
   # Search Service (Stock Search API)
   search-service:
     build:
@@ -350,11 +115,8 @@ services:
       dockerfile: Dockerfile.dev
     container_name: qnt9-search-service
     environment:
-      # Database
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/qnt9_search
-      
-      # Redis
-      REDIS_URL: redis://:qnt9_redis_password@redis:6379/0
+      # Database (Supabase)
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
       
       # Supabase Authentication (for user tier checking)
       SUPABASE_URL: ${SUPABASE_URL}
@@ -368,8 +130,7 @@ services:
       YAHOO_FINANCE_MAX_RETRIES: 3
       YAHOO_FINANCE_RATE_LIMIT: 5
       
-      # Cache Settings
-      REDIS_CACHE_TTL_SECONDS: 300
+      # Cache Settings (PostgreSQL only - Redis removed)
       POSTGRES_CACHE_TTL_MINUTES: 5
       
       # Circuit Breaker
@@ -383,12 +144,6 @@ services:
       # Monitoring
       PROMETHEUS_ENABLED: true
       METRICS_PORT: 9090
-      
-      # Consul Service Discovery
-      CONSUL_ENABLED: "false"
-      CONSUL_HOST: consul
-      CONSUL_PORT: 8500
-      USE_SERVICE_DISCOVERY: "false"
     ports:
       - "8000:8000"
       - "9090:9090"  # Prometheus metrics
@@ -397,11 +152,6 @@ services:
       - ./services/search-service/app:/app/app:ro
       - ./services/search-service/alembic:/app/alembic:ro
       - ./services/search-service/alembic.ini:/app/alembic.ini:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 15s
@@ -411,150 +161,6 @@ services:
     networks:
       - qnt9-network
     restart: unless-stopped
-
-  # # Data Ingestion Service
-  # data-ingestion-service:
-  #   build:
-  #     context: ./services/data-ingestion-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-data-ingestion
-  #   environment:
-  #     SERVICE_NAME: data-ingestion-service
-  #     LOG_LEVEL: INFO
-  #     HOST: 0.0.0.0
-  #     PORT: 8001
-  #     DEBUG: "false"
-  #     
-  #     # Databases
-  #     POSTGRES_URL: postgresql+asyncpg://postgres:postgres@timescaledb:5432/qnt9_timeseries
-  #     TIMESCALE_URL: postgresql+asyncpg://postgres:postgres@timescaledb:5432/qnt9_timeseries
-  #     
-  #     # Redis
-  #     REDIS_CACHE_URL: redis://redis-cache:6379/0
-  #     REDIS_STREAMS_URL: redis://redis-streams:6379/0
-  #     
-  #     # Kafka
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     KAFKA_TOPIC_RAW_DATA: raw-stock-data
-  #     
-  #     # Providers
-  #     YAHOO_FINANCE_ENABLED: "true"
-  #     ALPHA_VANTAGE_ENABLED: "true"
-  #     ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-demo}
-  #     
-  #     # Storage
-  #     S3_BUCKET: qnt9-raw-data
-  #     
-  #     # Supabase (optional)
-  #     SUPABASE_URL: ${SUPABASE_URL:-}
-  #     SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-  #     
-  #     # Consul Service Discovery
-  #     CONSUL_ENABLED: "false"
-  #     CONSUL_HOST: consul
-  #     CONSUL_PORT: 8500
-  #     USE_SERVICE_DISCOVERY: "false"
-  #     
-  #     # Disk Cache
-  #     CACHE_ENABLED: "true"
-  #     CACHE_DIRECTORY: /app/cache
-  #     CACHE_TTL_DAILY: 86400
-  #     CACHE_TTL_INTRADAY: 900
-  #     CACHE_TTL_STATEMENTS: 2592000
-  #     CACHE_TTL_QUOTES: 300
-  #     CACHE_MAX_SIZE_MB: 1000
-  #     CACHE_CLEANUP_ENABLED: "true"
-  #     CACHE_CLEANUP_INTERVAL_HOURS: 24
-  #     CACHE_LOG_HITS: "false"
-  #   ports:
-  #     - "8001:8001"
-  #   volumes:
-  #     - ./services/data-ingestion-service/app:/app/app:ro
-  #     - data-ingestion-cache:/app/cache
-  #   depends_on:
-  #     timescaledb:
-  #       condition: service_healthy
-  #     redis-cache:
-  #       condition: service_healthy
-  #     redis-streams:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # ETL Pipeline Service
-  # etl-pipeline-service:
-  #   build:
-  #     context: ./services/etl-pipeline-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-etl-pipeline
-  #   environment:
-  #     SERVICE_NAME: etl-pipeline-service
-  #     LOG_LEVEL: INFO
-  #     HOST: 0.0.0.0
-  #     PORT: 8002
-  #     DEBUG: "false"
-  #     
-  #     # Database
-  #     TIMESCALE_URL: postgresql+asyncpg://postgres:postgres@timescaledb:5432/qnt9_timeseries
-  #     
-  #     # Redis
-  #     REDIS_URL: redis://redis-cache:6379/0
-  #     
-  #     # Kafka
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     KAFKA_GROUP_ID: etl-pipeline-service
-  #     KAFKA_TOPIC_RAW_DATA: raw-stock-data
-  #     KAFKA_TOPIC_PROCESSED_DATA: processed-stock-data
-  #     
-  #     # ETL Configuration
-  #     ETL_BATCH_SIZE: 100
-  #     ETL_MAX_WORKERS: 4
-  #     
-  #     # Technical Indicators
-  #     RSI_PERIOD: 14
-  #     MACD_FAST: 12
-  #     MACD_SLOW: 26
-  #     MACD_SIGNAL: 9
-  #     
-  #     # Monitoring
-  #     ENABLE_METRICS: "true"
-  #     METRICS_PORT: 9102
-  #     
-  #     # Consul Service Discovery
-  #     CONSUL_ENABLED: "false"
-  #     CONSUL_HOST: consul
-  #     CONSUL_PORT: 8500
-  #     USE_SERVICE_DISCOVERY: "false"
-  #   ports:
-  #     - "8002:8002"
-  #     - "9102:9102"  # Prometheus metrics
-  #   volumes:
-  #     - ./services/etl-pipeline-service/app:/app/app:ro
-  #   depends_on:
-  #     timescaledb:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #     data-ingestion-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
 
   # ==================== FRONTEND ====================
   
@@ -568,600 +174,41 @@ services:
       # Service URLs
       SEARCH_SERVICE_URL: http://search-service:8000
       AUTH_SERVICE_URL: http://auth-service:8010
-      # WATCHLIST_SERVICE_URL: http://watchlist-service:8012
-      # USER_SERVICE_URL: http://user-service:8011
-      # PREDICTION_SERVICE_URL: http://price-prediction-service:8007
+      USER_SERVICE_URL: http://user-service:8011
       
-      # Application Configuration
-      APP_NAME: QNT9 Stock Search
-      DEBUG: "true"
+      # Supabase
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
       
-      # Server Configuration
+      # Service Configuration
+      SERVICE_NAME: frontend-service
       HOST: 0.0.0.0
       PORT: 8080
-      
-      # Logging
       LOG_LEVEL: DEBUG
+      DEBUG: "true"
       
-      # Tracing
-      ENABLE_REQUEST_TRACING: "true"
-      
-      # HTTP Client
-      REQUEST_TIMEOUT: 10.0
-      MAX_RETRIES: 3
-      
-      # Consul Service Discovery
-      CONSUL_ENABLED: "false"
-      CONSUL_HOST: consul
-      CONSUL_PORT: 8500
-      USE_SERVICE_DISCOVERY: "false"
+      # CORS
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000
     ports:
       - "8080:8080"
     volumes:
-      # Mount source code for hot-reload
       - ./services/frontend-service/app:/app/app:ro
     depends_on:
       search-service:
         condition: service_healthy
       auth-service:
         condition: service_healthy
+      user-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
+      interval: 30s
+      timeout: 10s
+      retries: 3
       start_period: 20s
     networks:
       - qnt9-network
     restart: unless-stopped
-
-  # # Feature Engineering Service
-  # feature-engineering-service:
-  #   build:
-  #     context: ./services/feature-engineering-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-feature-engineering
-  #   environment:
-  #     # Service Configuration
-  #     SERVICE_NAME: feature-engineering-service
-  #     SERVICE_HOST: 0.0.0.0
-  #     SERVICE_PORT: 8003
-  #     LOG_LEVEL: INFO
-  #     ENVIRONMENT: production
-  #     
-  #     # Redis Configuration
-  #     REDIS_HOST: redis
-  #     REDIS_PORT: 6379
-  #     REDIS_DB: 3
-  #     REDIS_PASSWORD: qnt9_redis_password
-  #     
-  #     # Kafka Configuration
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     KAFKA_CONSUMER_GROUP: feature-engineering-group
-  #     KAFKA_PROCESSED_DATA_TOPIC: processed-stock-data
-  #     KAFKA_FEATURES_TOPIC: ml-features
-  #     
-  #     # TimescaleDB Configuration
-  #     TIMESCALEDB_HOST: timescaledb
-  #     TIMESCALEDB_PORT: 5432
-  #     TIMESCALEDB_USER: postgres
-  #     TIMESCALEDB_PASSWORD: postgres
-  #     TIMESCALEDB_DATABASE: qnt9_timeseries
-  #     
-  #     # Consul Service Discovery
-  #     CONSUL_HOST: consul
-  #     CONSUL_PORT: 8500
-  #     CONSUL_ENABLED: "true"
-  #     USE_SERVICE_DISCOVERY: "true"
-  #     
-  #     # MLflow Configuration (optional)
-  #     MLFLOW_TRACKING_URI: http://mlflow:5000
-  #     MLFLOW_EXPERIMENT_NAME: feature-engineering
-  #     
-  #     # Ray Configuration (optional for distributed computing)
-  #     RAY_ADDRESS: ${RAY_ADDRESS:-auto}
-  #     ENABLE_GPU: "false"
-  #     
-  #     # Feature Engineering Scheduling
-  #     STATIC_FEATURE_SCHEDULE_HOUR: 2
-  #     DYNAMIC_FEATURE_INTERVAL_MINUTES: 15
-  #     
-  #     # Feature Store TTL Settings
-  #     FEATURE_STORE_TTL_STATIC: 86400
-  #     FEATURE_STORE_TTL_DYNAMIC: 3600
-  #     
-  #     # Monitoring
-  #     ENABLE_METRICS: "true"
-  #     METRICS_PORT: 9103
-  #   ports:
-  #     - "8003:8003"
-  #     - "9103:9103"  # Prometheus metrics
-  #   volumes:
-  #     # Model persistence
-  #     - ./services/feature-engineering-service/mlruns:/app/mlruns
-  #     # Uncomment for development hot-reload
-  #     # - ./services/feature-engineering-service/app:/app/app:ro
-  #   depends_on:
-  #     timescaledb:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #     consul:
-  #       condition: service_healthy
-  #     etl-pipeline-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 60s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # ==================== ML & MLOPS ====================
-  
-  # # MLflow Tracking Server
-  # mlflow:
-  #   image: ghcr.io/mlflow/mlflow:v2.9.2
-  #   container_name: qnt9-mlflow
-  #   command: >
-  #     mlflow server
-  #     --backend-store-uri file:///mlflow/backend
-  #     --default-artifact-root /mlflow/artifacts
-  #     --host 0.0.0.0
-  #     --port 5000
-  #   environment:
-  #     MLFLOW_TRACKING_URI: http://0.0.0.0:5000
-  #   ports:
-  #     - "5001:5000"  # Changed to avoid port conflict
-  #   volumes:
-  #     - mlflow_backend:/mlflow/backend
-  #     - mlflow_artifacts:/mlflow/artifacts
-  #   healthcheck:
-  #     test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 30s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # ML Training Service
-  # ml-training-service:
-  #   build:
-  #     context: ./services/ml-training-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-ml-training
-  #   environment:
-  #     # Service Configuration
-  #     SERVICE_NAME: ml-training-service
-  #     SERVICE_PORT: 8004
-  #     SERVICE_HOST: 0.0.0.0
-  #     LOG_LEVEL: INFO
-  #     ENVIRONMENT: production
-  #     
-  #     # Database Configuration
-  #     TIMESCALEDB_HOST: timescaledb
-  #     TIMESCALEDB_PORT: 5432
-  #     TIMESCALEDB_USER: postgres
-  #     TIMESCALEDB_PASSWORD: postgres
-  #     TIMESCALEDB_DATABASE: qnt9_timeseries
-  #     TIMESCALEDB_POOL_SIZE: 10
-  #     TIMESCALEDB_MAX_OVERFLOW: 20
-  #     
-  #     # MLflow Configuration
-  #     MLFLOW_TRACKING_URI: http://mlflow:5000
-  #     MLFLOW_EXPERIMENT_NAME: stock-classification
-  #     MLFLOW_ARTIFACT_ROOT: /mlflow/artifacts
-  #     MLFLOW_ENABLED: "true"
-  #     MLFLOW_AUTO_PROMOTE_TO_STAGING: "true"
-  #     
-  #     # Redis Configuration (Feature Store Access)
-  #     REDIS_HOST: redis
-  #     REDIS_PORT: 6379
-  #     REDIS_PASSWORD: qnt9_redis_password
-  #     REDIS_DB: 4
-  #     REDIS_ENABLED: "true"
-  #     
-  #     # Training Configuration
-  #     TRAINING_LOOKBACK_DAYS: 90
-  #     TRAINING_HORIZON_DAYS: 30
-  #     TRAINING_MIN_TRAINING_SAMPLES: 1000
-  #     TRAINING_TRAIN_RATIO: 0.7
-  #     TRAINING_VAL_RATIO: 0.15
-  #     TRAINING_TEST_RATIO: 0.15
-  #     TRAINING_IMBALANCE_METHOD: smote
-  #     TRAINING_SMOTE_K_NEIGHBORS: 5
-  #     TRAINING_RANDOM_SEED: 42
-  #     TRAINING_N_JOBS: -1
-  #     
-  #     # Model Configuration
-  #     TRAIN_XGBOOST: "true"
-  #     TRAIN_LIGHTGBM: "true"
-  #     TRAIN_CATBOOST: "true"
-  #     
-  #     # Target Configuration
-  #     TARGET_PROFITABILITY_ENABLED: "true"
-  #     TARGET_VOLATILITY_ENABLED: "true"
-  #     TARGET_GROWTH_ENABLED: "true"
-  #     
-  #     # Job Management
-  #     MAX_CONCURRENT_TRAINING_JOBS: 1
-  #     TRAINING_TIMEOUT_HOURS: 24
-  #     
-  #     # Monitoring
-  #     ENABLE_METRICS: "true"
-  #     METRICS_PORT: 9104
-  #     
-  #     # Consul Service Discovery
-  #     CONSUL_HOST: consul
-  #     CONSUL_PORT: 8500
-  #     CONSUL_ENABLED: "false"
-  #     USE_SERVICE_DISCOVERY: "false"
-  #   ports:
-  #     - "8004:8004"
-  #     - "9104:9104"  # Prometheus metrics
-  #   volumes:
-  #     - mlflow_artifacts:/mlflow/artifacts
-  #     - ml_training_data:/app/data
-  #     - ml_training_logs:/app/logs
-  #     # Uncomment for development hot-reload
-  #     # - ./services/ml-training-service/app:/app/app:ro
-  #   depends_on:
-  #     timescaledb:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     mlflow:
-  #       condition: service_healthy
-  #     etl-pipeline-service:
-  #       condition: service_healthy
-  #     feature-engineering-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 60s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # News Ingestion Service
-  # news-ingestion-service:
-  #   build:
-  #     context: ./services/news-ingestion-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-news-ingestion
-  #   environment:
-  #     # Service Configuration
-  #     SERVICE_NAME: news-ingestion-service
-  #     SERVICE_HOST: 0.0.0.0
-  #     SERVICE_PORT: 8005
-  #     LOG_LEVEL: INFO
-  #     ENVIRONMENT: production
-  #     
-  #     # Database Configuration
-  #     TIMESCALEDB_HOST: timescaledb
-  #     TIMESCALEDB_PORT: 5432
-  #     TIMESCALEDB_USER: postgres
-  #     TIMESCALEDB_PASSWORD: postgres
-  #     TIMESCALEDB_DATABASE: qnt9_timeseries
-  #     
-  #     # Redis Configuration
-  #     REDIS_HOST: redis
-  #     REDIS_PORT: 6379
-  #     REDIS_PASSWORD: qnt9_redis_password
-  #     REDIS_DB: 5
-  #     REDIS_ENABLED: "true"
-  #     
-  #     # Kafka Configuration
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     KAFKA_RAW_NEWS_TOPIC: raw-news
-  #     KAFKA_ENRICHED_NEWS_TOPIC: enriched-news
-  #     
-  #     # News Providers
-  #     YAHOO_FINANCE_ENABLED: "true"
-  #     YAHOO_FINANCE_RATE_LIMIT: 5
-  #     ALPHA_VANTAGE_ENABLED: "true"
-  #     ALPHA_VANTAGE_API_KEY: "${ALPHA_VANTAGE_API_KEY}"
-  #     ALPHA_VANTAGE_RATE_LIMIT: 5
-  #     
-  #     # Collection Configuration
-  #     NEWS_LOOKBACK_HOURS: 12
-  #     NEWS_MIN_CONTENT_LENGTH: 100
-  #     NEWS_MAX_CONTENT_LENGTH: 10000
-  #     DEDUPLICATION_ENABLED: "true"
-  #     
-  #     # Scheduling (EST timezone)
-  #     MORNING_COLLECTION_HOUR: 9
-  #     MORNING_COLLECTION_MINUTE: 0
-  #     EVENING_COLLECTION_HOUR: 18
-  #     EVENING_COLLECTION_MINUTE: 0
-  #     TIMEZONE: "America/New_York"
-  #     
-  #     # Circuit Breaker
-  #     CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
-  #     CIRCUIT_BREAKER_RECOVERY_TIMEOUT: 60
-  #     
-  #     # Monitoring
-  #     ENABLE_METRICS: "true"
-  #     METRICS_PORT: 9105
-  #     
-  #     # Consul Service Discovery
-  #     CONSUL_HOST: consul
-  #     CONSUL_PORT: 8500
-  #     CONSUL_ENABLED: "false"
-  #     USE_SERVICE_DISCOVERY: "false"
-  #   ports:
-  #     - "8005:8005"
-  #     - "9105:9105"  # Prometheus metrics
-  #   volumes:
-  #     # Uncomment for development hot-reload
-  #     # - ./services/news-ingestion-service/app:/app/app:ro
-  #     - news_cache:/app/cache
-  #   depends_on:
-  #     timescaledb:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 60s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # NLP Service (Sentiment Analysis)
-  # nlp-service:
-  #   build:
-  #     context: ./services/nlp-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-nlp
-  #   environment:
-  #     # Service Configuration
-  #     SERVICE_NAME: nlp-service
-  #     SERVICE_HOST: 0.0.0.0
-  #     SERVICE_PORT: 8006
-  #     LOG_LEVEL: INFO
-  #     ENVIRONMENT: production
-  #     
-  #     # Kafka Configuration
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     KAFKA_CONSUMER_GROUP: nlp-service-group
-  #     KAFKA_RAW_NEWS_TOPIC: raw-news
-  #     KAFKA_ENRICHED_NEWS_TOPIC: enriched-news
-  #     
-  #     # Model Configuration
-  #     FINBERT_MODEL: ProsusAI/finbert
-  #     SENTIMENT_BATCH_SIZE: 16
-  #     SENTIMENT_MAX_LENGTH: 512
-  #     ENABLE_GPU: "false"
-  #     
-  #     # Processing Configuration
-  #     MAX_CONCURRENT_BATCHES: 2
-  #     PROCESSING_TIMEOUT_SECONDS: 300
-  #     
-  #     # Monitoring
-  #     ENABLE_METRICS: "true"
-  #     METRICS_PORT: 9106
-  #   ports:
-  #     - "8006:8006"
-  #     - "9106:9106"  # Prometheus metrics
-  #   volumes:
-  #     - nlp_models:/app/models
-  #     # Uncomment for development hot-reload
-  #     # - ./services/nlp-service/app:/app/app:ro
-  #   depends_on:
-  #     kafka:
-  #       condition: service_healthy
-  #     news-ingestion-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 90s  # Longer startup for model loading
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # Price Prediction Service (LSTM)
-  # price-prediction-service:
-  #   build:
-  #     context: ./services/price-prediction-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-price-prediction
-  #   environment:
-  #     # Service Configuration
-  #     SERVICE_NAME: price-prediction-service
-  #     LOG_LEVEL: INFO
-  #     
-  #     # Database Configuration
-  #     TIMESCALEDB_HOST: timescaledb
-  #     TIMESCALEDB_PORT: 5432
-  #     TIMESCALEDB_USER: postgres
-  #     TIMESCALEDB_PASSWORD: postgres
-  #     TIMESCALEDB_DATABASE: qnt9_timeseries
-  #     TIMESCALEDB_POOL_SIZE: 10
-  #     TIMESCALEDB_MAX_OVERFLOW: 20
-  #     
-  #     # MLflow Configuration
-  #     MLFLOW_ENABLED: "true"
-  #     MLFLOW_TRACKING_URI: http://mlflow:5000
-  #     MLFLOW_EXPERIMENT_NAME: stock-price-prediction
-  #     MLFLOW_ARTIFACT_ROOT: /mlflow/artifacts/price-prediction
-  #     
-  #     # Redis Configuration (for caching predictions)
-  #     REDIS_HOST: redis
-  #     REDIS_PORT: 6379
-  #     REDIS_DB: 5
-  #     REDIS_PASSWORD: qnt9_redis_password
-  #     REDIS_CACHE_TTL: 3600
-  #     
-  #     # Kafka Configuration
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     KAFKA_PREDICTIONS_TOPIC: price-predictions
-  #     KAFKA_RECOMMENDATIONS_TOPIC: stock-recommendations
-  #     
-  #     # LSTM Model Configuration
-  #     LSTM_WINDOW_SIZE: 20
-  #     LSTM_HIDDEN_SIZE: 32
-  #     LSTM_NUM_LAYERS: 2
-  #     LSTM_DROPOUT: 0.2
-  #     LSTM_BIDIRECTIONAL: "false"
-  #     
-  #     # Training Configuration
-  #     TRAINING_BATCH_SIZE: 64
-  #     TRAINING_EPOCHS: 100
-  #     TRAINING_LEARNING_RATE: 0.01
-  #     TRAINING_EARLY_STOPPING_PATIENCE: 10
-  #     TRAINING_TRAIN_SPLIT: 0.8
-  #     
-  #     # Prediction Configuration
-  #     PREDICTION_MAX_HORIZON: 30
-  #     PREDICTION_CACHE_TTL: 300
-  #     
-  #     # Recommendation Configuration
-  #     RECOMMENDATION_BUY_THRESHOLD: 2.0
-  #     RECOMMENDATION_SELL_THRESHOLD: -2.0
-  #     
-  #     # Monitoring
-  #     PROMETHEUS_PORT: 9107
-  #   ports:
-  #     - "8007:8007"
-  #     - "9107:9107"  # Prometheus metrics
-  #   volumes:
-  #     - price_prediction_models:/app/models
-  #     - mlflow_artifacts:/mlflow/artifacts
-  #     # Uncomment for development hot-reload
-  #     # - ./services/price-prediction-service/app:/app/app:ro
-  #   depends_on:
-  #     timescaledb:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #     kafka:
-  #       condition: service_healthy
-  #     mlflow:
-  #       condition: service_healthy
-  #     etl-pipeline-service:
-  #       condition: service_healthy
-  #     nlp-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 60s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # Batch Scheduler Service (Daily Training Scheduler)
-  # batch-scheduler-service:
-  #   build:
-  #     context: ./services/batch-scheduler-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-batch-scheduler
-  #   environment:
-  #     SERVICE_NAME: batch-scheduler-service
-  #     SERVICE_HOST: 0.0.0.0
-  #     SERVICE_PORT: 8014
-  #     LOG_LEVEL: INFO
-  #     DATABASE_URL: ${SUPABASE_DB_URL}
-  #     CELERY_BROKER_URL: redis://redis:6379/6
-  #     CELERY_RESULT_BACKEND: redis://redis:6379/6
-  #     PRICE_PREDICTION_SERVICE_URL: http://price-prediction-service:8007
-  #     DAILY_TRAINING_HOUR: 2
-  #     DAILY_TRAINING_MINUTE: 0
-  #   ports:
-  #     - "8014:8014"
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
-  #     price-prediction-service:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8014/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 20s
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-
-  # # Celery Worker (Distributed Training Workers)
-  # celery-worker:
-  #   build:
-  #     context: ./services/batch-scheduler-service
-  #     dockerfile: Dockerfile
-  #   container_name: qnt9-celery-worker
-  #   command: celery -A app.celery_app worker --loglevel=info --concurrency=10
-  #   environment:
-  #     DATABASE_URL: ${SUPABASE_DB_URL}
-  #     CELERY_BROKER_URL: redis://redis:6379/6
-  #     CELERY_RESULT_BACKEND: redis://redis:6379/6
-  #     PRICE_PREDICTION_SERVICE_URL: http://price-prediction-service:8007
-  #     LOG_LEVEL: INFO
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
-  #     price-prediction-service:
-  #       condition: service_healthy
-  #   networks:
-  #     - qnt9-network
-  #   restart: unless-stopped
-  #   deploy:
-  #     replicas: 1
-
-volumes:
-  postgres_data:
-    driver: local
-  # timescale_data:
-  #   driver: local
-  redis_data:
-    driver: local
-  # redis_cache_data:
-  #   driver: local
-  # redis_streams_data:
-  #   driver: local
-  # consul_data:
-  #   driver: local
-  # consul_config:
-  #   driver: local
-  # icinga2_data:
-  #   driver: local
-  # icinga2_logs:
-  #   driver: local
-  # data-ingestion-cache:
-  #   driver: local
-  # mlflow_backend:
-  #   driver: local
-  # mlflow_artifacts:
-  #   driver: local
-  # ml_training_data:
-  #   driver: local
-  # ml_training_logs:
-  #   driver: local
-  # news_cache:
-  #   driver: local
-  # nlp_models:
-  #   driver: local
-  # price_prediction_models:
-  #   driver: local
 
 networks:
   qnt9-network:

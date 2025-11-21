@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-
 from app.domain.entities import (
     DataSource,
     IdentifierType,

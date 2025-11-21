@@ -23,7 +23,11 @@ from ..domain.entities import (
 )
 from ..domain.exceptions import CacheException
 from ..models import SearchHistory, StockCache
-from .stock_repository import ISearchHistoryRepository, IStockRepository, ISymbolMappingRepository
+from .stock_repository import (
+    ISearchHistoryRepository,
+    IStockRepository,
+    ISymbolMappingRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +200,11 @@ class PostgresStockRepository(IStockRepository):
         price = StockPrice(
             current=Decimal(str(cache_entry.current_price)),
             currency=cache_entry.currency or "USD",
-            previous_close=Decimal(str(cache_entry.previous_close))
-            if hasattr(cache_entry, "previous_close") and cache_entry.previous_close
-            else None,
+            previous_close=(
+                Decimal(str(cache_entry.previous_close))
+                if hasattr(cache_entry, "previous_close") and cache_entry.previous_close
+                else None
+            ),
         )
 
         metadata = StockMetadata(

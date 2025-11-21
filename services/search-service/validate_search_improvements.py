@@ -122,9 +122,7 @@ async def test_isin_search():
             if stock:
                 symbol_match = stock.identifier.symbol == expected_symbol
                 status = "✓" if symbol_match else "⚠"
-                print(
-                    f"{status} {isin}: {stock.identifier.symbol} - {stock.identifier.name}"
-                )
+                print(f"{status} {isin}: {stock.identifier.symbol} - {stock.identifier.name}")
             else:
                 print(f"✗ {isin}: Not found")
 

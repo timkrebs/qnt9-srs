@@ -46,9 +46,7 @@ class Settings(BaseSettings):
 
     def get_cors_origins(self) -> List[str]:
         """Get CORS origins as a list."""
-        return [
-            origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()
-        ]
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 
 # Global settings instance

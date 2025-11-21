@@ -15,11 +15,16 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy.orm import Session
-
-from app.domain.entities import DataSource, Stock, StockIdentifier, StockMetadata, StockPrice
+from app.domain.entities import (
+    DataSource,
+    Stock,
+    StockIdentifier,
+    StockMetadata,
+    StockPrice,
+)
 from app.repositories.postgres_repository import PostgresStockRepository
 from app.repositories.redis_repository import RedisStockRepository
+from sqlalchemy.orm import Session
 
 
 @pytest.fixture

@@ -563,9 +563,7 @@ async def get_user_tier(authorization: str = Header(None)):
     tags=["User Management"],
     summary="Update user tier (upgrade/downgrade)",
 )
-async def update_user_tier(
-    tier_update: UserTierUpdate, authorization: str = Header(None)
-):
+async def update_user_tier(tier_update: UserTierUpdate, authorization: str = Header(None)):
     """
     Update user's subscription tier.
 

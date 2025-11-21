@@ -47,9 +47,7 @@ class StockResponse(BaseModel):
     data: dict
     message: str = "Stock found successfully"
     cache_source: str = Field(description="Source: redis, postgresql, or api")
-    user_tier: Optional[str] = Field(
-        None, description="User tier (anonymous, free, paid)"
-    )
+    user_tier: Optional[str] = Field(None, description="User tier (anonymous, free, paid)")
 
 
 class SearchByNameRequest(BaseModel):
@@ -149,9 +147,7 @@ async def search_stock(
         # Enhance response for paid users with ML predictions link
         if user and user.tier == "paid":
             response_data["ml_predictions_available"] = True
-            response_data[
-                "ml_predictions_url"
-            ] = f"/api/predictions/{stock.identifier.symbol}"
+            response_data["ml_predictions_url"] = f"/api/predictions/{stock.identifier.symbol}"
 
         return StockResponse(
             success=True,
@@ -503,9 +499,9 @@ async def get_suggestions(
         examples=["App", "MSFT", "DE000"],
     ),
     limit: int = Query(
-        default=5,
+        default=8,
         ge=1,
-        le=10,
+        le=15,
         description="Maximum number of suggestions",
     ),
     service: StockSearchService = Depends(get_stock_service),
@@ -600,6 +596,4 @@ async def get_rate_limit_stats():
         return {"success": True, "stats": stats}
     except Exception as e:
         logger.error(f"Error getting rate limit stats: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail="Failed to retrieve rate limit statistics"
-        )
+        raise HTTPException(status_code=500, detail="Failed to retrieve rate limit statistics")

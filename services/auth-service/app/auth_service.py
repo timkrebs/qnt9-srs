@@ -81,12 +81,8 @@ class AuthService:
                     "tier": "free",
                 },
                 "session": {
-                    "access_token": response.session.access_token
-                    if response.session
-                    else None,
-                    "refresh_token": response.session.refresh_token
-                    if response.session
-                    else None,
+                    "access_token": response.session.access_token if response.session else None,
+                    "refresh_token": response.session.refresh_token if response.session else None,
                 },
             }
 
@@ -375,11 +371,7 @@ class AuthService:
             logger.info(f"Fetching tier for user: {user_id}")
 
             response = (
-                self.client.table("user_profiles")
-                .select("*")
-                .eq("id", user_id)
-                .single()
-                .execute()
+                self.client.table("user_profiles").select("*").eq("id", user_id).single().execute()
             )
 
             if not response.data:

@@ -12,7 +12,13 @@ from typing import List, Optional
 
 import redis.asyncio as redis
 
-from ..domain.entities import DataSource, Stock, StockIdentifier, StockMetadata, StockPrice
+from ..domain.entities import (
+    DataSource,
+    Stock,
+    StockIdentifier,
+    StockMetadata,
+    StockPrice,
+)
 from .stock_repository import IStockRepository
 
 logger = logging.getLogger(__name__)
@@ -151,15 +157,15 @@ class RedisStockRepository(IStockRepository):
             "price": {
                 "current": str(stock.price.current),
                 "currency": stock.price.currency,
-                "change_absolute": str(stock.price.change_absolute)
-                if stock.price.change_absolute
-                else None,
-                "change_percent": str(stock.price.change_percent)
-                if stock.price.change_percent
-                else None,
-                "previous_close": str(stock.price.previous_close)
-                if stock.price.previous_close
-                else None,
+                "change_absolute": (
+                    str(stock.price.change_absolute) if stock.price.change_absolute else None
+                ),
+                "change_percent": (
+                    str(stock.price.change_percent) if stock.price.change_percent else None
+                ),
+                "previous_close": (
+                    str(stock.price.previous_close) if stock.price.previous_close else None
+                ),
                 "open": str(stock.price.open_price) if stock.price.open_price else None,
                 "day_high": str(stock.price.day_high) if stock.price.day_high else None,
                 "day_low": str(stock.price.day_low) if stock.price.day_low else None,
@@ -174,9 +180,9 @@ class RedisStockRepository(IStockRepository):
                 "industry": stock.metadata.industry,
                 "market_cap": str(stock.metadata.market_cap) if stock.metadata.market_cap else None,
                 "pe_ratio": str(stock.metadata.pe_ratio) if stock.metadata.pe_ratio else None,
-                "dividend_yield": str(stock.metadata.dividend_yield)
-                if stock.metadata.dividend_yield
-                else None,
+                "dividend_yield": (
+                    str(stock.metadata.dividend_yield) if stock.metadata.dividend_yield else None
+                ),
                 "beta": str(stock.metadata.beta) if stock.metadata.beta else None,
             },
             "data_source": stock.data_source.value,
@@ -197,24 +203,26 @@ class RedisStockRepository(IStockRepository):
         price = StockPrice(
             current=Decimal(price_data["current"]),
             currency=price_data["currency"],
-            change_absolute=Decimal(price_data["change_absolute"])
-            if price_data.get("change_absolute")
-            else None,
-            change_percent=Decimal(price_data["change_percent"])
-            if price_data.get("change_percent")
-            else None,
-            previous_close=Decimal(price_data["previous_close"])
-            if price_data.get("previous_close")
-            else None,
+            change_absolute=(
+                Decimal(price_data["change_absolute"])
+                if price_data.get("change_absolute")
+                else None
+            ),
+            change_percent=(
+                Decimal(price_data["change_percent"]) if price_data.get("change_percent") else None
+            ),
+            previous_close=(
+                Decimal(price_data["previous_close"]) if price_data.get("previous_close") else None
+            ),
             open_price=Decimal(price_data["open"]) if price_data.get("open") else None,
             day_high=Decimal(price_data["day_high"]) if price_data.get("day_high") else None,
             day_low=Decimal(price_data["day_low"]) if price_data.get("day_low") else None,
-            week_52_high=Decimal(price_data["week_52_high"])
-            if price_data.get("week_52_high")
-            else None,
-            week_52_low=Decimal(price_data["week_52_low"])
-            if price_data.get("week_52_low")
-            else None,
+            week_52_high=(
+                Decimal(price_data["week_52_high"]) if price_data.get("week_52_high") else None
+            ),
+            week_52_low=(
+                Decimal(price_data["week_52_low"]) if price_data.get("week_52_low") else None
+            ),
             volume=price_data.get("volume"),
             avg_volume=price_data.get("avg_volume"),
         )
@@ -224,13 +232,15 @@ class RedisStockRepository(IStockRepository):
             exchange=metadata_data.get("exchange"),
             sector=metadata_data.get("sector"),
             industry=metadata_data.get("industry"),
-            market_cap=Decimal(metadata_data["market_cap"])
-            if metadata_data.get("market_cap")
-            else None,
+            market_cap=(
+                Decimal(metadata_data["market_cap"]) if metadata_data.get("market_cap") else None
+            ),
             pe_ratio=Decimal(metadata_data["pe_ratio"]) if metadata_data.get("pe_ratio") else None,
-            dividend_yield=Decimal(metadata_data["dividend_yield"])
-            if metadata_data.get("dividend_yield")
-            else None,
+            dividend_yield=(
+                Decimal(metadata_data["dividend_yield"])
+                if metadata_data.get("dividend_yield")
+                else None
+            ),
             beta=Decimal(metadata_data["beta"]) if metadata_data.get("beta") else None,
         )
 

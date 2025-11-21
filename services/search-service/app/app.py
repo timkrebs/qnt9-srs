@@ -66,9 +66,7 @@ REQUEST_LATENCY = Histogram(
     ["method", "endpoint"],
 )
 
-CACHE_HITS = Counter(
-    "search_service_cache_hits_total", "Total cache hits", ["cache_layer"]
-)
+CACHE_HITS = Counter("search_service_cache_hits_total", "Total cache hits", ["cache_layer"])
 
 # Global state
 redis_client: Optional[redis.Redis] = None
@@ -115,9 +113,7 @@ async def lifespan(app: FastAPI):
     # Initialize Redis
     try:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-        redis_client = await redis.from_url(
-            redis_url, encoding="utf-8", decode_responses=False
-        )
+        redis_client = await redis.from_url(redis_url, encoding="utf-8", decode_responses=False)
         await redis_client.ping()
         logger.info("Redis connected successfully", url=redis_url)
     except Exception as e:
@@ -244,9 +240,7 @@ async def track_metrics(request: Request, call_next):
         method=request.method, endpoint=request.url.path, status=response.status_code
     ).inc()
 
-    REQUEST_LATENCY.labels(method=request.method, endpoint=request.url.path).observe(
-        duration
-    )
+    REQUEST_LATENCY.labels(method=request.method, endpoint=request.url.path).observe(duration)
 
     return response
 
@@ -307,6 +301,4 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(
-        "app.app_v2:app", host="0.0.0.0", port=8000, reload=True, log_level="info"
-    )
+    uvicorn.run("app.app_v2:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
