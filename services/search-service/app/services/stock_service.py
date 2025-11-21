@@ -174,8 +174,8 @@ class StockSearchService:
         start_time = time.time()
 
         # Validate
-        if not name or len(name) < 3:
-            raise ValidationException("name", name, "Name must be at least 3 characters")
+        if not name or len(name) < 2:
+            raise ValidationException("name", name, "Name must be at least 2 characters")
 
         try:
             # Check PostgreSQL cache first

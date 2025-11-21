@@ -97,27 +97,22 @@ class StockIdentifier:
         if " " in query:
             return IdentifierType.NAME
 
+        if query.replace("-", "").replace("&", "").isalpha():
+            return IdentifierType.NAME
+
         # SYMBOL: Short codes (1-10 chars) with symbol pattern
         # Extended from 5 to 10 to handle longer international symbols
         if len(query_upper) <= 10 and cls.SYMBOL_PATTERN.match(query_upper):
-            # If it contains dots or hyphens, it's definitely a symbol (e.g., BRK.B, VOW3.DE)
             if any(c in query_upper for c in ".-"):
                 return IdentifierType.SYMBOL
-            # Short alphanumeric codes (1-5 chars) are likely symbols
-            if len(query_upper) <= 5:
+
+            if len(query_upper) <= 5 and any(c.isdigit() for c in query_upper):
                 return IdentifierType.SYMBOL
 
-        # NAME: 6+ characters, purely alphabetic (e.g., AMAZON, Microsoft, Google)
-        # This catches company names entered without spaces
-        if len(query) >= 6 and query.replace("-", "").replace("&", "").isalpha():
-            return IdentifierType.NAME
-
-        # SYMBOL: If it matches symbol pattern and isn't clearly a name
-        if cls.SYMBOL_PATTERN.match(query_upper):
+        # SYMBOL: If it matches symbol pattern and contains digits (e.g., VOW3, BAS11)
+        if cls.SYMBOL_PATTERN.match(query_upper) and any(c.isdigit() for c in query_upper):
             return IdentifierType.SYMBOL
 
-        # Default: Treat as NAME for maximum flexibility
-        # This ensures we can search for anything, even if format is unusual
         return IdentifierType.NAME
 
     def get_primary_identifier(self) -> tuple[IdentifierType, str]:

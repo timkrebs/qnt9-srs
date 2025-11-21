@@ -161,6 +161,64 @@ def timestamp_to_date(timestamp: Optional[int]) -> str:
 
 templates.env.filters["timestamp_to_date"] = timestamp_to_date
 
+
+def _flatten_stock_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten nested stock data structure for template rendering.
+
+    Converts the nested API response structure (identifier.name, price.current, etc.)
+    to a flat structure (name, current_price, etc.) that the template expects.
+
+    Args:
+        data: Nested stock data from search service
+
+    Returns:
+        Flattened stock data dictionary
+    """
+    identifier = data.get("identifier", {})
+    price = data.get("price", {})
+    metadata = data.get("metadata", {})
+
+    return {
+        # Identifier fields
+        "isin": identifier.get("isin"),
+        "wkn": identifier.get("wkn"),
+        "symbol": identifier.get("symbol"),
+        "name": identifier.get("name"),
+        # Price fields
+        "current_price": price.get("current"),
+        "currency": price.get("currency"),
+        "change_absolute": price.get("change_absolute"),
+        "change_percent": price.get("change_percent"),
+        "previous_close": price.get("previous_close"),
+        "open_price": price.get("open"),
+        "day_high": price.get("day_high"),
+        "day_low": price.get("day_low"),
+        "week_52_high": price.get("week_52_high"),
+        "week_52_low": price.get("week_52_low"),
+        "volume": price.get("volume"),
+        "avg_volume": price.get("avg_volume"),
+        "timestamp": price.get("timestamp"),
+        # Metadata fields
+        "exchange": metadata.get("exchange"),
+        "sector": metadata.get("sector"),
+        "industry": metadata.get("industry"),
+        "market_cap": metadata.get("market_cap"),
+        "pe_ratio": metadata.get("pe_ratio"),
+        "dividend_yield": metadata.get("dividend_yield"),
+        "beta": metadata.get("beta"),
+        "description": metadata.get("description"),
+        "employees": metadata.get("employees"),
+        "founded": metadata.get("founded"),
+        "headquarters": metadata.get("headquarters"),
+        "website": metadata.get("website"),
+        # Top-level fields
+        "data_source": data.get("data_source"),
+        "last_updated": data.get("last_updated"),
+        "cache_age_seconds": data.get("cache_age_seconds"),
+    }
+
+
 # Mount static files
 try:
     app.mount(
@@ -287,14 +345,17 @@ async def search_stock(
     if result.get("success"):
         stock_data = result.get("data", {})
 
+        # Flatten nested structure for template
+        flattened_stock = _flatten_stock_data(stock_data)
+
         logger.info(
             "Stock search successful, rendering stock card",
             extra={
                 "extra_fields": {
                     "query": query,
-                    "stock_name": stock_data.get("name"),
-                    "stock_symbol": stock_data.get("symbol"),
-                    "stock_isin": stock_data.get("isin"),
+                    "stock_name": flattened_stock.get("name"),
+                    "stock_symbol": flattened_stock.get("symbol"),
+                    "stock_isin": flattened_stock.get("isin"),
                     "query_type": result.get("query_type"),
                     "response_time_ms": result.get("response_time_ms", 0),
                 }
@@ -305,7 +366,7 @@ async def search_stock(
             request=request,
             name="components/stock_card.html",
             context={
-                "stock": stock_data,
+                "stock": flattened_stock,
                 "response_time": result.get("response_time_ms", 0),
                 "query_type": result.get("query_type", "unknown"),
             },

@@ -75,7 +75,7 @@ class SearchServiceClient:
         """
         self.base_url = base_url or settings.SEARCH_SERVICE_URL
         self.timeout = timeout or settings.REQUEST_TIMEOUT
-        self.suggestion_timeout = 1.0
+        self.suggestion_timeout = 3.0
 
         logger.info(
             f"Initialized SearchServiceClient: base_url={self.base_url}, "
@@ -136,7 +136,7 @@ class SearchServiceClient:
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                request_url = f"{self.base_url}/api/stocks/search"
+                request_url = f"{self.base_url}/api/v1/search"
 
                 logger.debug(
                     "Sending search request to backend",
