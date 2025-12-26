@@ -265,6 +265,7 @@ jobs:
           workspace: ${{ steps.workspace.outputs.workspace }}
           directory: ./infrastructure/terraform
           organization: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+          token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Create Terraform Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.1
@@ -274,6 +275,7 @@ jobs:
           configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
           message: "CI/CD - ${{ github.event_name }} - ${{ github.sha }}"
           organization: ${{ secrets.TF_CLOUD_ORGANIZATION }}
+          token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Apply Terraform
         if: fromJSON(steps.run.outputs.payload).data.attributes.actions.IsConfirmable
@@ -281,6 +283,7 @@ jobs:
         with:
           run: ${{ steps.run.outputs.run_id }}
           comment: "Auto-apply - Run ${{ github.run_id }}"
+          token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Wait for Apply
         run: |
