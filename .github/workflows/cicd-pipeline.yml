@@ -142,7 +142,38 @@ jobs:
       - name: Azure Login
         uses: azure/login@v2
         with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          enable-AzPSSession: false
+        env:
+          AZURE_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+        continue-on-error: true
+
+      - name: Azure Login (fallback with creds)
+        if: failure()
+        uses: azure/login@v2
+        with:
           creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
+          allow-no-subscriptions: true
+
+      - name: Debug Azure Auth
+        run: |
+          echo "Checking Azure authentication..."
+          az account show || echo "az account show failed"
+          az account list --output table || echo "No accounts found"
+          
+          # Try direct login if previous failed
+          if ! az account show &>/dev/null; then
+            echo "Attempting direct az login..."
+            az login --service-principal \
+              --username "${{ secrets.ARM_CLIENT_ID }}" \
+              --password "${{ secrets.ARM_CLIENT_SECRET }}" \
+              --tenant "${{ secrets.ARM_TENANT_ID }}" \
+              --output none || echo "Direct login failed"
+            
+            az account set --subscription "${{ secrets.ARM_SUBSCRIPTION_ID }}" || echo "Could not set subscription"
+          fi
 
       - name: Setup Terraform State Storage
         id: state-storage
