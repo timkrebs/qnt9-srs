@@ -302,41 +302,126 @@ jobs:
             echo "Set Terraform variable: $VAR_NAME = $VAR_VALUE"
           done
 
-      - name: Upload Configuration to TFC
-        id: upload
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.3.1
-        with:
-          workspace: ${{ steps.workspace.outputs.workspace }}
-          directory: ./infrastructure/terraform
-          organization: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-          token: ${{ secrets.TF_API_TOKEN }}
-
-      - name: Create Terraform Run
-        id: run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.1
-        with:
-          workspace: ${{ steps.workspace.outputs.workspace }}
-          configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
-          message: "CI/CD - ${{ github.event_name }} - ${{ github.sha }}"
-          organization: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-          token: ${{ secrets.TF_API_TOKEN }}
-
-      - name: Apply Terraform Run
-        if: fromJSON(steps.run.outputs.payload).data.attributes.actions.IsConfirmable
-        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.3.1
-        with:
-          run: ${{ steps.run.outputs.run_id }}
-          comment: "Auto-apply from CI/CD - Run ${{ github.run_id }}"
-          token: ${{ secrets.TF_API_TOKEN }}
+      - name: Upload Configuration and Create Run
+        id: terraform-run
+        run: |
+          WORKSPACE="${{ steps.workspace.outputs.workspace }}"
+          WORKSPACE_ID="${{ steps.workspace-setup.outputs.workspace_id }}"
+          ORG="${{ secrets.TF_CLOUD_ORGANIZATION }}"
+          
+          echo "Workspace: $WORKSPACE"
+          echo "Workspace ID: $WORKSPACE_ID"
+          
+          # Create a tarball of the Terraform configuration
+          cd infrastructure/terraform
+          tar -czf /tmp/terraform-config.tar.gz .
+          cd -
+          
+          # Create a new configuration version
+          echo "Creating configuration version..."
+          CV_RESPONSE=$(curl -s \
+            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --request POST \
+            --data '{
+              "data": {
+                "type": "configuration-versions",
+                "attributes": {
+                  "auto-queue-runs": false
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/configuration-versions")
+          
+          CV_ID=$(echo $CV_RESPONSE | jq -r '.data.id')
+          UPLOAD_URL=$(echo $CV_RESPONSE | jq -r '.data.attributes."upload-url"')
+          
+          if [ -z "$CV_ID" ] || [ "$CV_ID" == "null" ]; then
+            echo "ERROR: Failed to create configuration version"
+            echo "$CV_RESPONSE" | jq .
+            exit 1
+          fi
+          
+          echo "Configuration version: $CV_ID"
+          
+          # Upload the configuration
+          echo "Uploading configuration..."
+          curl -s \
+            --header "Content-Type: application/octet-stream" \
+            --request PUT \
+            --data-binary @/tmp/terraform-config.tar.gz \
+            "$UPLOAD_URL"
+          
+          # Wait for configuration to be ready
+          echo "Waiting for configuration to be processed..."
+          for i in {1..30}; do
+            CV_STATUS=$(curl -s \
+              --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+              "https://app.terraform.io/api/v2/configuration-versions/$CV_ID" \
+              | jq -r '.data.attributes.status')
+            
+            echo "Configuration status: $CV_STATUS"
+            
+            if [ "$CV_STATUS" == "uploaded" ]; then
+              break
+            elif [ "$CV_STATUS" == "errored" ]; then
+              echo "Configuration upload errored"
+              exit 1
+            fi
+            sleep 2
+          done
+          
+          # Create a run
+          echo "Creating Terraform run..."
+          RUN_RESPONSE=$(curl -s \
+            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+            --header "Content-Type: application/vnd.api+json" \
+            --request POST \
+            --data '{
+              "data": {
+                "type": "runs",
+                "attributes": {
+                  "message": "CI/CD - ${{ github.event_name }} - ${{ github.sha }}",
+                  "auto-apply": true
+                },
+                "relationships": {
+                  "workspace": {
+                    "data": {
+                      "type": "workspaces",
+                      "id": "'"$WORKSPACE_ID"'"
+                    }
+                  },
+                  "configuration-version": {
+                    "data": {
+                      "type": "configuration-versions",
+                      "id": "'"$CV_ID"'"
+                    }
+                  }
+                }
+              }
+            }' \
+            "https://app.terraform.io/api/v2/runs")
+          
+          RUN_ID=$(echo $RUN_RESPONSE | jq -r '.data.id')
+          
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
+            echo "ERROR: Failed to create run"
+            echo "$RUN_RESPONSE" | jq .
+            exit 1
+          fi
+          
+          echo "Run created: $RUN_ID"
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
 
       - name: Wait for Apply Completion
         run: |
-          RUN_ID="${{ steps.run.outputs.run_id }}"
+          RUN_ID="${{ steps.terraform-run.outputs.run_id }}"
           for i in {1..90}; do
-            STATUS=$(curl -s \
+            RESPONSE=$(curl -s \
               --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-              "https://app.terraform.io/api/v2/runs/$RUN_ID" \
-              | jq -r '.data.attributes.status')
+              "https://app.terraform.io/api/v2/runs/$RUN_ID")
+            
+            STATUS=$(echo $RESPONSE | jq -r '.data.attributes.status')
             
             echo "Run status: $STATUS (attempt $i/90)"
             
@@ -347,6 +432,10 @@ jobs:
                 ;;
               "errored"|"canceled"|"force_canceled"|"discarded")
                 echo "Terraform run failed with status: $STATUS"
+                # Get error details
+                curl -s \
+                  --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
+                  "https://app.terraform.io/api/v2/runs/$RUN_ID/plan" | jq '.data.attributes."log-read-url"' -r | xargs curl -s | tail -100
                 exit 1
                 ;;
               *)
