@@ -1,3 +1,7 @@
+# Terraform Variables for QNT9 SRS Azure Infrastructure
+# Note: Workspace selection is done via TF_WORKSPACE env var or terraform workspace select
+# Available workspaces in TFC should be tagged with "qnt9-srs"
+
 # Core Azure Configuration
 variable "location" {
   description = "Azure region where resources will be deployed"

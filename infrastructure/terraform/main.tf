@@ -2,6 +2,19 @@
 # This file orchestrates all infrastructure components
 
 terraform {
+  # Cloud block for HCP Terraform Cloud integration
+  # Workspace is selected via TF_WORKSPACE environment variable or -workspace flag
+  # For CLI-driven workflows, set: export TF_WORKSPACE=qnt9-srs-dev
+  cloud {
+    organization = "tim-krebs-org"
+
+    workspaces {
+      # Use tags to filter available workspaces
+      # Create workspaces in TFC with tag "qnt9-srs" for this project
+      tags = ["qnt9-srs"]
+    }
+  }
+
   required_version = ">= 1.3.0"
 
   required_providers {
