@@ -1,19 +1,37 @@
 """
-Authentication service using Supabase.
+Authentication service using PostgreSQL.
 
 Provides business logic for user authentication, registration,
-and profile management using Supabase Auth.
+and profile management using local PostgreSQL database.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+from uuid import UUID
 
-from gotrue.errors import AuthApiError
-
+from .config import settings
+from .database import db_manager
 from .logging_config import get_logger
-from .supabase_client import get_supabase_client
+from .security import (
+    create_access_token,
+    create_email_verification_token,
+    create_password_reset_token,
+    create_refresh_token,
+    hash_password,
+    hash_token,
+    verify_password,
+)
 
 logger = get_logger(__name__)
+
+
+class AuthError(Exception):
+    """Base exception for authentication errors."""
+
+    def __init__(self, message: str, code: str = "auth_error"):
+        self.message = message
+        self.code = code
+        super().__init__(self.message)
 
 
 class AuthService:
@@ -21,12 +39,8 @@ class AuthService:
     Service class for authentication operations.
 
     Handles user registration, login, logout, and profile management
-    using Supabase Auth.
+    using PostgreSQL database with JWT tokens.
     """
-
-    def __init__(self) -> None:
-        """Initialize auth service with Supabase client."""
-        self.client = get_supabase_client()
 
     async def sign_up(
         self,
@@ -43,60 +57,92 @@ class AuthService:
             full_name: Optional full name
 
         Returns:
-            Dictionary containing user data and session
+            Dictionary containing user data and session tokens
 
         Raises:
-            AuthApiError: If registration fails
+            AuthError: If registration fails
         """
         try:
             logger.info(f"Attempting to register user: {email}")
 
-            # Prepare user metadata
-            user_metadata = {}
-            if full_name:
-                user_metadata["full_name"] = full_name
-
-            # Sign up with Supabase
-            response = self.client.auth.sign_up(
-                {
-                    "email": email,
-                    "password": password,
-                    "options": {"data": user_metadata} if user_metadata else {},
-                }
+            # Check if email already exists
+            existing_user = await db_manager.fetchrow(
+                "SELECT id FROM users WHERE email = $1",
+                email.lower()
             )
 
-            if not response.user:
-                raise ValueError("User registration failed - no user returned")
+            if existing_user:
+                logger.warning(f"Registration failed - email already exists: {email}")
+                raise AuthError("Email already registered", "email_exists")
 
-            logger.info(f"User registered successfully: {email}")
+            # Hash password
+            password_hash = hash_password(password)
 
-            # Note: user_profiles entry is automatically created by Supabase trigger
+            # Create user
+            user_row = await db_manager.fetchrow(
+                """
+                INSERT INTO users (email, password_hash, full_name, tier, created_at)
+                VALUES ($1, $2, $3, 'free', NOW())
+                RETURNING id, email, full_name, tier, created_at, email_verified
+                """,
+                email.lower(),
+                password_hash,
+                full_name,
+            )
+
+            user_id = str(user_row["id"])
+            logger.info(f"User created successfully: {email} (id: {user_id})")
+
+            # Create tokens
+            access_token = create_access_token(
+                user_id=user_id,
+                email=user_row["email"],
+                tier=user_row["tier"],
+            )
+
+            raw_refresh, hashed_refresh, refresh_expires = create_refresh_token(user_id)
+
+            # Store refresh token
+            await db_manager.execute(
+                """
+                INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+                VALUES ($1, $2, $3)
+                """,
+                user_row["id"],
+                hashed_refresh,
+                refresh_expires,
+            )
 
             return {
                 "user": {
-                    "id": response.user.id,
-                    "email": response.user.email,
-                    "full_name": response.user.user_metadata.get("full_name"),
-                    "created_at": response.user.created_at,
-                    "tier": "free",
+                    "id": user_id,
+                    "email": user_row["email"],
+                    "full_name": user_row["full_name"],
+                    "created_at": user_row["created_at"].isoformat() if user_row["created_at"] else None,
+                    "tier": user_row["tier"],
+                    "email_verified": user_row["email_verified"],
                 },
                 "session": {
-                    "access_token": response.session.access_token if response.session else None,
-                    "refresh_token": response.session.refresh_token if response.session else None,
+                    "access_token": access_token,
+                    "refresh_token": raw_refresh,
+                    "expires_at": int((datetime.now(timezone.utc) + timedelta(
+                        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+                    )).timestamp()),
                 },
             }
 
-        except AuthApiError as e:
-            logger.error(f"Registration failed for {email}: {e.message}")
+        except AuthError:
             raise
         except Exception as e:
             logger.exception(f"Unexpected error during registration: {e}")
-            raise
+            raise AuthError(f"Registration failed: {str(e)}", "registration_error")
 
     async def sign_in(
         self,
         email: str,
         password: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Sign in a user with email and password.
@@ -104,195 +150,133 @@ class AuthService:
         Args:
             email: User email
             password: User password
+            ip_address: Client IP address for audit
+            user_agent: Client user agent for audit
 
         Returns:
             Dictionary containing user data and session tokens
 
         Raises:
-            AuthApiError: If sign in fails
+            AuthError: If sign in fails
         """
         try:
             logger.info(f"User sign in attempt: {email}")
 
-            response = self.client.auth.sign_in_with_password(
-                {"email": email, "password": password}
+            # Fetch user
+            user_row = await db_manager.fetchrow(
+                """
+                SELECT id, email, password_hash, full_name, tier, 
+                       email_verified, created_at, subscription_end, is_active
+                FROM users
+                WHERE email = $1
+                """,
+                email.lower()
             )
 
-            if not response.user or not response.session:
-                raise ValueError("Sign in failed - no user or session returned")
+            if not user_row:
+                logger.warning(f"Sign in failed - user not found: {email}")
+                raise AuthError("Invalid email or password", "invalid_credentials")
+
+            if not user_row["is_active"]:
+                logger.warning(f"Sign in failed - account disabled: {email}")
+                raise AuthError("Account is disabled", "account_disabled")
+
+            # Verify password
+            if not verify_password(password, user_row["password_hash"]):
+                logger.warning(f"Sign in failed - invalid password: {email}")
+                raise AuthError("Invalid email or password", "invalid_credentials")
+
+            user_id = str(user_row["id"])
+
+            # Update last login
+            await db_manager.execute(
+                "UPDATE users SET last_login = NOW() WHERE id = $1",
+                user_row["id"]
+            )
+
+            # Create tokens
+            access_token = create_access_token(
+                user_id=user_id,
+                email=user_row["email"],
+                tier=user_row["tier"],
+            )
+
+            raw_refresh, hashed_refresh, refresh_expires = create_refresh_token(user_id)
+
+            # Store refresh token
+            await db_manager.execute(
+                """
+                INSERT INTO refresh_tokens (user_id, token_hash, expires_at, ip_address, user_agent)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                user_row["id"],
+                hashed_refresh,
+                refresh_expires,
+                ip_address,
+                user_agent,
+            )
 
             logger.info(f"User signed in successfully: {email}")
 
             return {
                 "user": {
-                    "id": response.user.id,
-                    "email": response.user.email,
-                    "full_name": response.user.user_metadata.get("full_name"),
+                    "id": user_id,
+                    "email": user_row["email"],
+                    "full_name": user_row["full_name"],
+                    "tier": user_row["tier"],
+                    "email_verified": user_row["email_verified"],
+                    "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
                 },
                 "session": {
-                    "access_token": response.session.access_token,
-                    "refresh_token": response.session.refresh_token,
-                    "expires_at": response.session.expires_at,
+                    "access_token": access_token,
+                    "refresh_token": raw_refresh,
+                    "expires_at": int((datetime.now(timezone.utc) + timedelta(
+                        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+                    )).timestamp()),
                 },
             }
 
-        except AuthApiError as e:
-            logger.error(f"Sign in failed for {email}: {e.message}")
+        except AuthError:
             raise
         except Exception as e:
             logger.exception(f"Unexpected error during sign in: {e}")
-            raise
+            raise AuthError(f"Sign in failed: {str(e)}", "signin_error")
 
-    async def sign_out(self, access_token: str) -> bool:
+    async def sign_out(self, refresh_token: str) -> bool:
         """
-        Sign out a user.
+        Sign out a user by revoking their refresh token.
 
         Args:
-            access_token: User's access token
+            refresh_token: The refresh token to revoke
 
         Returns:
             True if sign out successful
-
-        Raises:
-            AuthApiError: If sign out fails
         """
         try:
             logger.info("User sign out attempt")
 
-            # Set the session for the sign out
-            self.client.auth.set_session(access_token, "")
-            self.client.auth.sign_out()
+            token_hash = hash_token(refresh_token)
+
+            # Revoke the refresh token
+            result = await db_manager.execute(
+                """
+                UPDATE refresh_tokens
+                SET revoked = TRUE, revoked_at = NOW()
+                WHERE token_hash = $1 AND revoked = FALSE
+                """,
+                token_hash
+            )
 
             logger.info("User signed out successfully")
             return True
 
-        except AuthApiError as e:
-            logger.error(f"Sign out failed: {e.message}")
-            raise
         except Exception as e:
             logger.exception(f"Unexpected error during sign out: {e}")
-            raise
+            raise AuthError(f"Sign out failed: {str(e)}", "signout_error")
 
-    async def get_user(self, access_token: str) -> Optional[Dict[str, Any]]:
+    async def refresh_session(self, refresh_token: str) -> Dict[str, Any]:
         """
-        Get user information from access token.
-
-        Args:
-            access_token: User's JWT access token
-
-        Returns:
-            User information dictionary or None if invalid
-
-        Raises:
-            AuthApiError: If token validation fails
-        """
-        try:
-            response = self.client.auth.get_user(access_token)
-
-            if not response.user:
-                return None
-
-            # Fetch tier from Supabase user_profiles table
-            tier = "free"
-            subscription_end = None
-            try:
-                profile_response = (
-                    self.client.table("user_profiles")
-                    .select("tier, subscription_end")
-                    .eq("id", response.user.id)
-                    .execute()
-                )
-                if profile_response.data and len(profile_response.data) > 0:
-                    tier = profile_response.data[0].get("tier", "free")
-                    subscription_end = profile_response.data[0].get("subscription_end")
-            except Exception as e:
-                logger.error(f"Failed to fetch tier from Supabase: {e}")
-
-            return {
-                "id": response.user.id,
-                "email": response.user.email,
-                "full_name": response.user.user_metadata.get("full_name"),
-                "email_confirmed_at": response.user.email_confirmed_at,
-                "created_at": response.user.created_at,
-                "tier": tier,
-                "subscription_end": subscription_end,
-            }
-
-        except AuthApiError as e:
-            logger.error(f"Get user failed: {e.message}")
-            return None
-        except Exception as e:
-            logger.exception(f"Unexpected error getting user: {e}")
-            return None
-
-    async def update_user(
-        self,
-        access_token: str,
-        email: Optional[str] = None,
-        password: Optional[str] = None,
-        full_name: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Update user information.
-
-        Args:
-            access_token: User's access token
-            email: New email (optional)
-            password: New password (optional)
-            full_name: New full name (optional)
-
-        Returns:
-            Updated user information
-
-        Raises:
-            AuthApiError: If update fails
-        """
-        try:
-            logger.info("Updating user information")
-
-            # Build update attributes
-            attributes = {}
-            if email:
-                attributes["email"] = email
-            if password:
-                attributes["password"] = password
-
-            # Update user metadata
-            user_metadata = {}
-            if full_name:
-                user_metadata["full_name"] = full_name
-
-            if user_metadata:
-                attributes["data"] = user_metadata
-
-            # Set session and update
-            self.client.auth.set_session(access_token, "")
-            response = self.client.auth.update_user(attributes)
-
-            if not response.user:
-                raise ValueError("User update failed - no user returned")
-
-            logger.info("User updated successfully")
-
-            return {
-                "id": response.user.id,
-                "email": response.user.email,
-                "full_name": response.user.user_metadata.get("full_name"),
-            }
-
-        except AuthApiError as e:
-            logger.error(f"User update failed: {e.message}")
-            raise
-        except Exception as e:
-            logger.exception(f"Unexpected error updating user: {e}")
-            raise
-
-    async def refresh_session(
-        self,
-        refresh_token: str,
-    ) -> Dict[str, Any]:
-        """
-        Refresh an expired session.
+        Refresh an expired session using a refresh token.
 
         Args:
             refresh_token: User's refresh token
@@ -301,30 +285,205 @@ class AuthService:
             New session with access and refresh tokens
 
         Raises:
-            AuthApiError: If refresh fails
+            AuthError: If refresh fails
         """
         try:
             logger.info("Refreshing user session")
 
-            response = self.client.auth.refresh_session(refresh_token)
+            token_hash = hash_token(refresh_token)
 
-            if not response.session:
-                raise ValueError("Session refresh failed")
+            # Find and validate refresh token
+            token_row = await db_manager.fetchrow(
+                """
+                SELECT rt.id, rt.user_id, rt.expires_at, rt.revoked,
+                       u.email, u.tier, u.full_name, u.is_active
+                FROM refresh_tokens rt
+                JOIN users u ON u.id = rt.user_id
+                WHERE rt.token_hash = $1
+                """,
+                token_hash
+            )
 
-            logger.info("Session refreshed successfully")
+            if not token_row:
+                raise AuthError("Invalid refresh token", "invalid_token")
+
+            if token_row["revoked"]:
+                raise AuthError("Refresh token has been revoked", "token_revoked")
+
+            if token_row["expires_at"] < datetime.now(timezone.utc):
+                raise AuthError("Refresh token has expired", "token_expired")
+
+            if not token_row["is_active"]:
+                raise AuthError("Account is disabled", "account_disabled")
+
+            user_id = str(token_row["user_id"])
+
+            # Revoke old refresh token
+            await db_manager.execute(
+                "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE id = $1",
+                token_row["id"]
+            )
+
+            # Create new tokens
+            access_token = create_access_token(
+                user_id=user_id,
+                email=token_row["email"],
+                tier=token_row["tier"],
+            )
+
+            raw_refresh, hashed_refresh, refresh_expires = create_refresh_token(user_id)
+
+            # Store new refresh token
+            await db_manager.execute(
+                """
+                INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+                VALUES ($1, $2, $3)
+                """,
+                token_row["user_id"],
+                hashed_refresh,
+                refresh_expires,
+            )
+
+            logger.info(f"Session refreshed successfully for user {user_id}")
 
             return {
-                "access_token": response.session.access_token,
-                "refresh_token": response.session.refresh_token,
-                "expires_at": response.session.expires_at,
+                "access_token": access_token,
+                "refresh_token": raw_refresh,
+                "expires_at": int((datetime.now(timezone.utc) + timedelta(
+                    minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+                )).timestamp()),
             }
 
-        except AuthApiError as e:
-            logger.error(f"Session refresh failed: {e.message}")
+        except AuthError:
             raise
         except Exception as e:
             logger.exception(f"Unexpected error refreshing session: {e}")
+            raise AuthError(f"Session refresh failed: {str(e)}", "refresh_error")
+
+    async def get_user(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user information by ID.
+
+        Args:
+            user_id: User's UUID
+
+        Returns:
+            User information dictionary or None if not found
+        """
+        try:
+            user_row = await db_manager.fetchrow(
+                """
+                SELECT id, email, full_name, tier, email_verified,
+                       email_verified_at, created_at, subscription_start,
+                       subscription_end, last_login
+                FROM users
+                WHERE id = $1 AND is_active = TRUE
+                """,
+                UUID(user_id)
+            )
+
+            if not user_row:
+                return None
+
+            return {
+                "id": str(user_row["id"]),
+                "email": user_row["email"],
+                "full_name": user_row["full_name"],
+                "tier": user_row["tier"],
+                "email_verified": user_row["email_verified"],
+                "email_verified_at": user_row["email_verified_at"].isoformat() if user_row["email_verified_at"] else None,
+                "created_at": user_row["created_at"].isoformat() if user_row["created_at"] else None,
+                "subscription_start": user_row["subscription_start"].isoformat() if user_row["subscription_start"] else None,
+                "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
+                "last_login": user_row["last_login"].isoformat() if user_row["last_login"] else None,
+            }
+
+        except Exception as e:
+            logger.exception(f"Error getting user {user_id}: {e}")
+            return None
+
+    async def update_user(
+        self,
+        user_id: str,
+        email: Optional[str] = None,
+        full_name: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Update user information.
+
+        Args:
+            user_id: User's UUID
+            email: New email (optional)
+            full_name: New full name (optional)
+            password: New password (optional)
+
+        Returns:
+            Updated user information
+
+        Raises:
+            AuthError: If update fails
+        """
+        try:
+            logger.info(f"Updating user information for {user_id}")
+
+            updates = []
+            params = []
+            param_index = 1
+
+            if email:
+                # Check if email is already taken
+                existing = await db_manager.fetchrow(
+                    "SELECT id FROM users WHERE email = $1 AND id != $2",
+                    email.lower(),
+                    UUID(user_id)
+                )
+                if existing:
+                    raise AuthError("Email already in use", "email_exists")
+                updates.append(f"email = ${param_index}")
+                params.append(email.lower())
+                param_index += 1
+
+            if full_name is not None:
+                updates.append(f"full_name = ${param_index}")
+                params.append(full_name)
+                param_index += 1
+
+            if password:
+                updates.append(f"password_hash = ${param_index}")
+                params.append(hash_password(password))
+                param_index += 1
+
+            if not updates:
+                raise AuthError("No fields to update", "no_updates")
+
+            params.append(UUID(user_id))
+            query = f"""
+                UPDATE users
+                SET {', '.join(updates)}, updated_at = NOW()
+                WHERE id = ${param_index}
+                RETURNING id, email, full_name, tier
+            """
+
+            user_row = await db_manager.fetchrow(query, *params)
+
+            if not user_row:
+                raise AuthError("User not found", "user_not_found")
+
+            logger.info(f"User updated successfully: {user_id}")
+
+            return {
+                "id": str(user_row["id"]),
+                "email": user_row["email"],
+                "full_name": user_row["full_name"],
+                "tier": user_row["tier"],
+            }
+
+        except AuthError:
             raise
+        except Exception as e:
+            logger.exception(f"Error updating user {user_id}: {e}")
+            raise AuthError(f"Update failed: {str(e)}", "update_error")
 
     async def reset_password_request(self, email: str) -> bool:
         """
@@ -334,48 +493,67 @@ class AuthService:
             email: User email address
 
         Returns:
-            True if request successful
-
-        Raises:
-            AuthApiError: If request fails
+            True (always returns True for security - don't reveal if email exists)
         """
         try:
             logger.info(f"Password reset requested for: {email}")
 
-            self.client.auth.reset_password_email(email)
+            user_row = await db_manager.fetchrow(
+                "SELECT id FROM users WHERE email = $1 AND is_active = TRUE",
+                email.lower()
+            )
 
-            logger.info(f"Password reset email sent to: {email}")
+            if user_row:
+                # Create password reset token
+                raw_token, hashed_token, expires_at = create_password_reset_token()
+
+                # Invalidate any existing tokens
+                await db_manager.execute(
+                    "UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE",
+                    user_row["id"]
+                )
+
+                # Store new token
+                await db_manager.execute(
+                    """
+                    INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+                    VALUES ($1, $2, $3)
+                    """,
+                    user_row["id"],
+                    hashed_token,
+                    expires_at,
+                )
+
+                # TODO: Send email with reset link containing raw_token
+                logger.info(f"Password reset token created for {email}")
+
             return True
 
-        except AuthApiError as e:
-            logger.error(f"Password reset request failed: {e.message}")
-            raise
         except Exception as e:
-            logger.exception(f"Unexpected error requesting password reset: {e}")
-            raise
+            logger.exception(f"Error requesting password reset: {e}")
+            return True  # Don't reveal errors
 
     async def get_user_tier(self, user_id: str) -> Dict[str, Any]:
         """
-        Get user tier information from Supabase user_profiles table.
+        Get user tier information.
 
         Args:
             user_id: User UUID
 
         Returns:
             Dictionary containing tier information
-
-        Raises:
-            Exception: If query fails
         """
         try:
-            logger.info(f"Fetching tier for user: {user_id}")
-
-            response = (
-                self.client.table("user_profiles").select("*").eq("id", user_id).single().execute()
+            user_row = await db_manager.fetchrow(
+                """
+                SELECT id, tier, subscription_start, subscription_end
+                FROM users
+                WHERE id = $1
+                """,
+                UUID(user_id)
             )
 
-            if not response.data:
-                logger.warning(f"No tier data found for user: {user_id}")
+            if not user_row:
                 return {
                     "id": user_id,
                     "tier": "free",
@@ -383,16 +561,24 @@ class AuthService:
                     "subscription_end": None,
                 }
 
-            logger.info(f"Tier fetched successfully for user: {user_id}")
-            return response.data
+            return {
+                "id": str(user_row["id"]),
+                "tier": user_row["tier"],
+                "subscription_start": user_row["subscription_start"].isoformat() if user_row["subscription_start"] else None,
+                "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
+            }
 
         except Exception as e:
             logger.error(f"Failed to fetch tier for user {user_id}: {e}")
-            raise
+            raise AuthError(f"Failed to fetch tier: {str(e)}", "tier_fetch_error")
 
-    async def update_user_tier(self, user_id: str, tier: str) -> Dict[str, Any]:
+    async def update_user_tier(
+        self,
+        user_id: str,
+        tier: str,
+    ) -> Dict[str, Any]:
         """
-        Update user tier in Supabase user_profiles table.
+        Update user tier.
 
         Args:
             user_id: User UUID
@@ -400,43 +586,50 @@ class AuthService:
 
         Returns:
             Dictionary containing updated tier information
-
-        Raises:
-            Exception: If update fails
         """
         try:
             logger.info(f"Updating tier for user {user_id} to: {tier}")
 
-            subscription_start = datetime.now().isoformat()
+            subscription_start = datetime.now(timezone.utc)
             subscription_end = None
 
-            if tier == "paid":
-                subscription_end = (datetime.now() + timedelta(days=365)).isoformat()
-            elif tier == "enterprise":
-                subscription_end = (datetime.now() + timedelta(days=365)).isoformat()
+            if tier in ("paid", "enterprise"):
+                subscription_end = subscription_start + timedelta(days=365)
 
-            response = (
-                self.client.table("user_profiles")
-                .update(
-                    {
-                        "tier": tier,
-                        "subscription_start": subscription_start,
-                        "subscription_end": subscription_end,
-                    }
-                )
-                .eq("id", user_id)
-                .execute()
+            user_row = await db_manager.fetchrow(
+                """
+                UPDATE users
+                SET tier = $1,
+                    subscription_start = $2,
+                    subscription_end = $3,
+                    updated_at = NOW()
+                WHERE id = $4
+                RETURNING id, email, tier, subscription_start, subscription_end
+                """,
+                tier,
+                subscription_start,
+                subscription_end,
+                UUID(user_id),
             )
 
-            if not response.data or len(response.data) == 0:
-                raise ValueError(f"Failed to update tier for user: {user_id}")
+            if not user_row:
+                raise AuthError("User not found", "user_not_found")
 
-            logger.info(f"Tier updated successfully for user: {user_id}")
-            return response.data[0]
+            logger.info(f"Tier updated successfully for user {user_id}")
 
+            return {
+                "id": str(user_row["id"]),
+                "email": user_row["email"],
+                "tier": user_row["tier"],
+                "subscription_start": user_row["subscription_start"].isoformat() if user_row["subscription_start"] else None,
+                "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
+            }
+
+        except AuthError:
+            raise
         except Exception as e:
             logger.error(f"Failed to update tier for user {user_id}: {e}")
-            raise
+            raise AuthError(f"Failed to update tier: {str(e)}", "tier_update_error")
 
 
 # Global auth service instance

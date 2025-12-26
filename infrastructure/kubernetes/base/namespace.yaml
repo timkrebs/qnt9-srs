@@ -1,0 +1,31 @@
+# QNT9 Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: qnt9
+  labels:
+    name: qnt9
+    environment: ${ENVIRONMENT}
+---
+# Service Account for QNT9 Services
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: qnt9-service-account
+  namespace: qnt9
+  labels:
+    app: qnt9
+---
+# ConfigMap for shared configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qnt9-config
+  namespace: qnt9
+data:
+  ENVIRONMENT: "${ENVIRONMENT}"
+  LOG_LEVEL: "INFO"
+  AUTH_SERVICE_URL: "http://auth-service:8010"
+  SEARCH_SERVICE_URL: "http://search-service:8000"
+  USER_SERVICE_URL: "http://user-service:8020"
+  FRONTEND_SERVICE_URL: "http://frontend-service:8080"

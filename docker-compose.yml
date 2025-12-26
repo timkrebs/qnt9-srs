@@ -1,4 +1,28 @@
 services:
+  # ==================== DATABASE ====================
+  
+  # PostgreSQL Database for user data and authentication
+  postgres:
+    image: postgres:16-alpine
+    container_name: qnt9-postgres
+    environment:
+      POSTGRES_USER: qnt9
+      POSTGRES_PASSWORD: qnt9_secret_password
+      POSTGRES_DB: qnt9_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - qnt9-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qnt9 -d qnt9_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # ==================== MESSAGING ====================
   
   # Zookeeper for Kafka
@@ -54,13 +78,16 @@ services:
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 8011
       LOG_LEVEL: INFO
-      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
+      DATABASE_POOL_SIZE: 20
+      DATABASE_POOL_MIN_SIZE: 5
       STRIPE_API_KEY: ${STRIPE_API_KEY:-sk_test_stub}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
     ports:
       - "8011:8011"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
       interval: 30s
@@ -78,16 +105,19 @@ services:
       dockerfile: Dockerfile
     container_name: qnt9-auth-service
     environment:
-      # Supabase Configuration
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
+      # Database Configuration
+      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
+      DATABASE_POOL_SIZE: 20
+      DATABASE_POOL_MIN_SIZE: 5
       
       # JWT Configuration
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
       JWT_ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      
+      # Password Hashing
+      PASSWORD_HASH_ROUNDS: 12
       
       # Service Configuration
       APP_NAME: QNT9 Auth Service
@@ -98,6 +128,9 @@ services:
       CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
     ports:
       - "8010:8010"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
       interval: 30s
@@ -114,13 +147,18 @@ services:
       context: ./services/search-service
       dockerfile: Dockerfile.dev
     container_name: qnt9-search-service
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
-      # Database (Supabase)
-      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
+      # Database Configuration
+      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
       
-      # Supabase Authentication (for user tier checking)
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      # JWT Configuration (must match auth-service)
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
+      
+      # Auth Service URL (for user tier checking)
+      AUTH_SERVICE_URL: http://auth-service:8010
       
       # CORS
       CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
@@ -175,10 +213,7 @@ services:
       SEARCH_SERVICE_URL: http://search-service:8000
       AUTH_SERVICE_URL: http://auth-service:8010
       USER_SERVICE_URL: http://user-service:8011
-      
-      # Supabase
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      WATCHLIST_SERVICE_URL: http://user-service:8011
       
       # Service Configuration
       SERVICE_NAME: frontend-service
@@ -213,3 +248,7 @@ services:
 networks:
   qnt9-network:
     driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

@@ -20,7 +20,11 @@ from .api_client import search_client
 from .config import settings
 from .consul import ConsulClient, get_service_id
 from .logging_config import get_logger, setup_logging
-from .middleware import PerformanceMonitoringMiddleware, RequestLoggingMiddleware
+from .middleware import (
+    PerformanceMonitoringMiddleware,
+    RequestLoggingMiddleware,
+    StaticFileCacheMiddleware,
+)
 
 # Setup logging with structured format
 use_json_logging = settings.LOG_LEVEL == "DEBUG"
@@ -114,6 +118,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Shutting down Frontend Service")
     logger.info("=" * 80)
 
+    # Close HTTP client connections
+    await search_client.close()
+    if _auth_http_client is not None:
+        await _auth_http_client.aclose()
+    logger.info("HTTP clients closed")
+
     # Deregister from Consul
     consul_client.deregister_service(service_id)
 
@@ -129,12 +139,40 @@ app = FastAPI(
 )
 
 # Add middleware (order matters - first added is last executed)
+app.add_middleware(StaticFileCacheMiddleware)
 app.add_middleware(PerformanceMonitoringMiddleware, slow_request_threshold_ms=1000.0)
 app.add_middleware(RequestLoggingMiddleware)
 
 # Setup templates and static files
 BASE_PATH = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
+
+# Shared HTTP client for auth/watchlist proxy requests (connection pooling)
+# Reduces TCP connection overhead by ~50-100ms per request
+_auth_http_client: Optional[httpx.AsyncClient] = None
+
+
+async def get_auth_http_client() -> httpx.AsyncClient:
+    """
+    Get or create shared HTTP client for auth/watchlist proxy requests.
+
+    Uses connection pooling for improved performance.
+
+    Returns:
+        Configured httpx.AsyncClient instance
+    """
+    global _auth_http_client
+    if _auth_http_client is None or _auth_http_client.is_closed:
+        _auth_http_client = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(
+                max_keepalive_connections=10,
+                max_connections=50,
+                keepalive_expiry=30.0,
+            ),
+        )
+        logger.debug("Created auth HTTP client with connection pooling")
+    return _auth_http_client
 
 
 # Add custom Jinja2 filters
@@ -518,12 +556,10 @@ async def signup_page(request: Request):
 async def signup_proxy(request: Request):
     """Proxy signup request to auth-service."""
     body = await request.json()
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{settings.AUTH_SERVICE_URL}/auth/signup", json=body, timeout=30.0
-        )
-
+    client = await get_auth_http_client()
+    response = await client.post(
+        f"{settings.AUTH_SERVICE_URL}/auth/signup", json=body
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -531,12 +567,10 @@ async def signup_proxy(request: Request):
 async def signin_proxy(request: Request):
     """Proxy signin request to auth-service."""
     body = await request.json()
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{settings.AUTH_SERVICE_URL}/auth/signin", json=body, timeout=30.0
-        )
-
+    client = await get_auth_http_client()
+    response = await client.post(
+        f"{settings.AUTH_SERVICE_URL}/auth/signin", json=body
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -544,14 +578,11 @@ async def signin_proxy(request: Request):
 async def signout_proxy(request: Request):
     """Proxy signout request to auth-service."""
     auth_header = request.headers.get("Authorization")
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{settings.AUTH_SERVICE_URL}/auth/signout",
-            headers={"Authorization": auth_header} if auth_header else {},
-            timeout=30.0,
-        )
-
+    client = await get_auth_http_client()
+    response = await client.post(
+        f"{settings.AUTH_SERVICE_URL}/auth/signout",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -559,14 +590,11 @@ async def signout_proxy(request: Request):
 async def get_user_proxy(request: Request):
     """Proxy get user request to auth-service."""
     auth_header = request.headers.get("Authorization")
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{settings.AUTH_SERVICE_URL}/auth/me",
-            headers={"Authorization": auth_header} if auth_header else {},
-            timeout=30.0,
-        )
-
+    client = await get_auth_http_client()
+    response = await client.get(
+        f"{settings.AUTH_SERVICE_URL}/auth/me",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -585,14 +613,11 @@ async def watchlist_page(request: Request):
 async def get_watchlist_proxy(request: Request):
     """Proxy get watchlist request to watchlist-service."""
     auth_header = request.headers.get("Authorization")
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
-            headers={"Authorization": auth_header} if auth_header else {},
-            timeout=30.0,
-        )
-
+    client = await get_auth_http_client()
+    response = await client.get(
+        f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -601,15 +626,12 @@ async def add_to_watchlist_proxy(request: Request):
     """Proxy add to watchlist request to watchlist-service."""
     auth_header = request.headers.get("Authorization")
     body = await request.json()
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
-            headers={"Authorization": auth_header} if auth_header else {},
-            json=body,
-            timeout=30.0,
-        )
-
+    client = await get_auth_http_client()
+    response = await client.post(
+        f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+        headers={"Authorization": auth_header} if auth_header else {},
+        json=body,
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -617,14 +639,11 @@ async def add_to_watchlist_proxy(request: Request):
 async def remove_from_watchlist_proxy(symbol: str, request: Request):
     """Proxy remove from watchlist request to watchlist-service."""
     auth_header = request.headers.get("Authorization")
-
-    async with httpx.AsyncClient() as client:
-        response = await client.delete(
-            f"{settings.WATCHLIST_SERVICE_URL}/watchlists/{symbol}",
-            headers={"Authorization": auth_header} if auth_header else {},
-            timeout=30.0,
-        )
-
+    client = await get_auth_http_client()
+    response = await client.delete(
+        f"{settings.WATCHLIST_SERVICE_URL}/watchlists/{symbol}",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -643,15 +662,12 @@ async def upgrade_page(request: Request):
 async def upgrade_user_proxy(request: Request):
     """Proxy upgrade request to auth-service."""
     auth_header = request.headers.get("Authorization")
-
-    async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{settings.AUTH_SERVICE_URL}/auth/me/tier",
-            headers={"Authorization": auth_header} if auth_header else {},
-            json={"tier": "paid"},
-            timeout=30.0,
-        )
-
+    client = await get_auth_http_client()
+    response = await client.patch(
+        f"{settings.AUTH_SERVICE_URL}/auth/me/tier",
+        headers={"Authorization": auth_header} if auth_header else {},
+        json={"tier": "paid"},
+    )
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 

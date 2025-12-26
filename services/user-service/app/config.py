@@ -14,17 +14,12 @@ class Settings(BaseSettings):
     SERVICE_PORT: int = 8011
     LOG_LEVEL: str = "INFO"
 
-    # Database Configuration
+    # Database Configuration (PostgreSQL)
     DATABASE_URL: str = (
-        "postgresql://postgres:postgres@localhost:5432/qnt9_search"  # Fallback for local dev
+        "postgresql://postgres:postgres@localhost:5432/qnt9"  # Local PostgreSQL
     )
-    SUPABASE_DB_URL: str = ""  # Primary database URL from Supabase
     DATABASE_POOL_SIZE: int = 20
     DATABASE_POOL_MIN_SIZE: int = 5
-
-    # Supabase Configuration
-    SUPABASE_URL: str = "http://localhost:54321"
-    SUPABASE_ANON_KEY: str = "stub-key"
 
     # Stripe Configuration
     STRIPE_API_KEY: str = "sk_test_stub"

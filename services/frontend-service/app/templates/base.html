@@ -6,17 +6,32 @@
     <meta name="description" content="QNT9 Stock Search - Search stocks by ISIN, WKN, or symbol">
     <title>{% block title %}{{ app_name }}{% endblock %}</title>
     
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Preconnect to CDN origins for faster resource loading -->
+    <link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <link rel="dns-prefetch" href="https://unpkg.com">
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
     
-    <!-- HTMX -->
-    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
+    <!-- Critical CSS inline for faster first paint -->
+    <style>
+        /* Minimal critical CSS for initial render */
+        body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+        .loading-placeholder { min-height: 100vh; background: #f5f5f7; }
+    </style>
     
-    <!-- Alpine.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    
-    <!-- Custom CSS -->
+    <!-- Custom CSS (loaded early) -->
     <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <!-- Tailwind CSS CDN (with async loading) -->
+    <script src="https://cdn.tailwindcss.com" defer></script>
+    
+    <!-- HTMX (defer to not block rendering) -->
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous" defer></script>
+    
+    <!-- Alpine.js (already deferred) -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     
     <!-- Tailwind Config -->
     <script>
@@ -204,12 +219,12 @@
         </div>
     </footer>
 
-    <!-- Client-side Logging -->
-    <script src="/static/js/logger.js"></script>
-    <script src="/static/js/htmx-logger.js"></script>
+    <!-- Client-side Logging (loaded async) -->
+    <script src="/static/js/logger.js" defer></script>
+    <script src="/static/js/htmx-logger.js" defer></script>
     
-    <!-- Custom JS (if needed) -->
-    <script src="/static/js/main.js"></script>
+    <!-- Custom JS (loaded async) -->
+    <script src="/static/js/main.js" defer></script>
     
     <!-- Auth Functions -->
     <script>

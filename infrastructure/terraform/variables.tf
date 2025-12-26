@@ -14,6 +14,31 @@ variable "environment" {
   }
 }
 
+# CI/CD Ephemeral Infrastructure Configuration
+variable "ephemeral" {
+  description = "Whether this is an ephemeral deployment (created and destroyed per CI/CD run)"
+  type        = bool
+  default     = false
+}
+
+variable "run_id" {
+  description = "Unique identifier for the CI/CD run (GitHub Actions run ID or PR number)"
+  type        = string
+  default     = ""
+}
+
+variable "enable_icinga" {
+  description = "Enable Icinga monitoring VM (disabled for ephemeral deployments to reduce costs)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_function_app" {
+  description = "Enable Function App (can be disabled for ephemeral deployments)"
+  type        = bool
+  default     = true
+}
+
 # Business Information
 variable "cost_center" {
   description = "Cost center for billing and chargeback"
@@ -89,6 +114,18 @@ variable "aks_kubernetes_version" {
   description = "Kubernetes version for AKS"
   type        = string
   default     = "1.31.11"
+}
+
+variable "aks_ephemeral_node_count" {
+  description = "Number of nodes for ephemeral AKS clusters (cost optimization)"
+  type        = number
+  default     = 1
+}
+
+variable "aks_ephemeral_vm_size" {
+  description = "VM size for ephemeral AKS clusters (cost optimization)"
+  type        = string
+  default     = "Standard_B2s"
 }
 
 # HCP Vault Configuration

@@ -281,7 +281,7 @@ class UserFavorite(Base):
 
     Attributes:
         id: Primary key identifier (UUID)
-        user_id: User UUID from Supabase
+        user_id: User UUID from auth-service
         symbol: Stock ticker symbol
         added_at: Timestamp when favorite was added
     """

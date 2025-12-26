@@ -1,0 +1,105 @@
+# Frontend Service Kubernetes Deployment
+# Environment: ${ENVIRONMENT}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-service
+  namespace: qnt9
+  labels:
+    app: frontend-service
+    version: v1
+    environment: ${ENVIRONMENT}
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: frontend-service
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: qnt9-service-account
+      imagePullSecrets:
+        - name: acr-secret
+      containers:
+        - name: frontend-service
+          image: ${ACR_LOGIN_SERVER}/qnt9-frontend-service:${IMAGE_TAG}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: "${ENVIRONMENT}"
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:8010"
+            - name: SEARCH_SERVICE_URL
+              value: "http://search-service:8000"
+            - name: USER_SERVICE_URL
+              value: "http://user-service:8020"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - frontend-service
+                topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: frontend-service

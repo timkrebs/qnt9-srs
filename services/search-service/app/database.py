@@ -49,12 +49,12 @@ ENABLE_READ_REPLICA = os.getenv("ENABLE_READ_REPLICA", "false").lower() == "true
 def get_database_url() -> str:
     """
     Get database URL from environment.
-    Prioritizes SUPABASE_DB_URL, then DATABASE_URL, then default.
+    Uses DATABASE_URL environment variable or default.
 
     Returns:
         Database connection URL
     """
-    db_url = os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
+    db_url = os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
 
     # Sanitize for logging
     if "@" in db_url:

@@ -1,13 +1,13 @@
 """
 Authentication and authorization for search service.
 
-Integrates with Supabase JWT authentication and implements tier-based access control.
+Validates JWT tokens from auth-service and implements tier-based access control.
 """
 
 import os
 from typing import Optional
 
-import httpx
+import jwt
 import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -15,15 +15,19 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 logger = structlog.get_logger(__name__)
 security = HTTPBearer(auto_error=False)
 
+# JWT Configuration
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+JWT_ALGORITHM = "HS256"
+
 
 class User:
     """
     User model for authenticated requests.
 
     Attributes:
-        id: User UUID from Supabase
+        id: User UUID from auth-service
         email: User email address
-        tier: Subscription tier (anonymous, free, paid)
+        tier: Subscription tier (anonymous, free, paid, enterprise)
         is_authenticated: Whether user is authenticated
     """
 
@@ -37,11 +41,46 @@ class User:
         return f"User(id={self.id}, email={self.email}, tier={self.tier})"
 
 
+def decode_jwt_token(token: str) -> Optional[dict]:
+    """
+    Decode and validate a JWT token.
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Decoded payload if valid, None otherwise
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+        )
+
+        # Verify it's an access token
+        if payload.get("type") != "access":
+            logger.warning("Invalid token type", token_type=payload.get("type"))
+            return None
+
+        return payload
+
+    except jwt.ExpiredSignatureError:
+        logger.warning("Token has expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.warning("Invalid token", error=str(e))
+        return None
+    except Exception as e:
+        logger.error("Token decode error", error=str(e), error_type=type(e).__name__)
+        return None
+
+
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[User]:
     """
-    Validate JWT token with Supabase and return user.
+    Validate JWT token and return user.
 
     Returns None for unauthenticated requests (allows anonymous access).
     This enables optional authentication where endpoints can work with or without auth.
@@ -63,66 +102,26 @@ async def get_current_user(
         return None
 
     token = credentials.credentials
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
 
-    if not supabase_url:
-        logger.error("SUPABASE_URL not configured")
+    # Decode and validate the JWT token
+    payload = decode_jwt_token(token)
+
+    if not payload:
+        logger.warning("Token validation failed")
         return None
 
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            # Validate token with Supabase auth
-            auth_response = await client.get(
-                f"{supabase_url}/auth/v1/user",
-                headers={"Authorization": f"Bearer {token}"},
-            )
+    user_id = payload.get("sub")
+    email = payload.get("email")
+    tier = payload.get("tier", "free")
 
-            if auth_response.status_code != 200:
-                logger.warning("Token validation failed", status_code=auth_response.status_code)
-                return None
-
-            user_data = auth_response.json()
-            user_id = user_data.get("id")
-            email = user_data.get("email")
-
-            if not user_id or not email:
-                logger.warning("Invalid user data from Supabase")
-                return None
-
-            # Fetch user tier from user_profiles table
-            tier = "free"  # Default tier
-
-            if supabase_anon_key:
-                try:
-                    tier_response = await client.get(
-                        f"{supabase_url}/rest/v1/user_profiles",
-                        params={"user_id": f"eq.{user_id}", "select": "tier"},
-                        headers={
-                            "Authorization": f"Bearer {token}",
-                            "apikey": supabase_anon_key,
-                        },
-                    )
-
-                    if tier_response.status_code == 200:
-                        profiles = tier_response.json()
-                        if profiles and len(profiles) > 0:
-                            tier = profiles[0].get("tier", "free")
-                            logger.debug("User tier fetched", user_id=user_id, tier=tier)
-                except Exception as e:
-                    logger.warning("Failed to fetch user tier, using default", error=str(e))
-
-            user = User(id=user_id, email=email, tier=tier)
-            logger.info("User authenticated", user_id=user_id, tier=tier)
-
-            return user
-
-    except httpx.TimeoutException:
-        logger.error("Supabase authentication timeout")
+    if not user_id or not email:
+        logger.warning("Invalid token payload - missing user_id or email")
         return None
-    except Exception as e:
-        logger.error("Authentication error", error=str(e), error_type=type(e).__name__)
-        return None
+
+    user = User(id=user_id, email=email, tier=tier)
+    logger.info("User authenticated", user_id=user_id, tier=tier)
+
+    return user
 
 
 async def require_authentication(
@@ -162,7 +161,7 @@ async def require_paid_tier(user: User = Depends(require_authentication)) -> Use
     Require paid subscription tier.
 
     Use this dependency when an endpoint requires paid subscription.
-    Raises 403 if user is not on paid tier.
+    Raises 403 if user is not on paid or enterprise tier.
 
     Args:
         user: Authenticated user from require_authentication
@@ -179,7 +178,7 @@ async def require_paid_tier(user: User = Depends(require_authentication)) -> Use
             # User is guaranteed to be paid tier here
             return await get_premium_data()
     """
-    if user.tier != "paid":
+    if user.tier not in ("paid", "enterprise"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This feature requires a paid subscription. Upgrade at /upgrade",

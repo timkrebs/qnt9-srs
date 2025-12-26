@@ -2,6 +2,7 @@
 FastAPI application for User Service.
 
 Manages user profiles, subscription tiers, and tier-based access control.
+Implements in-memory caching for improved performance.
 """
 
 from contextlib import asynccontextmanager
@@ -9,6 +10,10 @@ from datetime import datetime
 
 import asyncpg
 import structlog
+from app.cache import (
+    cache_key_user_profile,
+    user_profile_cache,
+)
 from app.config import settings
 from app.db.connection import db_manager, get_db_connection
 from app.models import HealthResponse, MessageResponse, SubscriptionUpdate, UserProfile
@@ -41,19 +46,28 @@ app = FastAPI(
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint with cache stats."""
     return {
         "status": "healthy",
         "service": "user-service",
         "version": "1.0.0",
         "timestamp": datetime.now().isoformat(),
+        "cache_stats": user_profile_cache.get_stats(),
     }
 
 
 @app.get("/users/{user_id}", response_model=UserProfile)
 async def get_user_profile(user_id: str, conn: asyncpg.Connection = Depends(get_db_connection)):
-    """Get user profile with tier information."""
+    """Get user profile with tier information. Uses caching for performance."""
     try:
+        # Check cache first
+        cache_key = cache_key_user_profile(user_id)
+        cached_profile = user_profile_cache.get(cache_key)
+        if cached_profile:
+            logger.debug("Cache hit for user profile", user_id=user_id)
+            return UserProfile(**cached_profile)
+
+        # Cache miss - fetch from database
         row = await conn.fetchrow(
             """
             SELECT id, email, tier, subscription_start, subscription_end,
@@ -67,7 +81,13 @@ async def get_user_profile(user_id: str, conn: asyncpg.Connection = Depends(get_
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-        return UserProfile(**dict(row))
+        profile_data = dict(row)
+        
+        # Cache the result (60 second TTL)
+        user_profile_cache.set(cache_key, profile_data)
+        logger.debug("Cached user profile", user_id=user_id)
+
+        return UserProfile(**profile_data)
 
     except HTTPException:
         raise
@@ -121,6 +141,9 @@ async def upgrade_user(
 
         logger.info("User upgraded to paid tier", user_id=user_id, plan=subscription.plan)
 
+        # Invalidate user profile cache
+        user_profile_cache.delete(cache_key_user_profile(user_id))
+
         # Trigger training for user's watchlist stocks
         await trigger_watchlist_training(user_id, conn)
 
@@ -160,6 +183,9 @@ async def downgrade_user(user_id: str, conn: asyncpg.Connection = Depends(get_db
 
         logger.info("User downgraded to free tier", user_id=user_id)
 
+        # Invalidate user profile cache
+        user_profile_cache.delete(cache_key_user_profile(user_id))
+
         return MessageResponse(message="Successfully downgraded to free tier", success=True)
 
     except HTTPException:
@@ -178,6 +204,8 @@ async def update_last_login(user_id: str, conn: asyncpg.Connection = Depends(get
         await conn.execute(
             "UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1", user_id
         )
+        # Invalidate cache since last_login changed
+        user_profile_cache.delete(cache_key_user_profile(user_id))
         return {"message": "Last login updated"}
     except Exception as e:
         logger.error("Failed to update last login", user_id=user_id, error=str(e))

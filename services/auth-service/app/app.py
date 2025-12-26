@@ -1,19 +1,19 @@
 """
 Auth Service - Main FastAPI Application.
 
-Provides authentication endpoints using Supabase Auth for secure user management.
+Provides authentication endpoints using PostgreSQL with JWT for secure user management.
 Integrates with the QNT9 Stock Recommendation System.
 """
 
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from gotrue.errors import AuthApiError
 
-from .auth_service import auth_service
+from .auth_service import AuthError, auth_service
 from .config import settings
+from .database import db_manager
 from .logging_config import get_logger, setup_logging
 from .models import (
     AuthResponse,
@@ -29,6 +29,8 @@ from .models import (
     UserTierUpdate,
     UserUpdate,
 )
+from .rate_limiter import check_auth_rate_limit, check_password_reset_rate_limit
+from .security import decode_access_token
 
 # Setup logging
 setup_logging(log_level=settings.LOG_LEVEL, service_name="auth-service")
@@ -47,19 +49,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"Service: {settings.APP_NAME}")
     logger.info(f"Debug mode: {settings.DEBUG}")
     logger.info(f"Log level: {settings.LOG_LEVEL}")
-    logger.info("Supabase Auth integration active")
+
+    # Initialize database connection pool
+    await db_manager.connect()
+    logger.info("PostgreSQL connection pool initialized")
 
     yield
 
     # Shutdown
     logger.info("Shutting down Auth Service...")
+    await db_manager.disconnect()
+    logger.info("Database connection pool closed")
 
 
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Authentication service using Supabase for QNT9 SRS",
-    version="2.0.0",
+    description="Authentication service using PostgreSQL with JWT for QNT9 SRS",
+    version="3.0.0",
     docs_url="/api/docs" if settings.DEBUG else None,
     redoc_url="/api/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
@@ -109,6 +116,35 @@ def get_token_from_header(authorization: str = Header(None)) -> str:
         )
 
 
+async def get_current_user_from_token(authorization: str = Header(None)) -> dict:
+    """
+    Dependency that extracts and validates the current user from JWT token.
+
+    Args:
+        authorization: Bearer token in Authorization header
+
+    Returns:
+        Dictionary with user_id and email from token
+
+    Raises:
+        HTTPException: If token is invalid or expired
+    """
+    token = get_token_from_header(authorization)
+
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    return {
+        "user_id": payload["sub"],
+        "email": payload["email"],
+        "tier": payload.get("tier", "free"),
+    }
+
+
 # Health & Info Endpoints
 
 
@@ -117,18 +153,27 @@ async def root() -> dict:
     """Root endpoint with service information."""
     return {
         "service": "QNT9 Auth Service",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "status": "active",
-        "auth_provider": "Supabase",
+        "auth_provider": "PostgreSQL + JWT",
     }
 
 
 @app.get("/health")
 async def health_check() -> dict:
     """Health check endpoint."""
+    # Check database connectivity
+    db_healthy = False
+    try:
+        result = await db_manager.fetchval("SELECT 1")
+        db_healthy = result == 1
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+
     return {
-        "status": "healthy",
+        "status": "healthy" if db_healthy else "degraded",
         "service": "auth-service",
+        "database": "connected" if db_healthy else "disconnected",
     }
 
 
@@ -141,13 +186,13 @@ async def health_check() -> dict:
     status_code=status.HTTP_201_CREATED,
     tags=["Authentication"],
     summary="Register new user",
+    dependencies=[Depends(check_auth_rate_limit)],
 )
 async def sign_up(user_data: UserSignUp):
     """
     Register a new user with email and password.
 
-    Creates a new user account in Supabase Auth and returns
-    session tokens for immediate authentication.
+    Creates a new user account and returns session tokens for immediate authentication.
 
     Args:
         user_data: User registration data (email, password, full_name)
@@ -170,8 +215,13 @@ async def sign_up(user_data: UserSignUp):
             session=SessionResponse(**result["session"]),
         )
 
-    except AuthApiError as e:
+    except AuthError as e:
         logger.error(f"Sign up failed: {e.message}")
+        if e.code == "email_exists":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already registered",
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Registration failed: {e.message}",
@@ -189,8 +239,9 @@ async def sign_up(user_data: UserSignUp):
     response_model=AuthResponse,
     tags=["Authentication"],
     summary="Sign in user",
+    dependencies=[Depends(check_auth_rate_limit)],
 )
-async def sign_in(credentials: UserSignIn):
+async def sign_in(credentials: UserSignIn, request: Request):
     """
     Sign in a user with email and password.
 
@@ -198,6 +249,7 @@ async def sign_in(credentials: UserSignIn):
 
     Args:
         credentials: User credentials (email, password)
+        request: FastAPI request object for IP/user-agent capture
 
     Returns:
         User data and session tokens
@@ -206,9 +258,15 @@ async def sign_in(credentials: UserSignIn):
         HTTPException: If authentication fails
     """
     try:
+        # Capture client info for audit
+        client_ip = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+
         result = await auth_service.sign_in(
             email=credentials.email,
             password=credentials.password,
+            ip_address=client_ip,
+            user_agent=user_agent,
         )
 
         return AuthResponse(
@@ -216,11 +274,21 @@ async def sign_in(credentials: UserSignIn):
             session=SessionResponse(**result["session"]),
         )
 
-    except AuthApiError as e:
+    except AuthError as e:
         logger.error(f"Sign in failed: {e.message}")
+        if e.code == "invalid_credentials":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password",
+            )
+        if e.code == "account_disabled":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is disabled",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Authentication failed",
         )
     except Exception as e:
         logger.exception(f"Unexpected error during sign in: {e}")
@@ -236,14 +304,14 @@ async def sign_in(credentials: UserSignIn):
     tags=["Authentication"],
     summary="Sign out user",
 )
-async def sign_out(authorization: str = Header(None)):
+async def sign_out(token_data: RefreshToken):
     """
     Sign out the current user.
 
-    Invalidates the user's session tokens.
+    Invalidates the user's refresh token.
 
     Args:
-        authorization: Bearer token in Authorization header
+        token_data: Refresh token to invalidate
 
     Returns:
         Success message
@@ -252,15 +320,14 @@ async def sign_out(authorization: str = Header(None)):
         HTTPException: If sign out fails
     """
     try:
-        token = get_token_from_header(authorization)
-        await auth_service.sign_out(token)
+        await auth_service.sign_out(token_data.refresh_token)
 
         return MessageResponse(
             message="Signed out successfully",
             success=True,
         )
 
-    except AuthApiError as e:
+    except AuthError as e:
         logger.error(f"Sign out failed: {e.message}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -300,11 +367,16 @@ async def refresh_session(token_data: RefreshToken):
 
         return SessionResponse(**result)
 
-    except AuthApiError as e:
+    except AuthError as e:
         logger.error(f"Session refresh failed: {e.message}")
+        if e.code in ("invalid_token", "token_revoked", "token_expired"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token",
+            )
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session refresh failed",
         )
     except Exception as e:
         logger.exception(f"Unexpected error refreshing session: {e}")
@@ -323,14 +395,14 @@ async def refresh_session(token_data: RefreshToken):
     tags=["User Management"],
     summary="Get current user",
 )
-async def get_current_user(authorization: str = Header(None)):
+async def get_current_user(current_user: dict = Depends(get_current_user_from_token)):
     """
     Get current authenticated user information.
 
     Requires a valid access token in the Authorization header.
 
     Args:
-        authorization: Bearer token in Authorization header
+        current_user: Injected user data from token
 
     Returns:
         User information
@@ -339,13 +411,12 @@ async def get_current_user(authorization: str = Header(None)):
         HTTPException: If token is invalid or user not found
     """
     try:
-        token = get_token_from_header(authorization)
-        user = await auth_service.get_user(token)
+        user = await auth_service.get_user(current_user["user_id"])
 
         if not user:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
             )
 
         return UserResponse(**user)
@@ -368,7 +439,7 @@ async def get_current_user(authorization: str = Header(None)):
 )
 async def update_current_user(
     user_update: UserUpdate,
-    authorization: str = Header(None),
+    current_user: dict = Depends(get_current_user_from_token),
 ):
     """
     Update current user's profile information.
@@ -377,7 +448,7 @@ async def update_current_user(
 
     Args:
         user_update: Updated user data (email, full_name)
-        authorization: Bearer token in Authorization header
+        current_user: Injected user data from token
 
     Returns:
         Updated user information
@@ -386,18 +457,21 @@ async def update_current_user(
         HTTPException: If update fails
     """
     try:
-        token = get_token_from_header(authorization)
-
         result = await auth_service.update_user(
-            access_token=token,
+            user_id=current_user["user_id"],
             email=user_update.email,
             full_name=user_update.full_name,
         )
 
         return UserResponse(**result)
 
-    except AuthApiError as e:
+    except AuthError as e:
         logger.error(f"User update failed: {e.message}")
+        if e.code == "email_exists":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use",
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Update failed: {e.message}",
@@ -418,7 +492,7 @@ async def update_current_user(
 )
 async def update_password(
     password_update: PasswordUpdate,
-    authorization: str = Header(None),
+    current_user: dict = Depends(get_current_user_from_token),
 ):
     """
     Update current user's password.
@@ -427,7 +501,7 @@ async def update_password(
 
     Args:
         password_update: New password
-        authorization: Bearer token in Authorization header
+        current_user: Injected user data from token
 
     Returns:
         Success message
@@ -436,10 +510,8 @@ async def update_password(
         HTTPException: If password update fails
     """
     try:
-        token = get_token_from_header(authorization)
-
         await auth_service.update_user(
-            access_token=token,
+            user_id=current_user["user_id"],
             password=password_update.password,
         )
 
@@ -448,7 +520,7 @@ async def update_password(
             success=True,
         )
 
-    except AuthApiError as e:
+    except AuthError as e:
         logger.error(f"Password update failed: {e.message}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -467,6 +539,7 @@ async def update_password(
     response_model=MessageResponse,
     tags=["User Management"],
     summary="Request password reset",
+    dependencies=[Depends(check_password_reset_rate_limit)],
 )
 async def request_password_reset(reset_request: PasswordResetRequest):
     """
@@ -478,7 +551,7 @@ async def request_password_reset(reset_request: PasswordResetRequest):
         reset_request: Email address for password reset
 
     Returns:
-        Success message
+        Success message (always returns success for security)
 
     Raises:
         HTTPException: If request fails
@@ -487,22 +560,16 @@ async def request_password_reset(reset_request: PasswordResetRequest):
         await auth_service.reset_password_request(reset_request.email)
 
         return MessageResponse(
-            message="Password reset email sent. Please check your inbox.",
-            success=True,
-        )
-
-    except AuthApiError as e:
-        logger.error(f"Password reset request failed: {e.message}")
-        # Don't reveal if email exists for security
-        return MessageResponse(
             message="If the email exists, a password reset link has been sent.",
             success=True,
         )
+
     except Exception as e:
         logger.exception(f"Unexpected error requesting password reset: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred",
+        # Don't reveal errors for security
+        return MessageResponse(
+            message="If the email exists, a password reset link has been sent.",
+            success=True,
         )
 
 
@@ -512,14 +579,14 @@ async def request_password_reset(reset_request: PasswordResetRequest):
     tags=["User Management"],
     summary="Get user tier information",
 )
-async def get_user_tier(authorization: str = Header(None)):
+async def get_user_tier(current_user: dict = Depends(get_current_user_from_token)):
     """
     Get current user's subscription tier.
 
     Requires a valid access token in the Authorization header.
 
     Args:
-        authorization: Bearer token in Authorization header
+        current_user: Injected user data from token
 
     Returns:
         User tier information
@@ -528,27 +595,21 @@ async def get_user_tier(authorization: str = Header(None)):
         HTTPException: If token is invalid or tier fetch fails
     """
     try:
-        token = get_token_from_header(authorization)
-        user = await auth_service.get_user(token)
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
-            )
-
-        # Fetch tier from Supabase
-        tier_data = await auth_service.get_user_tier(user["id"])
+        tier_data = await auth_service.get_user_tier(current_user["user_id"])
 
         return UserTierResponse(
-            id=user["id"],
-            email=user["email"],
+            id=tier_data["id"],
+            email=current_user["email"],
             tier=tier_data["tier"],
             subscription_start=tier_data.get("subscription_start"),
             subscription_end=tier_data.get("subscription_end"),
         )
-    except HTTPException:
-        raise
+    except AuthError as e:
+        logger.error(f"Error getting user tier: {e.message}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve tier information",
+        )
     except Exception as e:
         logger.exception(f"Error getting user tier: {e}")
         raise HTTPException(
@@ -563,7 +624,10 @@ async def get_user_tier(authorization: str = Header(None)):
     tags=["User Management"],
     summary="Update user tier (upgrade/downgrade)",
 )
-async def update_user_tier(tier_update: UserTierUpdate, authorization: str = Header(None)):
+async def update_user_tier(
+    tier_update: UserTierUpdate,
+    current_user: dict = Depends(get_current_user_from_token),
+):
     """
     Update user's subscription tier.
 
@@ -571,7 +635,7 @@ async def update_user_tier(tier_update: UserTierUpdate, authorization: str = Hea
 
     Args:
         tier_update: New tier information
-        authorization: Bearer token in Authorization header
+        current_user: Injected user data from token
 
     Returns:
         Updated user tier information
@@ -580,27 +644,24 @@ async def update_user_tier(tier_update: UserTierUpdate, authorization: str = Hea
         HTTPException: If token is invalid or tier update fails
     """
     try:
-        token = get_token_from_header(authorization)
-        user = await auth_service.get_user(token)
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired token",
-            )
-
-        # Update tier in Supabase
-        updated_tier = await auth_service.update_user_tier(user["id"], tier_update.tier)
+        updated_tier = await auth_service.update_user_tier(
+            current_user["user_id"],
+            tier_update.tier,
+        )
 
         return UserTierResponse(
             id=updated_tier["id"],
-            email=user["email"],
+            email=updated_tier["email"],
             tier=updated_tier["tier"],
             subscription_start=updated_tier.get("subscription_start"),
             subscription_end=updated_tier.get("subscription_end"),
         )
-    except HTTPException:
-        raise
+    except AuthError as e:
+        logger.error(f"Error updating user tier: {e.message}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to update tier: {e.message}",
+        )
     except Exception as e:
         logger.exception(f"Error updating user tier: {e}")
         raise HTTPException(

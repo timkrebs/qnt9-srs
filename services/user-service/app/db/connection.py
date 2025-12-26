@@ -17,10 +17,9 @@ class DatabaseManager:
     async def connect(self):
         """Create database connection pool."""
         if not self.pool:
-            # Use Supabase DB URL if available, otherwise fall back to DATABASE_URL
-            db_url = settings.SUPABASE_DB_URL or settings.DATABASE_URL
+            # Use local PostgreSQL database
             self.pool = await asyncpg.create_pool(
-                db_url,
+                settings.DATABASE_URL,
                 min_size=settings.DATABASE_POOL_MIN_SIZE,
                 max_size=settings.DATABASE_POOL_SIZE,
                 command_timeout=60,

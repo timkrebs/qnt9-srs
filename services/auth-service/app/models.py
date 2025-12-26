@@ -1,7 +1,7 @@
 """
 Pydantic models for request/response schemas.
 
-Defines data models for authentication API endpoints using Supabase.
+Defines data models for authentication API endpoints using PostgreSQL with JWT.
 """
 
 from datetime import datetime
@@ -117,7 +117,8 @@ class UserTierUpdate(BaseModel):
 class UserTierResponse(BaseModel):
     """Model for user tier response."""
 
-    user_id: str
+    id: str
+    email: Optional[str] = None
     tier: str
+    subscription_start: Optional[datetime] = None
     subscription_end: Optional[datetime] = None
-    success: bool = True

@@ -31,14 +31,26 @@ locals {
   # Generate unique suffix for globally unique resources
   unique_suffix = substr(md5("${var.environment}-${var.location}"), 0, 6)
 
-  # Resource naming convention: projectname-resourcetype-environment-region
-  resource_prefix = "${local.project_name}-${var.environment}"
+  # Ephemeral suffix for CI/CD runs (e.g., pr-123 or run-456789)
+  ephemeral_suffix = var.ephemeral && var.run_id != "" ? "-${var.run_id}" : ""
+
+  # Resource naming convention: projectname-resourcetype-environment-region[-runid]
+  resource_prefix = var.ephemeral ? "${local.project_name}-${var.environment}${local.ephemeral_suffix}" : "${local.project_name}-${var.environment}"
+
+  # Compute actual AKS configuration based on ephemeral mode
+  actual_aks_node_count = var.ephemeral ? var.aks_ephemeral_node_count : var.aks_node_count
+  actual_aks_vm_size    = var.ephemeral ? var.aks_ephemeral_vm_size : var.aks_vm_size
+
+  # ACR name must be alphanumeric only, 5-50 characters
+  acr_name = var.ephemeral ? "acr${replace(local.project_name, "-", "")}${var.environment}${replace(var.run_id, "-", "")}" : "acr${replace(local.project_name, "-", "")}${var.environment}${local.unique_suffix}"
 
   # Common tags applied to all resources
   common_tags = {
     Project            = "QNT9-SRS"
     Environment        = var.environment
     ManagedBy          = "Terraform"
+    Ephemeral          = tostring(var.ephemeral)
+    RunID              = var.run_id
     CostCenter         = var.cost_center
     Owner              = var.owner_email
     BusinessOwner      = var.business_owner_email
@@ -109,8 +121,8 @@ module "aks" {
   location            = azurerm_resource_group.main.location
   resource_prefix     = local.resource_prefix
 
-  node_count         = var.aks_node_count
-  vm_size            = var.aks_vm_size
+  node_count         = local.actual_aks_node_count
+  vm_size            = local.actual_aks_vm_size
   kubernetes_version = var.aks_kubernetes_version
 
   tags = local.common_tags
@@ -120,12 +132,12 @@ module "aks" {
 module "acr" {
   source = "./modules/acr"
 
-  acr_name            = "acr${replace(local.project_name, "-", "")}${var.environment}${local.unique_suffix}"
+  acr_name            = local.acr_name
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
 
-  # Use Basic SKU for dev, Standard for staging/prod
-  sku = var.environment == "dev" ? "Basic" : "Standard"
+  # Use Basic SKU for dev and ephemeral, Standard for staging/prod
+  sku = var.ephemeral || var.environment == "dev" ? "Basic" : "Standard"
 
   # Enable admin for GitHub Actions authentication
   admin_enabled = true
@@ -138,8 +150,10 @@ module "acr" {
   })
 }
 
-# Icinga monitoring VM
+# Icinga monitoring VM (disabled for ephemeral deployments)
 resource "azurerm_linux_virtual_machine" "icinga" {
+  count = var.enable_icinga && !var.ephemeral ? 1 : 0
+
   name                = "${local.resource_prefix}-icinga-vm"
   resource_group_name = azurerm_resource_group.main.name
   location            = azurerm_resource_group.main.location
@@ -147,7 +161,7 @@ resource "azurerm_linux_virtual_machine" "icinga" {
   admin_username      = var.icinga_admin_username
 
   network_interface_ids = [
-    azurerm_network_interface.icinga.id,
+    azurerm_network_interface.icinga[0].id,
   ]
 
   admin_ssh_key {
@@ -178,15 +192,17 @@ resource "azurerm_linux_virtual_machine" "icinga" {
 
 # Network Interface for Icinga VM
 resource "azurerm_network_interface" "icinga" {
+  count = var.enable_icinga && !var.ephemeral ? 1 : 0
+
   name                = "${local.resource_prefix}-icinga-nic"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
 
   ip_configuration {
     name                          = "internal"
-    subnet_id                     = azurerm_subnet.icinga.id
+    subnet_id                     = azurerm_subnet.icinga[0].id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.icinga.id
+    public_ip_address_id          = azurerm_public_ip.icinga[0].id
   }
 
   tags = local.common_tags
@@ -194,6 +210,8 @@ resource "azurerm_network_interface" "icinga" {
 
 # Public IP for Icinga VM
 resource "azurerm_public_ip" "icinga" {
+  count = var.enable_icinga && !var.ephemeral ? 1 : 0
+
   name                = "${local.resource_prefix}-icinga-pip"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
@@ -207,6 +225,8 @@ resource "azurerm_public_ip" "icinga" {
 
 # Virtual Network for Icinga
 resource "azurerm_virtual_network" "icinga" {
+  count = var.enable_icinga && !var.ephemeral ? 1 : 0
+
   name                = "${local.resource_prefix}-icinga-vnet"
   address_space       = ["10.1.0.0/16"]
   location            = azurerm_resource_group.main.location
@@ -217,14 +237,18 @@ resource "azurerm_virtual_network" "icinga" {
 
 # Subnet for Icinga
 resource "azurerm_subnet" "icinga" {
+  count = var.enable_icinga && !var.ephemeral ? 1 : 0
+
   name                 = "${local.resource_prefix}-icinga-subnet"
   resource_group_name  = azurerm_resource_group.main.name
-  virtual_network_name = azurerm_virtual_network.icinga.name
+  virtual_network_name = azurerm_virtual_network.icinga[0].name
   address_prefixes     = ["10.1.1.0/24"]
 }
 
 # Network Security Group for Icinga
 resource "azurerm_network_security_group" "icinga" {
+  count = var.enable_icinga && !var.ephemeral ? 1 : 0
+
   name                = "${local.resource_prefix}-icinga-nsg"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
@@ -286,12 +310,15 @@ resource "azurerm_network_security_group" "icinga" {
 
 # Associate NSG with NIC
 resource "azurerm_network_interface_security_group_association" "icinga" {
-  network_interface_id      = azurerm_network_interface.icinga.id
-  network_security_group_id = azurerm_network_security_group.icinga.id
+  count = var.enable_icinga && !var.ephemeral ? 1 : 0
+
+  network_interface_id      = azurerm_network_interface.icinga[0].id
+  network_security_group_id = azurerm_network_security_group.icinga[0].id
 }
 
-# Function App module
+# Function App module (disabled for ephemeral deployments)
 module "function_app" {
+  count  = var.enable_function_app && !var.ephemeral ? 1 : 0
   source = "./modules/function-app"
 
   resource_group_name  = azurerm_resource_group.main.name
