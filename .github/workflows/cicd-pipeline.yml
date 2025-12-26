@@ -125,8 +125,6 @@ jobs:
       aks_cluster_name: ${{ steps.terraform.outputs.aks_cluster_name }}
       resource_group_name: ${{ steps.terraform.outputs.resource_group_name }}
     env:
-      TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
@@ -138,10 +136,39 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+          terraform_version: 1.9.0
           terraform_wrapper: false
 
-      - name: Determine Workspace Name
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
+
+      - name: Setup Terraform State Storage
+        id: state-storage
+        run: |
+          # Create resource group for state storage if it doesn't exist
+          az group create --name qnt9-terraform-state-rg --location germanywestcentral --output none || true
+          
+          # Create storage account for state if it doesn't exist
+          STORAGE_ACCOUNT="qnt9tfstate$(echo ${{ secrets.ARM_SUBSCRIPTION_ID }} | cut -c1-8)"
+          az storage account create \
+            --name "$STORAGE_ACCOUNT" \
+            --resource-group qnt9-terraform-state-rg \
+            --location germanywestcentral \
+            --sku Standard_LRS \
+            --kind StorageV2 \
+            --output none || true
+          
+          # Create container for state
+          az storage container create \
+            --name tfstate \
+            --account-name "$STORAGE_ACCOUNT" \
+            --output none || true
+          
+          echo "storage_account=$STORAGE_ACCOUNT" >> $GITHUB_OUTPUT
+
+      - name: Determine State Key
         id: workspace
         run: |
           ENV="${{ needs.detect-changes.outputs.environment }}"
@@ -149,334 +176,67 @@ jobs:
           IS_EPHEMERAL="${{ needs.detect-changes.outputs.is_ephemeral }}"
           
           if [[ "$IS_EPHEMERAL" == "true" ]]; then
-            WORKSPACE="qnt9-srs-${ENV}-${RUN_ID}"
+            STATE_KEY="${ENV}-${RUN_ID}.tfstate"
           else
-            WORKSPACE="qnt9-srs-${ENV}"
+            STATE_KEY="${ENV}.tfstate"
           fi
           
-          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
-          echo "Using Terraform workspace: $WORKSPACE"
+          echo "state_key=$STATE_KEY" >> $GITHUB_OUTPUT
+          echo "Using Terraform state key: $STATE_KEY"
 
-      - name: Create or Get TFC Workspace
-        id: workspace-setup
+      - name: Create Terraform Variables
+        working-directory: infrastructure/terraform
         run: |
-          WORKSPACE="${{ steps.workspace.outputs.workspace }}"
-          ORG="${{ secrets.TF_CLOUD_ORGANIZATION }}"
-          
-          echo "Checking for workspace: $WORKSPACE in organization: $ORG"
-          
-          WORKSPACE_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            "https://app.terraform.io/api/v2/organizations/${ORG}/workspaces/${WORKSPACE}")
-          
-          WORKSPACE_ID=$(echo $WORKSPACE_RESPONSE | jq -r '.data.id // empty')
-          
-          if [ -z "$WORKSPACE_ID" ] || [ "$WORKSPACE_ID" == "null" ]; then
-            echo "Creating workspace: $WORKSPACE"
-            CREATE_RESPONSE=$(curl -s \
-              --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-              --header "Content-Type: application/vnd.api+json" \
-              --request POST \
-              --data '{
-                "data": {
-                  "type": "workspaces",
-                  "attributes": {
-                    "name": "'"$WORKSPACE"'",
-                    "execution-mode": "remote",
-                    "auto-apply": true,
-                    "terraform-version": "1.9.0",
-                    "working-directory": ""
-                  }
-                }
-              }' \
-              "https://app.terraform.io/api/v2/organizations/${ORG}/workspaces")
-            
-            WORKSPACE_ID=$(echo $CREATE_RESPONSE | jq -r '.data.id')
-            
-            if [ -z "$WORKSPACE_ID" ] || [ "$WORKSPACE_ID" == "null" ]; then
-              echo "ERROR: Failed to create workspace"
-              echo "$CREATE_RESPONSE" | jq .
-              exit 1
-            fi
-            
-            echo "Workspace created with ID: $WORKSPACE_ID"
-            
-            # Set Azure credentials as workspace environment variables
-            for VAR_NAME in ARM_CLIENT_ID ARM_CLIENT_SECRET ARM_SUBSCRIPTION_ID ARM_TENANT_ID; do
-              VAR_VALUE="${!VAR_NAME}"
-              IS_SENSITIVE=$([[ "$VAR_NAME" == "ARM_CLIENT_SECRET" ]] && echo "true" || echo "false")
-              
-              curl -s \
-                --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-                --header "Content-Type: application/vnd.api+json" \
-                --request POST \
-                --data '{
-                  "data": {
-                    "type": "vars",
-                    "attributes": {
-                      "key": "'"$VAR_NAME"'",
-                      "value": "'"$VAR_VALUE"'",
-                      "category": "env",
-                      "sensitive": '"$IS_SENSITIVE"'
-                    }
-                  }
-                }' \
-                "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars" > /dev/null
-              echo "Set environment variable: $VAR_NAME"
-            done
-          else
-            echo "Workspace already exists with ID: $WORKSPACE_ID"
-          fi
-          
-          echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
+          cat > cicd.auto.tfvars <<EOF
+          environment = "${{ needs.detect-changes.outputs.environment }}"
+          ephemeral   = ${{ needs.detect-changes.outputs.is_ephemeral }}
+          run_id      = "${{ needs.detect-changes.outputs.run_id }}"
+          enable_icinga       = ${{ needs.detect-changes.outputs.is_ephemeral == 'true' && 'false' || 'true' }}
+          enable_function_app = ${{ needs.detect-changes.outputs.is_ephemeral == 'true' && 'false' || 'true' }}
+          location = "germanywestcentral"
+          cost_center          = "QNT9-CICD"
+          owner_email          = "cicd@qnt9.io"
+          business_owner_email = "devops@qnt9.io"
+          budget_code          = "CICD-${{ needs.detect-changes.outputs.environment }}"
+          data_classification  = "Internal"
+          criticality          = "${{ needs.detect-changes.outputs.environment == 'prd' && 'Critical' || 'Low' }}"
+          compliance_requirements = "GDPR"
+          data_residency       = "Germany"
+          aks_node_count           = ${{ needs.detect-changes.outputs.environment == 'prd' && '3' || '2' }}
+          aks_vm_size              = "${{ needs.detect-changes.outputs.environment == 'prd' && 'Standard_D2s_v3' || 'Standard_B2s' }}"
+          aks_ephemeral_node_count = 1
+          aks_ephemeral_vm_size    = "Standard_B2s"
+          aks_kubernetes_version   = "1.31.11"
+          EOF
 
-      - name: Set Terraform Variables in Workspace
+      - name: Terraform Init
+        working-directory: infrastructure/terraform
         run: |
-          WORKSPACE_ID="${{ steps.workspace-setup.outputs.workspace_id }}"
-          
-          # Define Terraform variables
-          declare -A TF_VARS=(
-            ["environment"]="${{ needs.detect-changes.outputs.environment }}"
-            ["ephemeral"]="${{ needs.detect-changes.outputs.is_ephemeral }}"
-            ["run_id"]="${{ needs.detect-changes.outputs.run_id }}"
-            ["location"]="germanywestcentral"
-            ["cost_center"]="QNT9-CICD"
-            ["owner_email"]="cicd@qnt9.io"
-            ["business_owner_email"]="devops@qnt9.io"
-            ["budget_code"]="CICD-${{ needs.detect-changes.outputs.environment }}"
-            ["data_classification"]="Internal"
-            ["compliance_requirements"]="GDPR"
-            ["data_residency"]="Germany"
-            ["aks_kubernetes_version"]="1.31.11"
-          )
-          
-          # Set conditional variables based on environment
-          if [[ "${{ needs.detect-changes.outputs.is_ephemeral }}" == "true" ]]; then
-            TF_VARS["enable_icinga"]="false"
-            TF_VARS["enable_function_app"]="false"
-            TF_VARS["criticality"]="Low"
-          else
-            TF_VARS["enable_icinga"]="true"
-            TF_VARS["enable_function_app"]="true"
-            TF_VARS["criticality"]="${{ needs.detect-changes.outputs.environment == 'prd' && 'Critical' || 'Low' }}"
-          fi
-          
-          if [[ "${{ needs.detect-changes.outputs.environment }}" == "prd" ]]; then
-            TF_VARS["aks_node_count"]="3"
-            TF_VARS["aks_vm_size"]="Standard_D2s_v3"
-          else
-            TF_VARS["aks_node_count"]="2"
-            TF_VARS["aks_vm_size"]="Standard_B2s"
-          fi
-          
-          TF_VARS["aks_ephemeral_node_count"]="1"
-          TF_VARS["aks_ephemeral_vm_size"]="Standard_B2s"
-          
-          # Create or update each variable
-          for VAR_NAME in "${!TF_VARS[@]}"; do
-            VAR_VALUE="${TF_VARS[$VAR_NAME]}"
-            
-            # Determine if value is HCL (boolean/number) or string
-            if [[ "$VAR_VALUE" == "true" || "$VAR_VALUE" == "false" || "$VAR_VALUE" =~ ^[0-9]+$ ]]; then
-              HCL="true"
-            else
-              HCL="false"
-            fi
-            
-            curl -s \
-              --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-              --header "Content-Type: application/vnd.api+json" \
-              --request POST \
-              --data '{
-                "data": {
-                  "type": "vars",
-                  "attributes": {
-                    "key": "'"$VAR_NAME"'",
-                    "value": "'"$VAR_VALUE"'",
-                    "category": "terraform",
-                    "hcl": '"$HCL"'
-                  }
-                }
-              }' \
-              "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars" > /dev/null 2>&1 || true
-            echo "Set Terraform variable: $VAR_NAME = $VAR_VALUE"
-          done
+          terraform init \
+            -backend-config="resource_group_name=qnt9-terraform-state-rg" \
+            -backend-config="storage_account_name=${{ steps.state-storage.outputs.storage_account }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=${{ steps.workspace.outputs.state_key }}"
 
-      - name: Upload Configuration and Create Run
-        id: terraform-run
+      - name: Terraform Plan
+        working-directory: infrastructure/terraform
         run: |
-          WORKSPACE="${{ steps.workspace.outputs.workspace }}"
-          WORKSPACE_ID="${{ steps.workspace-setup.outputs.workspace_id }}"
-          ORG="${{ secrets.TF_CLOUD_ORGANIZATION }}"
-          
-          echo "Workspace: $WORKSPACE"
-          echo "Workspace ID: $WORKSPACE_ID"
-          
-          # Create a tarball of the Terraform configuration
-          cd infrastructure/terraform
-          tar -czf /tmp/terraform-config.tar.gz .
-          cd -
-          
-          # Create a new configuration version
-          echo "Creating configuration version..."
-          CV_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            --header "Content-Type: application/vnd.api+json" \
-            --request POST \
-            --data '{
-              "data": {
-                "type": "configuration-versions",
-                "attributes": {
-                  "auto-queue-runs": false
-                }
-              }
-            }' \
-            "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/configuration-versions")
-          
-          CV_ID=$(echo $CV_RESPONSE | jq -r '.data.id')
-          UPLOAD_URL=$(echo $CV_RESPONSE | jq -r '.data.attributes."upload-url"')
-          
-          if [ -z "$CV_ID" ] || [ "$CV_ID" == "null" ]; then
-            echo "ERROR: Failed to create configuration version"
-            echo "$CV_RESPONSE" | jq .
-            exit 1
-          fi
-          
-          echo "Configuration version: $CV_ID"
-          
-          # Upload the configuration
-          echo "Uploading configuration..."
-          curl -s \
-            --header "Content-Type: application/octet-stream" \
-            --request PUT \
-            --data-binary @/tmp/terraform-config.tar.gz \
-            "$UPLOAD_URL"
-          
-          # Wait for configuration to be ready
-          echo "Waiting for configuration to be processed..."
-          for i in {1..30}; do
-            CV_STATUS=$(curl -s \
-              --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-              "https://app.terraform.io/api/v2/configuration-versions/$CV_ID" \
-              | jq -r '.data.attributes.status')
-            
-            echo "Configuration status: $CV_STATUS"
-            
-            if [ "$CV_STATUS" == "uploaded" ]; then
-              break
-            elif [ "$CV_STATUS" == "errored" ]; then
-              echo "Configuration upload errored"
-              exit 1
-            fi
-            sleep 2
-          done
-          
-          # Create a run
-          echo "Creating Terraform run..."
-          RUN_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            --header "Content-Type: application/vnd.api+json" \
-            --request POST \
-            --data '{
-              "data": {
-                "type": "runs",
-                "attributes": {
-                  "message": "CI/CD - ${{ github.event_name }} - ${{ github.sha }}",
-                  "auto-apply": true
-                },
-                "relationships": {
-                  "workspace": {
-                    "data": {
-                      "type": "workspaces",
-                      "id": "'"$WORKSPACE_ID"'"
-                    }
-                  },
-                  "configuration-version": {
-                    "data": {
-                      "type": "configuration-versions",
-                      "id": "'"$CV_ID"'"
-                    }
-                  }
-                }
-              }
-            }' \
-            "https://app.terraform.io/api/v2/runs")
-          
-          RUN_ID=$(echo $RUN_RESPONSE | jq -r '.data.id')
-          
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
-            echo "ERROR: Failed to create run"
-            echo "$RUN_RESPONSE" | jq .
-            exit 1
-          fi
-          
-          echo "Run created: $RUN_ID"
-          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          terraform plan -input=false -out=tfplan
 
-      - name: Wait for Apply Completion
+      - name: Terraform Apply
+        working-directory: infrastructure/terraform
         run: |
-          RUN_ID="${{ steps.terraform-run.outputs.run_id }}"
-          for i in {1..90}; do
-            RESPONSE=$(curl -s \
-              --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-              "https://app.terraform.io/api/v2/runs/$RUN_ID")
-            
-            STATUS=$(echo $RESPONSE | jq -r '.data.attributes.status')
-            
-            echo "Run status: $STATUS (attempt $i/90)"
-            
-            case $STATUS in
-              "applied"|"planned_and_finished")
-                echo "Terraform apply completed successfully"
-                exit 0
-                ;;
-              "errored"|"canceled"|"force_canceled"|"discarded")
-                echo "Terraform run failed with status: $STATUS"
-                # Get error details
-                curl -s \
-                  --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-                  "https://app.terraform.io/api/v2/runs/$RUN_ID/plan" | jq '.data.attributes."log-read-url"' -r | xargs curl -s | tail -100
-                exit 1
-                ;;
-              *)
-                sleep 20
-                ;;
-            esac
-          done
-          echo "Timeout waiting for Terraform apply"
-          exit 1
+          terraform apply -auto-approve -input=false tfplan
 
       - name: Get Terraform Outputs
         id: terraform
+        working-directory: infrastructure/terraform
         run: |
-          WORKSPACE="${{ steps.workspace.outputs.workspace }}"
-          ORG="${{ secrets.TF_CLOUD_ORGANIZATION }}"
-          
-          WORKSPACE_ID=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            "https://app.terraform.io/api/v2/organizations/${ORG}/workspaces/${WORKSPACE}" \
-            | jq -r '.data.id')
-          
-          STATE_VERSION_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/current-state-version")
-          
-          STATE_VERSION=$(echo $STATE_VERSION_RESPONSE | jq -r '.data.id')
-          
-          if [ -z "$STATE_VERSION" ] || [ "$STATE_VERSION" == "null" ]; then
-            echo "No state version found"
-            exit 1
-          fi
-          
-          OUTPUTS=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            "https://app.terraform.io/api/v2/state-versions/$STATE_VERSION/outputs")
-          
-          ACR_LOGIN_SERVER=$(echo $OUTPUTS | jq -r '.data[] | select(.attributes.name=="acr_login_server") | .attributes.value')
-          ACR_ADMIN_USERNAME=$(echo $OUTPUTS | jq -r '.data[] | select(.attributes.name=="acr_admin_username") | .attributes.value')
-          ACR_ADMIN_PASSWORD=$(echo $OUTPUTS | jq -r '.data[] | select(.attributes.name=="acr_admin_password") | .attributes.value')
-          AKS_CLUSTER_NAME=$(echo $OUTPUTS | jq -r '.data[] | select(.attributes.name=="aks_cluster_name") | .attributes.value')
-          RESOURCE_GROUP=$(echo $OUTPUTS | jq -r '.data[] | select(.attributes.name=="resource_group_name") | .attributes.value')
+          ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server 2>/dev/null || echo "")
+          ACR_ADMIN_USERNAME=$(terraform output -raw acr_admin_username 2>/dev/null || echo "")
+          ACR_ADMIN_PASSWORD=$(terraform output -raw acr_admin_password 2>/dev/null || echo "")
+          AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
+          RESOURCE_GROUP=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
           
           echo "acr_login_server=$ACR_LOGIN_SERVER" >> $GITHUB_OUTPUT
           echo "acr_admin_username=$ACR_ADMIN_USERNAME" >> $GITHUB_OUTPUT
@@ -825,111 +585,89 @@ jobs:
       needs.provision-infrastructure.result == 'success' &&
       github.event.inputs.skip_destroy != 'true'
     env:
-      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
     steps:
-      - name: Destroy Infrastructure via TFC
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+          terraform_wrapper: false
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}'
+
+      - name: Get State Storage Account
+        id: state-storage
+        run: |
+          STORAGE_ACCOUNT="qnt9tfstate$(echo ${{ secrets.ARM_SUBSCRIPTION_ID }} | cut -c1-8)"
+          echo "storage_account=$STORAGE_ACCOUNT" >> $GITHUB_OUTPUT
+
+      - name: Destroy Infrastructure
+        working-directory: infrastructure/terraform
         run: |
           ENV="${{ needs.detect-changes.outputs.environment }}"
           RUN_ID="${{ needs.detect-changes.outputs.run_id }}"
-          WORKSPACE="qnt9-srs-${ENV}-${RUN_ID}"
-          ORG="${{ secrets.TF_CLOUD_ORGANIZATION }}"
+          STATE_KEY="${ENV}-${RUN_ID}.tfstate"
           
-          echo "Looking up workspace: $WORKSPACE"
+          # Create the same tfvars used during provisioning
+          cat > cicd.auto.tfvars <<EOF
+          environment = "${ENV}"
+          ephemeral   = true
+          run_id      = "${RUN_ID}"
+          enable_icinga       = false
+          enable_function_app = false
+          location = "germanywestcentral"
+          cost_center          = "QNT9-CICD"
+          owner_email          = "cicd@qnt9.io"
+          business_owner_email = "devops@qnt9.io"
+          budget_code          = "CICD-${ENV}"
+          data_classification  = "Internal"
+          criticality          = "Low"
+          compliance_requirements = "GDPR"
+          data_residency       = "Germany"
+          aks_node_count           = 2
+          aks_vm_size              = "Standard_B2s"
+          aks_ephemeral_node_count = 1
+          aks_ephemeral_vm_size    = "Standard_B2s"
+          aks_kubernetes_version   = "1.31.11"
+          EOF
           
-          WORKSPACE_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            "https://app.terraform.io/api/v2/organizations/${ORG}/workspaces/${WORKSPACE}")
+          # Initialize with the same backend config
+          terraform init \
+            -backend-config="resource_group_name=qnt9-terraform-state-rg" \
+            -backend-config="storage_account_name=${{ steps.state-storage.outputs.storage_account }}" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=$STATE_KEY"
           
-          WORKSPACE_ID=$(echo $WORKSPACE_RESPONSE | jq -r '.data.id // empty')
+          # Destroy infrastructure
+          terraform destroy -auto-approve -input=false
           
-          if [ -z "$WORKSPACE_ID" ] || [ "$WORKSPACE_ID" == "null" ]; then
-            echo "Workspace not found, nothing to destroy"
-            exit 0
-          fi
-          
-          echo "Creating destroy run for workspace: $WORKSPACE_ID"
-          
-          # Create a destroy run
-          DESTROY_RUN=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            --header "Content-Type: application/vnd.api+json" \
-            --request POST \
-            --data '{
-              "data": {
-                "type": "runs",
-                "attributes": {
-                  "is-destroy": true,
-                  "message": "Cleanup ephemeral infrastructure - Run ${{ github.run_id }}",
-                  "auto-apply": true
-                },
-                "relationships": {
-                  "workspace": {
-                    "data": {
-                      "type": "workspaces",
-                      "id": "'"$WORKSPACE_ID"'"
-                    }
-                  }
-                }
-              }
-            }' \
-            "https://app.terraform.io/api/v2/runs")
-          
-          DESTROY_RUN_ID=$(echo $DESTROY_RUN | jq -r '.data.id')
-          
-          if [ -z "$DESTROY_RUN_ID" ] || [ "$DESTROY_RUN_ID" == "null" ]; then
-            echo "Failed to create destroy run"
-            echo "$DESTROY_RUN" | jq .
-            exit 1
-          fi
-          
-          echo "Destroy run created: $DESTROY_RUN_ID"
-          
-          # Wait for destroy to complete
-          for i in {1..60}; do
-            STATUS=$(curl -s \
-              --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-              "https://app.terraform.io/api/v2/runs/$DESTROY_RUN_ID" \
-              | jq -r '.data.attributes.status')
-            
-            echo "Destroy status: $STATUS (attempt $i/60)"
-            
-            case $STATUS in
-              "applied"|"planned_and_finished")
-                echo "Infrastructure destroyed successfully"
-                break
-                ;;
-              "errored"|"canceled"|"force_canceled"|"discarded")
-                echo "Destroy run failed with status: $STATUS"
-                exit 1
-                ;;
-              *)
-                sleep 30
-                ;;
-            esac
-          done
+          echo "Infrastructure destroyed"
 
-      - name: Delete TFC Workspace
+      - name: Delete State File
         if: always()
         run: |
           ENV="${{ needs.detect-changes.outputs.environment }}"
           RUN_ID="${{ needs.detect-changes.outputs.run_id }}"
-          WORKSPACE="qnt9-srs-${ENV}-${RUN_ID}"
-          ORG="${{ secrets.TF_CLOUD_ORGANIZATION }}"
+          STATE_KEY="${ENV}-${RUN_ID}.tfstate"
+          STORAGE_ACCOUNT="${{ steps.state-storage.outputs.storage_account }}"
           
-          WORKSPACE_ID=$(curl -s \
-            --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            "https://app.terraform.io/api/v2/organizations/${ORG}/workspaces/${WORKSPACE}" \
-            | jq -r '.data.id')
+          # Delete the ephemeral state file
+          az storage blob delete \
+            --account-name "$STORAGE_ACCOUNT" \
+            --container-name tfstate \
+            --name "$STATE_KEY" \
+            --output none || true
           
-          if [ "$WORKSPACE_ID" != "null" ] && [ -n "$WORKSPACE_ID" ]; then
-            curl -s \
-              --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-              --request DELETE \
-              "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID?force=true"
-            echo "Workspace $WORKSPACE deleted"
-          else
-            echo "Workspace not found, skipping delete"
-          fi
+          echo "State file $STATE_KEY deleted"
 
   # ==========================================================================
   # SUMMARY
