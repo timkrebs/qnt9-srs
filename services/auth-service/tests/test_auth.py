@@ -48,17 +48,18 @@ def mock_db_for_app():
 @pytest.fixture
 def mock_security():
     """Mock security functions for testing."""
-    with patch("app.auth_service.hash_password") as mock_hash, \
-         patch("app.auth_service.verify_password") as mock_verify, \
-         patch("app.auth_service.create_access_token") as mock_access, \
-         patch("app.auth_service.create_refresh_token") as mock_refresh:
+    with patch("app.auth_service.hash_password") as mock_hash, patch(
+        "app.auth_service.verify_password"
+    ) as mock_verify, patch("app.auth_service.create_access_token") as mock_access, patch(
+        "app.auth_service.create_refresh_token"
+    ) as mock_refresh:
         mock_hash.return_value = "hashed_password"
         mock_verify.return_value = True
         mock_access.return_value = TEST_ACCESS_TOKEN
         mock_refresh.return_value = (
             TEST_REFRESH_TOKEN,
             "hashed_refresh",
-            datetime.now(timezone.utc) + timedelta(days=7)
+            datetime.now(timezone.utc) + timedelta(days=7),
         )
         yield {
             "hash_password": mock_hash,
@@ -72,6 +73,7 @@ def mock_security():
 def reset_rate_limiter():
     """Reset rate limiter before each test."""
     from app.rate_limiter import auth_rate_limiter, password_reset_rate_limiter
+
     auth_rate_limiter._clients.clear()
     password_reset_rate_limiter._clients.clear()
     yield
@@ -123,7 +125,7 @@ class TestSignUp:
                 "tier": "free",
                 "created_at": datetime.now(timezone.utc),
                 "email_verified": False,
-            }
+            },
         ]
 
         response = client.post(

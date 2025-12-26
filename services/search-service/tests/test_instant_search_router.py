@@ -11,6 +11,7 @@ Tests cover:
 - Response format and headers
 - Latency tracking
 """
+
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 

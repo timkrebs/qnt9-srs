@@ -12,6 +12,7 @@ Tests cover:
 - SearchMatch to_dict conversion
 - Edge cases and error handling
 """
+
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional

@@ -4,6 +4,7 @@ In-memory LRU cache for hot stock data.
 This module provides ultra-fast access to frequently searched stocks
 using an in-memory Least Recently Used (LRU) cache. Target latency: <10ms.
 """
+
 import logging
 from datetime import datetime, timezone
 from typing import Dict, Optional

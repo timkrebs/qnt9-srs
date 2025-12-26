@@ -94,6 +94,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
 
             return response
+        except Exception as exc:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(
+                f"Request failed: {request.method} {request.url.path} ({duration_ms:.2f}ms)",
+                extra={"extra_fields": {"error": str(exc)}},
+            )
+            raise
+        finally:
+            clear_request_id()
 
 
 class StaticFileCacheMiddleware(BaseHTTPMiddleware):
@@ -106,17 +115,17 @@ class StaticFileCacheMiddleware(BaseHTTPMiddleware):
 
     # Cache durations for different file types (in seconds)
     CACHE_DURATIONS = {
-        ".css": 86400,      # 1 day
-        ".js": 86400,       # 1 day
-        ".png": 604800,     # 7 days
-        ".jpg": 604800,     # 7 days
-        ".jpeg": 604800,    # 7 days
-        ".gif": 604800,     # 7 days
-        ".ico": 604800,     # 7 days
-        ".svg": 604800,     # 7 days
-        ".woff": 2592000,   # 30 days
+        ".css": 86400,  # 1 day
+        ".js": 86400,  # 1 day
+        ".png": 604800,  # 7 days
+        ".jpg": 604800,  # 7 days
+        ".jpeg": 604800,  # 7 days
+        ".gif": 604800,  # 7 days
+        ".ico": 604800,  # 7 days
+        ".svg": 604800,  # 7 days
+        ".woff": 2592000,  # 30 days
         ".woff2": 2592000,  # 30 days
-        ".ttf": 2592000,    # 30 days
+        ".ttf": 2592000,  # 30 days
     }
 
     def __init__(self, app: ASGIApp) -> None:
@@ -155,29 +164,6 @@ class StaticFileCacheMiddleware(BaseHTTPMiddleware):
                 response.headers["Cache-Control"] = "public, max-age=3600"
 
         return response
-        except Exception as exc:
-            # Calculate request duration even on error
-            duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Log failed request
-            logger.error(
-                f"Request failed: {request.method} {request.url.path} "
-                f"({duration_ms:.2f}ms): {exc}",
-                extra={
-                    "extra_fields": {
-                        "method": request.method,
-                        "path": request.url.path,
-                        "duration_ms": duration_ms,
-                        "error_type": type(exc).__name__,
-                    }
-                },
-                exc_info=True,
-            )
-            raise
-
-        finally:
-            # Clean up request context
-            clear_request_id()
 
 
 class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):

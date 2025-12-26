@@ -172,7 +172,7 @@ class CircuitBreaker:
             "failure_count": self.failure_count,
             "failure_threshold": self.failure_threshold,
             "opened_at": self.opened_at.isoformat() if self.opened_at else None,
-            "retry_after_seconds": self._get_retry_after_seconds()
-            if self.state == CircuitState.OPEN
-            else None,
+            "retry_after_seconds": (
+                self._get_retry_after_seconds() if self.state == CircuitState.OPEN else None
+            ),
         }

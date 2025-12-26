@@ -4,6 +4,7 @@ Instant search router for ultra-fast autocomplete.
 Optimized endpoint for real-time search suggestions with aggressive caching
 and minimal response payload for best performance.
 """
+
 import time
 from typing import List, Optional
 
@@ -125,9 +126,9 @@ async def instant_search(
                 name=stock.identifier.name or "",
                 exchange=stock.metadata.exchange,
                 price=float(stock.price.current) if stock.price.current else None,
-                change_percent=float(stock.price.change_percent)
-                if stock.price.change_percent
-                else None,
+                change_percent=(
+                    float(stock.price.change_percent) if stock.price.change_percent else None
+                ),
                 relevance_score=round(match.score, 2),
                 match_type=match.match_type,
             )

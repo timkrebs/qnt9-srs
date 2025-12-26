@@ -80,7 +80,7 @@ class SearchServiceClient:
         self.base_url = base_url or settings.SEARCH_SERVICE_URL
         self.timeout = timeout or settings.REQUEST_TIMEOUT
         self.suggestion_timeout = 3.0
-        
+
         # Persistent HTTP client with connection pooling for performance
         # Limits: max 20 keepalive connections, max 100 total connections
         self._client: Optional[httpx.AsyncClient] = None

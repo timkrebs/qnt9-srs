@@ -186,15 +186,19 @@ jobs:
         id: create-workspace
         run: |
           WORKSPACE="${{ steps.workspace.outputs.workspace }}"
+          ORG="${{ secrets.TF_CLOUD_ORGANIZATION }}"
           
-          WORKSPACE_CHECK=$(curl -s \
+          echo "Checking for workspace: $WORKSPACE in organization: $ORG"
+          
+          WORKSPACE_RESPONSE=$(curl -s \
             --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
-            "https://app.terraform.io/api/v2/organizations/${{ secrets.TF_CLOUD_ORGANIZATION }}/workspaces/${WORKSPACE}" \
-            | jq -r '.data.id // empty')
+            "https://app.terraform.io/api/v2/organizations/${ORG}/workspaces/${WORKSPACE}")
           
-          if [ -z "$WORKSPACE_CHECK" ]; then
+          WORKSPACE_ID=$(echo $WORKSPACE_RESPONSE | jq -r '.data.id // empty')
+          
+          if [ -z "$WORKSPACE_ID" ] || [ "$WORKSPACE_ID" == "null" ]; then
             echo "Creating workspace: $WORKSPACE"
-            RESULT=$(curl -s \
+            CREATE_RESPONSE=$(curl -s \
               --header "Authorization: Bearer ${{ secrets.TF_API_TOKEN }}" \
               --header "Content-Type: application/vnd.api+json" \
               --request POST \
@@ -210,9 +214,17 @@ jobs:
                   }
                 }
               }' \
-              "https://app.terraform.io/api/v2/organizations/${{ secrets.TF_CLOUD_ORGANIZATION }}/workspaces")
+              "https://app.terraform.io/api/v2/organizations/${ORG}/workspaces")
             
-            WORKSPACE_ID=$(echo $RESULT | jq -r '.data.id')
+            WORKSPACE_ID=$(echo $CREATE_RESPONSE | jq -r '.data.id')
+            
+            if [ -z "$WORKSPACE_ID" ] || [ "$WORKSPACE_ID" == "null" ]; then
+              echo "ERROR: Failed to create workspace"
+              echo "$CREATE_RESPONSE" | jq .
+              exit 1
+            fi
+            
+            echo "Workspace created with ID: $WORKSPACE_ID"
             
             # Set Azure credentials as workspace variables
             for VAR_NAME in ARM_CLIENT_ID ARM_CLIENT_SECRET ARM_SUBSCRIPTION_ID ARM_TENANT_ID; do
@@ -235,9 +247,16 @@ jobs:
                   }
                 }' \
                 "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars" > /dev/null
+              echo "Set variable: $VAR_NAME"
             done
-            sleep 5
+            
+            echo "Waiting for workspace to be ready..."
+            sleep 10
+          else
+            echo "Workspace already exists with ID: $WORKSPACE_ID"
           fi
+          
+          echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
 
       - name: Upload Terraform Configuration
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.3.1
@@ -245,6 +264,7 @@ jobs:
         with:
           workspace: ${{ steps.workspace.outputs.workspace }}
           directory: ./infrastructure/terraform
+          organization: ${{ secrets.TF_CLOUD_ORGANIZATION }}
 
       - name: Create Terraform Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.1
@@ -253,6 +273,7 @@ jobs:
           workspace: ${{ steps.workspace.outputs.workspace }}
           configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
           message: "CI/CD - ${{ github.event_name }} - ${{ github.sha }}"
+          organization: ${{ secrets.TF_CLOUD_ORGANIZATION }}
 
       - name: Apply Terraform
         if: fromJSON(steps.run.outputs.payload).data.attributes.actions.IsConfirmable

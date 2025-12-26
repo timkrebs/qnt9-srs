@@ -63,43 +63,57 @@ async def legacy_search_stock(
             # Price data
             "current_price": float(stock.price.current) if stock.price else None,
             "currency": stock.price.currency if stock.price else None,
-            "change_percent": float(stock.price.change_percent)
-            if stock.price and stock.price.change_percent
-            else None,
-            "change_absolute": float(stock.price.change_absolute)
-            if stock.price and stock.price.change_absolute
-            else None,
-            "previous_close": float(stock.price.previous_close)
-            if stock.price and stock.price.previous_close
-            else None,
-            "open_price": float(stock.price.open_price)
-            if stock.price and stock.price.open_price
-            else None,
-            "day_high": float(stock.price.day_high)
-            if stock.price and stock.price.day_high
-            else None,
+            "change_percent": (
+                float(stock.price.change_percent)
+                if stock.price and stock.price.change_percent
+                else None
+            ),
+            "change_absolute": (
+                float(stock.price.change_absolute)
+                if stock.price and stock.price.change_absolute
+                else None
+            ),
+            "previous_close": (
+                float(stock.price.previous_close)
+                if stock.price and stock.price.previous_close
+                else None
+            ),
+            "open_price": (
+                float(stock.price.open_price) if stock.price and stock.price.open_price else None
+            ),
+            "day_high": (
+                float(stock.price.day_high) if stock.price and stock.price.day_high else None
+            ),
             "day_low": float(stock.price.day_low) if stock.price and stock.price.day_low else None,
-            "week_52_high": float(stock.price.week_52_high)
-            if stock.price and stock.price.week_52_high
-            else None,
-            "week_52_low": float(stock.price.week_52_low)
-            if stock.price and stock.price.week_52_low
-            else None,
+            "week_52_high": (
+                float(stock.price.week_52_high)
+                if stock.price and stock.price.week_52_high
+                else None
+            ),
+            "week_52_low": (
+                float(stock.price.week_52_low) if stock.price and stock.price.week_52_low else None
+            ),
             "volume": stock.price.volume if stock.price else None,
             "avg_volume": stock.price.avg_volume if stock.price else None,
             # Company metadata
             "exchange": stock.metadata.exchange if stock.metadata else None,
             "sector": stock.metadata.sector if stock.metadata else None,
             "industry": stock.metadata.industry if stock.metadata else None,
-            "market_cap": float(stock.metadata.market_cap)
-            if stock.metadata and stock.metadata.market_cap
-            else None,
-            "pe_ratio": float(stock.metadata.pe_ratio)
-            if stock.metadata and stock.metadata.pe_ratio
-            else None,
-            "dividend_yield": float(stock.metadata.dividend_yield)
-            if stock.metadata and stock.metadata.dividend_yield
-            else None,
+            "market_cap": (
+                float(stock.metadata.market_cap)
+                if stock.metadata and stock.metadata.market_cap
+                else None
+            ),
+            "pe_ratio": (
+                float(stock.metadata.pe_ratio)
+                if stock.metadata and stock.metadata.pe_ratio
+                else None
+            ),
+            "dividend_yield": (
+                float(stock.metadata.dividend_yield)
+                if stock.metadata and stock.metadata.dividend_yield
+                else None
+            ),
             "beta": float(stock.metadata.beta) if stock.metadata and stock.metadata.beta else None,
             # Company information
             "description": stock.metadata.description if stock.metadata else None,

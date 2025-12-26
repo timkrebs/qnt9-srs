@@ -155,9 +155,11 @@ async def database_stats():
                 "checked_in": stats["checked_in"],
                 "overflow": stats["overflow"],
                 "total_connections": stats["total_connections"],
-                "utilization_percent": round((stats["checked_out"] / stats["pool_size"]) * 100, 2)
-                if stats["pool_size"] > 0
-                else 0,
+                "utilization_percent": (
+                    round((stats["checked_out"] / stats["pool_size"]) * 100, 2)
+                    if stats["pool_size"] > 0
+                    else 0
+                ),
             },
             "query_optimization": {
                 "cache_enabled": stats["query_cache_enabled"],

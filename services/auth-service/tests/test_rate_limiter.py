@@ -72,20 +72,24 @@ class TestRateLimiter:
     @pytest.fixture
     def limiter(self):
         """Create a fresh rate limiter for testing."""
-        return RateLimiter(RateLimitConfig(
-            max_requests=3,
-            window_seconds=60,
-            block_duration_seconds=0,
-        ))
+        return RateLimiter(
+            RateLimitConfig(
+                max_requests=3,
+                window_seconds=60,
+                block_duration_seconds=0,
+            )
+        )
 
     @pytest.fixture
     def blocking_limiter(self):
         """Create a rate limiter with blocking enabled."""
-        return RateLimiter(RateLimitConfig(
-            max_requests=2,
-            window_seconds=60,
-            block_duration_seconds=120,
-        ))
+        return RateLimiter(
+            RateLimitConfig(
+                max_requests=2,
+                window_seconds=60,
+                block_duration_seconds=120,
+            )
+        )
 
     @pytest.fixture
     def mock_request(self):

@@ -77,8 +77,7 @@ class RateLimiter:
         expired_clients = [
             ip
             for ip, state in self._clients.items()
-            if (not state.requests or state.requests[-1] < cutoff)
-            and state.blocked_until < now
+            if (not state.requests or state.requests[-1] < cutoff) and state.blocked_until < now
         ]
 
         for ip in expired_clients:

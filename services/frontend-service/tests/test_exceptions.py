@@ -5,7 +5,6 @@ Tests all custom exception types to ensure proper initialization
 and error message formatting.
 """
 
-
 from app.exceptions import (
     FrontendServiceException,
     SearchTimeoutException,

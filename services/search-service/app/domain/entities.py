@@ -224,15 +224,15 @@ class Stock:
             "price": {
                 "current": float(self.price.current) if self.price.current else None,
                 "currency": self.price.currency,
-                "change_absolute": float(self.price.change_absolute)
-                if self.price.change_absolute
-                else None,
-                "change_percent": float(self.price.change_percent)
-                if self.price.change_percent
-                else None,
-                "previous_close": float(self.price.previous_close)
-                if self.price.previous_close
-                else None,
+                "change_absolute": (
+                    float(self.price.change_absolute) if self.price.change_absolute else None
+                ),
+                "change_percent": (
+                    float(self.price.change_percent) if self.price.change_percent else None
+                ),
+                "previous_close": (
+                    float(self.price.previous_close) if self.price.previous_close else None
+                ),
                 "open": float(self.price.open_price) if self.price.open_price else None,
                 "day_high": float(self.price.day_high) if self.price.day_high else None,
                 "day_low": float(self.price.day_low) if self.price.day_low else None,
@@ -248,9 +248,9 @@ class Stock:
                 "industry": self.metadata.industry,
                 "market_cap": float(self.metadata.market_cap) if self.metadata.market_cap else None,
                 "pe_ratio": float(self.metadata.pe_ratio) if self.metadata.pe_ratio else None,
-                "dividend_yield": float(self.metadata.dividend_yield)
-                if self.metadata.dividend_yield
-                else None,
+                "dividend_yield": (
+                    float(self.metadata.dividend_yield) if self.metadata.dividend_yield else None
+                ),
                 "beta": float(self.metadata.beta) if self.metadata.beta else None,
                 "description": self.metadata.description,
                 "employees": self.metadata.employees,

@@ -557,9 +557,7 @@ async def signup_proxy(request: Request):
     """Proxy signup request to auth-service."""
     body = await request.json()
     client = await get_auth_http_client()
-    response = await client.post(
-        f"{settings.AUTH_SERVICE_URL}/auth/signup", json=body
-    )
+    response = await client.post(f"{settings.AUTH_SERVICE_URL}/auth/signup", json=body)
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 
@@ -568,9 +566,7 @@ async def signin_proxy(request: Request):
     """Proxy signin request to auth-service."""
     body = await request.json()
     client = await get_auth_http_client()
-    response = await client.post(
-        f"{settings.AUTH_SERVICE_URL}/auth/signin", json=body
-    )
+    response = await client.post(f"{settings.AUTH_SERVICE_URL}/auth/signin", json=body)
     return JSONResponse(status_code=response.status_code, content=response.json())
 
 

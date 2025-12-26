@@ -4,7 +4,6 @@ Tests for domain exceptions.
 Simple tests to ensure exceptions work correctly.
 """
 
-
 from app.domain.exceptions import (
     CacheException,
     DataIntegrityException,

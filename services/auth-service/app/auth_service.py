@@ -67,8 +67,7 @@ class AuthService:
 
             # Check if email already exists
             existing_user = await db_manager.fetchrow(
-                "SELECT id FROM users WHERE email = $1",
-                email.lower()
+                "SELECT id FROM users WHERE email = $1", email.lower()
             )
 
             if existing_user:
@@ -118,16 +117,21 @@ class AuthService:
                     "id": user_id,
                     "email": user_row["email"],
                     "full_name": user_row["full_name"],
-                    "created_at": user_row["created_at"].isoformat() if user_row["created_at"] else None,
+                    "created_at": (
+                        user_row["created_at"].isoformat() if user_row["created_at"] else None
+                    ),
                     "tier": user_row["tier"],
                     "email_verified": user_row["email_verified"],
                 },
                 "session": {
                     "access_token": access_token,
                     "refresh_token": raw_refresh,
-                    "expires_at": int((datetime.now(timezone.utc) + timedelta(
-                        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-                    )).timestamp()),
+                    "expires_at": int(
+                        (
+                            datetime.now(timezone.utc)
+                            + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+                        ).timestamp()
+                    ),
                 },
             }
 
@@ -170,7 +174,7 @@ class AuthService:
                 FROM users
                 WHERE email = $1
                 """,
-                email.lower()
+                email.lower(),
             )
 
             if not user_row:
@@ -190,8 +194,7 @@ class AuthService:
 
             # Update last login
             await db_manager.execute(
-                "UPDATE users SET last_login = NOW() WHERE id = $1",
-                user_row["id"]
+                "UPDATE users SET last_login = NOW() WHERE id = $1", user_row["id"]
             )
 
             # Create tokens
@@ -225,14 +228,21 @@ class AuthService:
                     "full_name": user_row["full_name"],
                     "tier": user_row["tier"],
                     "email_verified": user_row["email_verified"],
-                    "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
+                    "subscription_end": (
+                        user_row["subscription_end"].isoformat()
+                        if user_row["subscription_end"]
+                        else None
+                    ),
                 },
                 "session": {
                     "access_token": access_token,
                     "refresh_token": raw_refresh,
-                    "expires_at": int((datetime.now(timezone.utc) + timedelta(
-                        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-                    )).timestamp()),
+                    "expires_at": int(
+                        (
+                            datetime.now(timezone.utc)
+                            + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+                        ).timestamp()
+                    ),
                 },
             }
 
@@ -264,7 +274,7 @@ class AuthService:
                 SET revoked = TRUE, revoked_at = NOW()
                 WHERE token_hash = $1 AND revoked = FALSE
                 """,
-                token_hash
+                token_hash,
             )
 
             logger.info("User signed out successfully")
@@ -301,7 +311,7 @@ class AuthService:
                 JOIN users u ON u.id = rt.user_id
                 WHERE rt.token_hash = $1
                 """,
-                token_hash
+                token_hash,
             )
 
             if not token_row:
@@ -321,7 +331,7 @@ class AuthService:
             # Revoke old refresh token
             await db_manager.execute(
                 "UPDATE refresh_tokens SET revoked = TRUE, revoked_at = NOW() WHERE id = $1",
-                token_row["id"]
+                token_row["id"],
             )
 
             # Create new tokens
@@ -349,9 +359,12 @@ class AuthService:
             return {
                 "access_token": access_token,
                 "refresh_token": raw_refresh,
-                "expires_at": int((datetime.now(timezone.utc) + timedelta(
-                    minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-                )).timestamp()),
+                "expires_at": int(
+                    (
+                        datetime.now(timezone.utc)
+                        + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+                    ).timestamp()
+                ),
             }
 
         except AuthError:
@@ -379,7 +392,7 @@ class AuthService:
                 FROM users
                 WHERE id = $1 AND is_active = TRUE
                 """,
-                UUID(user_id)
+                UUID(user_id),
             )
 
             if not user_row:
@@ -391,11 +404,27 @@ class AuthService:
                 "full_name": user_row["full_name"],
                 "tier": user_row["tier"],
                 "email_verified": user_row["email_verified"],
-                "email_verified_at": user_row["email_verified_at"].isoformat() if user_row["email_verified_at"] else None,
-                "created_at": user_row["created_at"].isoformat() if user_row["created_at"] else None,
-                "subscription_start": user_row["subscription_start"].isoformat() if user_row["subscription_start"] else None,
-                "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
-                "last_login": user_row["last_login"].isoformat() if user_row["last_login"] else None,
+                "email_verified_at": (
+                    user_row["email_verified_at"].isoformat()
+                    if user_row["email_verified_at"]
+                    else None
+                ),
+                "created_at": (
+                    user_row["created_at"].isoformat() if user_row["created_at"] else None
+                ),
+                "subscription_start": (
+                    user_row["subscription_start"].isoformat()
+                    if user_row["subscription_start"]
+                    else None
+                ),
+                "subscription_end": (
+                    user_row["subscription_end"].isoformat()
+                    if user_row["subscription_end"]
+                    else None
+                ),
+                "last_login": (
+                    user_row["last_login"].isoformat() if user_row["last_login"] else None
+                ),
             }
 
         except Exception as e:
@@ -436,7 +465,7 @@ class AuthService:
                 existing = await db_manager.fetchrow(
                     "SELECT id FROM users WHERE email = $1 AND id != $2",
                     email.lower(),
-                    UUID(user_id)
+                    UUID(user_id),
                 )
                 if existing:
                     raise AuthError("Email already in use", "email_exists")
@@ -499,8 +528,7 @@ class AuthService:
             logger.info(f"Password reset requested for: {email}")
 
             user_row = await db_manager.fetchrow(
-                "SELECT id FROM users WHERE email = $1 AND is_active = TRUE",
-                email.lower()
+                "SELECT id FROM users WHERE email = $1 AND is_active = TRUE", email.lower()
             )
 
             if user_row:
@@ -510,7 +538,7 @@ class AuthService:
                 # Invalidate any existing tokens
                 await db_manager.execute(
                     "UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE",
-                    user_row["id"]
+                    user_row["id"],
                 )
 
                 # Store new token
@@ -550,7 +578,7 @@ class AuthService:
                 FROM users
                 WHERE id = $1
                 """,
-                UUID(user_id)
+                UUID(user_id),
             )
 
             if not user_row:
@@ -564,8 +592,16 @@ class AuthService:
             return {
                 "id": str(user_row["id"]),
                 "tier": user_row["tier"],
-                "subscription_start": user_row["subscription_start"].isoformat() if user_row["subscription_start"] else None,
-                "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
+                "subscription_start": (
+                    user_row["subscription_start"].isoformat()
+                    if user_row["subscription_start"]
+                    else None
+                ),
+                "subscription_end": (
+                    user_row["subscription_end"].isoformat()
+                    if user_row["subscription_end"]
+                    else None
+                ),
             }
 
         except Exception as e:
@@ -621,8 +657,16 @@ class AuthService:
                 "id": str(user_row["id"]),
                 "email": user_row["email"],
                 "tier": user_row["tier"],
-                "subscription_start": user_row["subscription_start"].isoformat() if user_row["subscription_start"] else None,
-                "subscription_end": user_row["subscription_end"].isoformat() if user_row["subscription_end"] else None,
+                "subscription_start": (
+                    user_row["subscription_start"].isoformat()
+                    if user_row["subscription_start"]
+                    else None
+                ),
+                "subscription_end": (
+                    user_row["subscription_end"].isoformat()
+                    if user_row["subscription_end"]
+                    else None
+                ),
             }
 
         except AuthError:

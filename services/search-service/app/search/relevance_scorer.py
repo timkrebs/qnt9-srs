@@ -4,6 +4,7 @@ Relevance scoring system for search results.
 Scores stock search results based on multiple factors including
 match quality, popularity, field priority, and recency.
 """
+
 import logging
 from dataclasses import dataclass
 from decimal import Decimal

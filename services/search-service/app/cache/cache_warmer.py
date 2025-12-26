@@ -3,6 +3,7 @@ Cache warmer for pre-populating memory cache on startup.
 
 Loads the most popular stocks into memory for ultra-fast access.
 """
+
 import logging
 
 from sqlalchemy import text
@@ -182,9 +183,11 @@ class CacheWarmer:
             identifier=identifier,
             price=price,
             metadata=metadata,
-            data_source=DataSource(stock_cache.data_source)
-            if stock_cache.data_source
-            else DataSource.YAHOO_FINANCE,
+            data_source=(
+                DataSource(stock_cache.data_source)
+                if stock_cache.data_source
+                else DataSource.YAHOO_FINANCE
+            ),
             last_updated=stock_cache.created_at,
         )
 

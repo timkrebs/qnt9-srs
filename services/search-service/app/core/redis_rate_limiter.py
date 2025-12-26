@@ -28,7 +28,7 @@ class RedisRateLimiter:
 
     Limits:
     - Anonymous: 10 requests/minute
-    - Free (logged in): 30 requests/minute  
+    - Free (logged in): 30 requests/minute
     - Paid: 100 requests/minute
     """
 

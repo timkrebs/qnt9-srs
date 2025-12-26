@@ -48,10 +48,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
         True if password matches, False otherwise
     """
     try:
-        return bcrypt.checkpw(
-            password.encode("utf-8"),
-            hashed_password.encode("utf-8")
-        )
+        return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
     except Exception as e:
         logger.error(f"Password verification failed: {e}")
         return False
@@ -86,6 +83,7 @@ def hash_token(token: str) -> str:
         Hashed token string
     """
     import hashlib
+
     return hashlib.sha256(token.encode()).hexdigest()
 
 
@@ -125,11 +123,7 @@ def create_access_token(
     if additional_claims:
         payload.update(additional_claims)
 
-    token = jwt.encode(
-        payload,
-        settings.JWT_SECRET_KEY,
-        algorithm=settings.JWT_ALGORITHM
-    )
+    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
     logger.debug(f"Created access token for user {user_id}, expires at {expire}")
     return token
@@ -164,11 +158,7 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         Decoded payload if valid, None otherwise
     """
     try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET_KEY,
-            algorithms=[settings.JWT_ALGORITHM]
-        )
+        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
 
         # Verify token type
         if payload.get("type") != "access":
