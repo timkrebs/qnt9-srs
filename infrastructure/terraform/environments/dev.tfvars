@@ -22,4 +22,4 @@ data_residency          = "Germany"
 # AKS Configuration - Development (smaller footprint)
 aks_node_count         = 2
 aks_vm_size            = "Standard_B2s"
-aks_kubernetes_version = "1.31.11"
+aks_kubernetes_version = "1.34.1"
