@@ -439,9 +439,13 @@ jobs:
           NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
           ACR="${{ needs.terraform-provision.outputs.acr_login_server }}"
           TAG="${{ github.sha }}"
+          ENV="${{ needs.detect-changes.outputs.environment }}"
           
-          # Replace hardcoded namespace in all k8s manifests
+          # Replace placeholders in all k8s manifests
           find infrastructure/kubernetes -name "*.yaml" -exec sed -i "s/namespace: qnt9$/namespace: ${NAMESPACE}/g" {} \;
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${ENVIRONMENT}/'"${ENV}"'/g' {} \;
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${ACR_LOGIN_SERVER}/'"${ACR}"'/g' {} \;
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${IMAGE_TAG}/'"${TAG}"'/g' {} \;
           
           for service in auth-service search-service frontend-service; do
             DEPLOY_FILE="infrastructure/kubernetes/${service}/deployment.yaml"
@@ -449,9 +453,6 @@ jobs:
             
             if [ -f "$DEPLOY_FILE" ]; then
               echo "Deploying $service..."
-              
-              # Update image in deployment
-              sed -i "s|image:.*|image: ${ACR}/qnt9-${service}:${TAG}|g" "$DEPLOY_FILE"
               
               kubectl apply -f "$DEPLOY_FILE" -n "$NAMESPACE"
               
