@@ -1,16 +1,31 @@
 # Main Terraform configuration for QNT9 SRS Azure Infrastructure
 # This file orchestrates all infrastructure components
+#
+# HCP Terraform Cloud Integration:
+# ================================
+# Workspace selection is done via TF_WORKSPACE environment variable.
+# The cloud block uses tag-based workspace selection to support dynamic workspace names.
+#
+# For local development:
+#   export TF_WORKSPACE=qnt9-srs-dev
+#   terraform login
+#   terraform init
+#   terraform plan -var-file=environments/dev.tfvars
+#
+# For CI/CD (ephemeral):
+#   export TF_WORKSPACE=qnt9-srs-dev-pr123
+#   terraform init
+#   terraform apply -var-file=environments/dev.tfvars -var="ephemeral=true" -var="run_id=pr123"
 
 terraform {
   # Cloud block for HCP Terraform Cloud integration
-  # Workspace is selected via TF_WORKSPACE environment variable or -workspace flag
-  # For CLI-driven workflows, set: export TF_WORKSPACE=qnt9-srs-dev
+  # Uses tag-based workspace selection to support both persistent and ephemeral workspaces
+  # The actual workspace name is set via TF_WORKSPACE environment variable
   cloud {
     organization = "tim-krebs-org"
 
     workspaces {
-      # Use tags to filter available workspaces
-      # Create workspaces in TFC with tag "qnt9-srs" for this project
+      # Use tags to match workspaces - allows dynamic workspace selection via TF_WORKSPACE
       tags = ["qnt9-srs"]
     }
   }
@@ -31,10 +46,6 @@ terraform {
       version = "~> 3.0"
     }
   }
-
-  # Cloud block is configured via CLI or environment variables
-  # The organization and workspace are set in the HCP Terraform workspace settings
-  # and passed via the GitHub Actions workflow
 }
 
 # Local variables for resource naming and tagging
