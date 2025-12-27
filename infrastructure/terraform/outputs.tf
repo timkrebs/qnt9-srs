@@ -60,42 +60,6 @@ output "aks_get_credentials_command" {
   value       = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
 }
 
-# Icinga Monitoring (only if enabled and not ephemeral)
-output "icinga_vm_public_ip" {
-  description = "Public IP address of Icinga monitoring server"
-  value       = var.enable_icinga && !var.ephemeral ? azurerm_public_ip.icinga[0].ip_address : null
-}
-
-output "icinga_vm_fqdn" {
-  description = "FQDN of Icinga monitoring server"
-  value       = var.enable_icinga && !var.ephemeral ? azurerm_public_ip.icinga[0].fqdn : null
-}
-
-output "icinga_web_url" {
-  description = "Icinga Web interface URL (use HTTP, not HTTPS initially)"
-  value       = var.enable_icinga && !var.ephemeral ? "http://${azurerm_public_ip.icinga[0].ip_address}/icingaweb2" : null
-}
-
-output "icinga_web_credentials" {
-  description = "Default Icinga Web 2 credentials (CHANGE IN PRODUCTION!)"
-  value = var.enable_icinga && !var.ephemeral ? {
-    username = "admin"
-    password = "admin"
-    note     = "These are default credentials set by cloud-init. Change them immediately in production!"
-  } : null
-  sensitive = true
-}
-
-output "icinga_ssh_command" {
-  description = "SSH command to connect to Icinga server"
-  value       = var.enable_icinga && !var.ephemeral ? "ssh ${var.icinga_admin_username}@${azurerm_public_ip.icinga[0].ip_address}" : null
-}
-
-output "icinga_installation_log" {
-  description = "Command to check Icinga installation log on the VM"
-  value       = var.enable_icinga && !var.ephemeral ? "ssh ${var.icinga_admin_username}@${azurerm_public_ip.icinga[0].ip_address} 'cat /var/log/icinga-install-status.txt'" : null
-}
-
 # Function App (only if enabled and not ephemeral)
 output "function_app_name" {
   description = "Name of the Function App"
@@ -159,8 +123,6 @@ output "quick_start_commands" {
     configure_kubectl = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
     view_function_app = var.enable_function_app && !var.ephemeral ? "az functionapp show --name ${module.function_app[0].function_app_name} --resource-group ${azurerm_resource_group.main.name}" : null
     acr_login         = "az acr login --name ${module.acr.acr_name}"
-    ssh_icinga        = var.enable_icinga && !var.ephemeral ? "ssh ${var.icinga_admin_username}@${azurerm_public_ip.icinga[0].ip_address}" : null
-    icinga_web        = var.enable_icinga && !var.ephemeral ? "https://${azurerm_public_ip.icinga[0].ip_address}" : null
   }
   sensitive = true
 }

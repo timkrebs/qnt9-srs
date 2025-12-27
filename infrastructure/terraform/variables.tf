@@ -31,12 +31,6 @@ variable "run_id" {
   default     = ""
 }
 
-variable "enable_icinga" {
-  description = "Enable Icinga monitoring VM (disabled for ephemeral deployments to reduce costs)"
-  type        = bool
-  default     = true
-}
-
 variable "enable_function_app" {
   description = "Enable Function App (can be disabled for ephemeral deployments)"
   type        = bool
@@ -130,68 +124,6 @@ variable "aks_ephemeral_vm_size" {
   description = "VM size for ephemeral AKS clusters (cost optimization)"
   type        = string
   default     = "Standard_B2s"
-}
-
-# HCP Vault Configuration
-variable "vault_address" {
-  description = "HCP Vault address"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "vault_namespace" {
-  description = "HCP Vault namespace"
-  type        = string
-  default     = "admin"
-}
-
-variable "vault_token" {
-  description = "HCP Vault token"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "enable_vault_integration" {
-  description = "Enable HCP Vault integration for storing secrets"
-  type        = bool
-  default     = true
-}
-
-# Icinga Monitoring Configuration
-variable "icinga_vm_size" {
-  description = "VM size for Icinga monitoring server"
-  type        = string
-  default     = "Standard_B2s"
-}
-
-variable "icinga_admin_username" {
-  description = "Admin username for Icinga VM"
-  type        = string
-  default     = "icingaadmin"
-}
-
-variable "icinga_ssh_public_key" {
-  description = "SSH public key for Icinga VM access. Set via HCP Terraform workspace variable or TF_VAR_icinga_ssh_public_key environment variable."
-  type        = string
-  default     = ""
-
-  validation {
-    condition     = var.icinga_ssh_public_key != "" ? can(regex("^ssh-(rsa|ed25519|ecdsa)", var.icinga_ssh_public_key)) : true
-    error_message = "Must be a valid SSH public key starting with ssh-rsa, ssh-ed25519, or ssh-ecdsa."
-  }
-}
-
-variable "icinga_allowed_ip_range" {
-  description = "IP range allowed to access Icinga (CIDR notation)"
-  type        = string
-  default     = "*"
-
-  validation {
-    condition     = can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", var.icinga_allowed_ip_range)) || var.icinga_allowed_ip_range == "*"
-    error_message = "Must be a valid CIDR notation or '*' for all IPs (not recommended for production)."
-  }
 }
 
 # Networking (Optional for future)
