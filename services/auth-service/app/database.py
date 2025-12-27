@@ -44,6 +44,7 @@ class DatabaseManager:
                 min_size=settings.DATABASE_POOL_MIN_SIZE,
                 max_size=settings.DATABASE_POOL_SIZE,
                 command_timeout=60,
+                statement_cache_size=0,  # Required for Supabase Transaction Pooler (pgbouncer)
             )
             logger.info(
                 "Database connection pool created",

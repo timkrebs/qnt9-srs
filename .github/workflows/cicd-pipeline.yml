@@ -446,6 +446,47 @@ jobs:
             --from-literal=redis-url="${{ secrets.REDIS_URL }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Deploy base Kubernetes resources
+        run: |
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          
+          # Create ServiceAccount and RBAC resources
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: qnt9-service-account
+            namespace: ${NAMESPACE}
+            labels:
+              app: qnt9-srs
+              environment: ${ENV}
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: qnt9-service-role
+            namespace: ${NAMESPACE}
+          rules:
+          - apiGroups: [""]
+            resources: ["configmaps", "secrets"]
+            verbs: ["get", "list"]
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: qnt9-service-rolebinding
+            namespace: ${NAMESPACE}
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: qnt9-service-role
+          subjects:
+          - kind: ServiceAccount
+            name: qnt9-service-account
+            namespace: ${NAMESPACE}
+          EOF
+
       - name: Deploy services to AKS
         run: |
           NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
