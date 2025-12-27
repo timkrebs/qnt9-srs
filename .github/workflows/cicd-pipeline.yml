@@ -434,6 +434,18 @@ jobs:
             --docker-password=$ACR_PASSWORD \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create application secrets
+        run: |
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          
+          # Create qnt9-secrets with required keys
+          kubectl create secret generic qnt9-secrets \
+            --namespace $NAMESPACE \
+            --from-literal=database-url="${{ secrets.DATABASE_URL }}" \
+            --from-literal=jwt-secret-key="${{ secrets.JWT_SECRET_KEY }}" \
+            --from-literal=redis-url="${{ secrets.REDIS_URL }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy services to AKS
         run: |
           NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
