@@ -7,7 +7,18 @@ echo "================================================"
 
 # Wait for PostgreSQL to be ready
 echo "Waiting for PostgreSQL..."
-while ! pg_isready -h ${DATABASE_URL##*@} -p 5432 > /dev/null 2>&1; do
+# Extract host and port from DATABASE_URL for Supabase compatibility
+# Format: postgresql://user:pass@host:port/db
+DB_HOST=$(echo $DATABASE_URL | sed -e 's|.*@\([^:/]*\).*|\1|')
+DB_PORT=$(echo $DATABASE_URL | sed -e 's|.*:\([0-9]*\)/.*|\1|')
+
+# Fallback to default port if extraction fails
+if [ -z "$DB_PORT" ] || ! [[ "$DB_PORT" =~ ^[0-9]+$ ]]; then
+    DB_PORT=5432
+fi
+
+echo "Checking PostgreSQL at ${DB_HOST}:${DB_PORT}..."
+while ! pg_isready -h "$DB_HOST" -p "$DB_PORT" > /dev/null 2>&1; do
     echo "PostgreSQL is unavailable - sleeping"
     sleep 2
 done
