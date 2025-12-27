@@ -8,6 +8,9 @@ resource "azurerm_kubernetes_cluster" "main" {
   dns_prefix          = "${var.resource_prefix}-aks"
   kubernetes_version  = var.kubernetes_version
 
+  # OIDC issuer - once enabled, cannot be disabled
+  oidc_issuer_enabled = true
+
   # Default node pool for system workloads
   default_node_pool {
     name                = "system"
