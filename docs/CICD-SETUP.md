@@ -42,7 +42,7 @@ az role assignment create \
    **Organization Token** (for workspace management):
    - Navigate to Organization Settings → API Tokens → Organization Token
    - Generate an organization token
-   - Save it securely (you'll need this as `TF_ORG_TOKEN`)
+   - Save it securely (you'll need this as `TF_CLOUD_ORGANIZATION`)
    - This token manages teams, team membership, and workspaces
    - ⚠️ Cannot perform plans/applies in workspaces
 
@@ -72,7 +72,7 @@ Add the following secrets:
 
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
-| `TF_ORG_TOKEN` | HCP Terraform Cloud **Organization** token (for workspace management) | `xxx.atlasv1.xxxx` |
+| `TF_CLOUD_ORGANIZATION` | HCP Terraform Cloud **Organization** token (for workspace management) | `xxx.atlasv1.xxxx` |
 | `TF_API_TOKEN` | HCP Terraform Cloud **Team** token (for plan/apply) | `xxx.atlasv1.xxxx` |
 | `ARM_CLIENT_ID` | Azure Service Principal Client ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `ARM_CLIENT_SECRET` | Azure Service Principal Secret | `xxxxxxxxxxxxxxxx` |
