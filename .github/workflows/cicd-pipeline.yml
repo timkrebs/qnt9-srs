@@ -233,6 +233,25 @@ jobs:
           
           echo "Checking workspace: $WORKSPACE_NAME"
           
+          # First, get the default project for the organization
+          echo "Fetching organization projects..."
+          PROJECTS_RESPONSE=$(curl -s \
+            --header "Authorization: Bearer $TF_API_TOKEN" \
+            --header "Content-Type: application/vnd.api+json" \
+            "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/projects")
+          
+          # Get the default project ID (first project or one named "Default Project")
+          DEFAULT_PROJECT_ID=$(echo "$PROJECTS_RESPONSE" | jq -r '.data[] | select(.attributes.name == "Default Project") | .id // empty')
+          if [[ -z "$DEFAULT_PROJECT_ID" ]]; then
+            DEFAULT_PROJECT_ID=$(echo "$PROJECTS_RESPONSE" | jq -r '.data[0].id // empty')
+          fi
+          
+          if [[ -z "$DEFAULT_PROJECT_ID" ]]; then
+            echo "Warning: Could not find default project, attempting workspace creation without project..."
+          else
+            echo "Using project: $DEFAULT_PROJECT_ID"
+          fi
+          
           # Check if workspace exists
           RESPONSE=$(curl -s -w "\n%{http_code}" \
             --header "Authorization: Bearer $TF_API_TOKEN" \
@@ -248,12 +267,32 @@ jobs:
           else
             echo "Creating workspace..."
             
-            # Create workspace with tags for tag-based selection
-            CREATE_RESPONSE=$(curl -s \
-              --header "Authorization: Bearer $TF_API_TOKEN" \
-              --header "Content-Type: application/vnd.api+json" \
-              --request POST \
-              --data '{
+            # Build the workspace creation payload with project relationship
+            if [[ -n "$DEFAULT_PROJECT_ID" ]]; then
+              CREATE_PAYLOAD='{
+                "data": {
+                  "attributes": {
+                    "name": "'"$WORKSPACE_NAME"'",
+                    "terraform_version": "1.6.0",
+                    "working-directory": "infrastructure/terraform",
+                    "auto-apply": true,
+                    "execution-mode": "local",
+                    "description": "QNT9-SRS '"$ENVIRONMENT"' environment (ephemeral: '"$EPHEMERAL"')",
+                    "tag-names": ["qnt9-srs", "'"$ENVIRONMENT"'", "'"$(if [[ "$EPHEMERAL" == "true" ]]; then echo "ephemeral"; else echo "persistent"; fi)"'"]
+                  },
+                  "relationships": {
+                    "project": {
+                      "data": {
+                        "type": "projects",
+                        "id": "'"$DEFAULT_PROJECT_ID"'"
+                      }
+                    }
+                  },
+                  "type": "workspaces"
+                }
+              }'
+            else
+              CREATE_PAYLOAD='{
                 "data": {
                   "attributes": {
                     "name": "'"$WORKSPACE_NAME"'",
@@ -266,7 +305,14 @@ jobs:
                   },
                   "type": "workspaces"
                 }
-              }' \
+              }'
+            fi
+            
+            CREATE_RESPONSE=$(curl -s \
+              --header "Authorization: Bearer $TF_API_TOKEN" \
+              --header "Content-Type: application/vnd.api+json" \
+              --request POST \
+              --data "$CREATE_PAYLOAD" \
               "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/workspaces")
             
             WORKSPACE_ID=$(echo "$CREATE_RESPONSE" | jq -r '.data.id')
