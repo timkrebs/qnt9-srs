@@ -36,16 +36,17 @@ resource "vault_kv_secret_v2" "acr" {
 }
 
 # Store Icinga credentials in Vault (optional)
+# Only create if both Vault integration and Icinga are enabled (and not ephemeral)
 resource "vault_kv_secret_v2" "icinga" {
-  count = var.enable_vault_integration ? 1 : 0
+  count = var.enable_vault_integration && var.enable_icinga && !var.ephemeral ? 1 : 0
   mount = "kv"
   name  = "azure/icinga"
 
   data_json = jsonencode({
-    public_ip = azurerm_public_ip.icinga.ip_address
+    public_ip = azurerm_public_ip.icinga[0].ip_address
     ssh_user  = var.icinga_admin_username
-    web_url   = "https://${azurerm_public_ip.icinga.ip_address}"
-    api_url   = "https://${azurerm_public_ip.icinga.ip_address}:5665"
+    web_url   = "https://${azurerm_public_ip.icinga[0].ip_address}"
+    api_url   = "https://${azurerm_public_ip.icinga[0].ip_address}:5665"
   })
 
   depends_on = [azurerm_public_ip.icinga]
@@ -64,5 +65,5 @@ output "vault_acr_path" {
 
 output "vault_icinga_path" {
   description = "Vault KV path for Icinga information"
-  value       = var.enable_vault_integration ? "kv/azure/icinga" : "Vault integration disabled"
+  value       = var.enable_vault_integration && var.enable_icinga && !var.ephemeral ? "kv/azure/icinga" : "Vault integration or Icinga disabled"
 }
