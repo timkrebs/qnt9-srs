@@ -26,7 +26,7 @@ The pipeline uses **three fixed workspaces** in HCP Terraform Cloud:
 az ad sp create-for-rbac \
   --name "qnt9-srs-cicd" \
   --role Contributor \
-  --scopes /subscriptions/<SUBSCRIPTION_ID> \
+  --scopes /subscriptions/b4bf1ed0-4d18-4edc-9680-18b2ebb90ed6 \
   --sdk-auth
 
 # Save the output - you'll need these values:
