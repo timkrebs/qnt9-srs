@@ -170,6 +170,7 @@ venv.bak/
 *.tfstate.*
 *.tfvars
 !terraform.tfvars  # Allow terraform.tfvars (contains no secrets)
+!infrastructure/terraform/environments/*.tfvars  # Allow environment-specific tfvars
 *.auto.tfvars
 terraform.tfvars.local
 vault-token-info.txt
