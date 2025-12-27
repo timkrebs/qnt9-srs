@@ -440,6 +440,9 @@ jobs:
           ACR="${{ needs.terraform-provision.outputs.acr_login_server }}"
           TAG="${{ github.sha }}"
           
+          # Replace hardcoded namespace in all k8s manifests
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i "s/namespace: qnt9$/namespace: ${NAMESPACE}/g" {} \;
+          
           for service in auth-service search-service frontend-service; do
             DEPLOY_FILE="infrastructure/kubernetes/${service}/deployment.yaml"
             SERVICE_FILE="infrastructure/kubernetes/${service}/service.yaml"
