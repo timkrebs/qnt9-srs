@@ -276,7 +276,6 @@ jobs:
           
           # Disable costly features for non-production
           $(if [[ "$ENV" != "prd" ]]; then
-            echo "enable_icinga       = false"
             echo "enable_function_app = false"
           fi)
           EOF
