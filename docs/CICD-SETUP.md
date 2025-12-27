@@ -37,10 +37,21 @@ az role assignment create \
 
 1. **Create Organization**: Go to [app.terraform.io](https://app.terraform.io) and create an organization (e.g., `tim-krebs-org`)
 
-2. **Create API Token**:
-   - Navigate to User Settings → Tokens
-   - Create a new API token
+2. **Create API Tokens** (you need TWO different tokens):
+
+   **Organization Token** (for workspace management):
+   - Navigate to Organization Settings → API Tokens → Organization Token
+   - Generate an organization token
+   - Save it securely (you'll need this as `TF_ORG_TOKEN`)
+   - This token manages teams, team membership, and workspaces
+   - ⚠️ Cannot perform plans/applies in workspaces
+
+   **Team Token** (for terraform operations):
+   - Navigate to Organization Settings → Teams → Select your team (e.g., "owners")
+   - Go to API Token section
+   - Generate a team token
    - Save it securely (you'll need this as `TF_API_TOKEN`)
+   - This token performs plans and applies on workspaces
 
 3. **Create Initial Workspaces** (optional, CI/CD will create them automatically):
 ```bash
@@ -61,7 +72,8 @@ Add the following secrets:
 
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
-| `TF_API_TOKEN` | HCP Terraform Cloud API token | `xxx.atlasv1.xxxx` |
+| `TF_ORG_TOKEN` | HCP Terraform Cloud **Organization** token (for workspace management) | `xxx.atlasv1.xxxx` |
+| `TF_API_TOKEN` | HCP Terraform Cloud **Team** token (for plan/apply) | `xxx.atlasv1.xxxx` |
 | `ARM_CLIENT_ID` | Azure Service Principal Client ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `ARM_CLIENT_SECRET` | Azure Service Principal Secret | `xxxxxxxxxxxxxxxx` |
 | `ARM_SUBSCRIPTION_ID` | Azure Subscription ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |

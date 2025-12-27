@@ -205,6 +205,9 @@ jobs:
       resource_group: ${{ steps.outputs.outputs.resource_group }}
     
     env:
+      # Organization Token - for workspace management (create, delete, set variables)
+      TF_ORG_TOKEN: ${{ secrets.TF_ORG_TOKEN }}
+      # Team Token - for terraform plan/apply operations
       TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
       TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
@@ -234,9 +237,10 @@ jobs:
           echo "Checking workspace: $WORKSPACE_NAME"
           
           # First, get the default project for the organization
+          # Using Organization Token for workspace management
           echo "Fetching organization projects..."
           PROJECTS_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer $TF_API_TOKEN" \
+            --header "Authorization: Bearer $TF_ORG_TOKEN" \
             --header "Content-Type: application/vnd.api+json" \
             "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/projects")
           
@@ -252,9 +256,9 @@ jobs:
             echo "Using project: $DEFAULT_PROJECT_ID"
           fi
           
-          # Check if workspace exists
+          # Check if workspace exists (using Organization Token)
           RESPONSE=$(curl -s -w "\n%{http_code}" \
-            --header "Authorization: Bearer $TF_API_TOKEN" \
+            --header "Authorization: Bearer $TF_ORG_TOKEN" \
             --header "Content-Type: application/vnd.api+json" \
             "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/workspaces/$WORKSPACE_NAME")
           
@@ -308,8 +312,9 @@ jobs:
               }'
             fi
             
+            # Using Organization Token for workspace creation
             CREATE_RESPONSE=$(curl -s \
-              --header "Authorization: Bearer $TF_API_TOKEN" \
+              --header "Authorization: Bearer $TF_ORG_TOKEN" \
               --header "Content-Type: application/vnd.api+json" \
               --request POST \
               --data "$CREATE_PAYLOAD" \
@@ -334,7 +339,7 @@ jobs:
           
           WORKSPACE_ID="${{ steps.workspace.outputs.workspace_id }}"
           
-          # Function to set variable
+          # Function to set variable (using Organization Token for workspace management)
           set_variable() {
             local KEY=$1
             local VALUE=$2
@@ -343,14 +348,14 @@ jobs:
             
             # Check if variable exists
             VAR_CHECK=$(curl -s \
-              --header "Authorization: Bearer $TF_API_TOKEN" \
+              --header "Authorization: Bearer $TF_ORG_TOKEN" \
               "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars" | \
               jq -r ".data[] | select(.attributes.key == \"$KEY\") | .id")
             
             if [[ -n "$VAR_CHECK" ]]; then
               # Update existing variable
               curl -s \
-                --header "Authorization: Bearer $TF_API_TOKEN" \
+                --header "Authorization: Bearer $TF_ORG_TOKEN" \
                 --header "Content-Type: application/vnd.api+json" \
                 --request PATCH \
                 --data '{
@@ -365,7 +370,7 @@ jobs:
             else
               # Create new variable
               curl -s \
-                --header "Authorization: Bearer $TF_API_TOKEN" \
+                --header "Authorization: Bearer $TF_ORG_TOKEN" \
                 --header "Content-Type: application/vnd.api+json" \
                 --request POST \
                 --data '{
@@ -767,6 +772,9 @@ jobs:
       (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped' || needs.integration-tests.result == 'failure')
     
     env:
+      # Organization Token - for workspace deletion
+      TF_ORG_TOKEN: ${{ secrets.TF_ORG_TOKEN }}
+      # Team Token - for terraform destroy operations
       TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
     
     steps:
@@ -777,6 +785,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.6.0"
+          # Team Token for terraform CLI operations (destroy)
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Destroy Infrastructure
@@ -802,16 +811,16 @@ jobs:
           
           echo "Deleting workspace: $WORKSPACE_NAME"
           
-          # Get workspace ID
+          # Get workspace ID (using Organization Token for workspace management)
           WORKSPACE_ID=$(curl -s \
-            --header "Authorization: Bearer $TF_API_TOKEN" \
+            --header "Authorization: Bearer $TF_ORG_TOKEN" \
             "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/workspaces/$WORKSPACE_NAME" | \
             jq -r '.data.id')
           
           if [[ "$WORKSPACE_ID" != "null" && -n "$WORKSPACE_ID" ]]; then
-            # Delete workspace
+            # Delete workspace (using Organization Token)
             curl -s \
-              --header "Authorization: Bearer $TF_API_TOKEN" \
+              --header "Authorization: Bearer $TF_ORG_TOKEN" \
               --request DELETE \
               "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID"
             
