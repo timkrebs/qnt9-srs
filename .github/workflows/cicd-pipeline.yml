@@ -422,11 +422,16 @@ jobs:
 
       - name: Create image pull secret
         run: |
+          # Get ACR credentials dynamically
+          ACR_NAME=$(echo "${{ needs.terraform-provision.outputs.acr_login_server }}" | cut -d'.' -f1)
+          ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query "passwords[0].value" -o tsv)
+          ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query "username" -o tsv)
+          
           kubectl create secret docker-registry acr-secret \
             --namespace qnt9-srs-${{ needs.detect-changes.outputs.environment }} \
             --docker-server=${{ needs.terraform-provision.outputs.acr_login_server }} \
-            --docker-username=${{ needs.terraform-provision.outputs.acr_admin_user }} \
-            --docker-password=${{ secrets.ACR_ADMIN_PASSWORD }} \
+            --docker-username=$ACR_USERNAME \
+            --docker-password=$ACR_PASSWORD \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy services to AKS
