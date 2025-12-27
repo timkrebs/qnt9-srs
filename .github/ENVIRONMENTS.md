@@ -37,9 +37,9 @@ Go to: Settings → Environments
 - Click "New environment"
 - Name: `prd`
 - Enable protection rules:
-  - ✅ Required reviewers: Add 2 team members
-  - ✅ Wait timer: 10 minutes (optional)
-  - ✅ Deployment branches: Selected branches → main
+  - Required reviewers: Add 2 team members
+  - Wait timer: 10 minutes (optional)
+  - Deployment branches: Selected branches -> main
 
 ### 5. Environment URLs (Auto-configured by workflow)
 The workflow automatically sets environment URLs:

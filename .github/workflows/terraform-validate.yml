@@ -14,7 +14,7 @@ env:
 
 jobs:
   validate:
-    name: 🔍 Validate Terraform
+    name: Validate Terraform
     runs-on: ubuntu-latest
     
     steps:
@@ -76,11 +76,11 @@ jobs:
 
       - name: Post validation summary
         run: |
-          echo "## 🔍 Terraform Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Terraform Validation Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Format | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
-          echo "| Validate | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Format | Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Validate | Passed |" >> $GITHUB_STEP_SUMMARY
           echo "| tfsec | See SARIF results |" >> $GITHUB_STEP_SUMMARY
           echo "| Checkov | See SARIF results |" >> $GITHUB_STEP_SUMMARY

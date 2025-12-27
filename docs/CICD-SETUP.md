@@ -2,6 +2,18 @@
 
 This guide explains how to set up and configure the QNT9-SRS CI/CD pipeline with HCP Terraform Cloud and Azure (AKS & ACR).
 
+## Workspaces
+
+The pipeline uses **three fixed workspaces** in HCP Terraform Cloud:
+
+| Workspace | Branch | Description |
+|-----------|--------|-------------|
+| `qnt9-srs-dev` | development | Development environment |
+| `qnt9-srs-staging` | staging | Staging environment |
+| `qnt9-srs-prd` | main | Production environment |
+
+**Important:** These workspaces must be created manually in HCP Terraform Cloud before running the pipeline.
+
 ## Prerequisites
 
 ### 1. Azure Setup
@@ -37,43 +49,35 @@ az role assignment create \
 
 1. **Create Organization**: Go to [app.terraform.io](https://app.terraform.io) and create an organization (e.g., `tim-krebs-org`)
 
-2. **Create API Tokens** (you need TWO different tokens):
+2. **Create Workspaces**: Create the three required workspaces manually:
 
-   **Organization Token** (for workspace management):
-   - Navigate to Organization Settings → API Tokens → Organization Token
-   - Generate an organization token
-   - Save it securely (you'll need this as `TF_CLOUD_ORGANIZATION`)
-   - This token manages teams, team membership, and workspaces
-   - ⚠️ Cannot perform plans/applies in workspaces
+   ```
+   qnt9-srs-dev
+   qnt9-srs-staging
+   qnt9-srs-prd
+   ```
 
-   **Team Token** (for terraform operations):
-   - Navigate to Organization Settings → Teams → Select your team (e.g., "owners")
+   For each workspace:
+   - Set Execution Mode to "Local" (state stored in TF Cloud, execution on CI runner)
+   - Set Working Directory to `infrastructure/terraform`
+   - Set Terraform Version to `1.6.0`
+
+3. **Create Team Token** (for terraform operations):
+   - Navigate to Organization Settings -> Teams -> Select your team (e.g., "owners")
    - Go to API Token section
    - Generate a team token
    - Save it securely (you'll need this as `TF_API_TOKEN`)
    - This token performs plans and applies on workspaces
 
-3. **Create Initial Workspaces** (optional, CI/CD will create them automatically):
-```bash
-# Production workspace (persistent)
-# Name: qnt9-srs-prd
-# Tags: qnt9-srs, prd, persistent
-
-# Development workspace (can be ephemeral)
-# Name: qnt9-srs-dev
-# Tags: qnt9-srs, dev, ephemeral
-```
-
 ### 3. GitHub Secrets Configuration
 
-Navigate to your GitHub repository → Settings → Secrets and variables → Actions
+Navigate to your GitHub repository -> Settings -> Secrets and variables -> Actions
 
 Add the following secrets:
 
 | Secret Name | Description | Example |
 |-------------|-------------|---------|
-| `TF_CLOUD_ORGANIZATION` | HCP Terraform Cloud **Organization** token (for workspace management) | `xxx.atlasv1.xxxx` |
-| `TF_API_TOKEN` | HCP Terraform Cloud **Team** token (for plan/apply) | `xxx.atlasv1.xxxx` |
+| `TF_API_TOKEN` | HCP Terraform Cloud Team token | `xxx.atlasv1.xxxx` |
 | `ARM_CLIENT_ID` | Azure Service Principal Client ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `ARM_CLIENT_SECRET` | Azure Service Principal Secret | `xxxxxxxxxxxxxxxx` |
 | `ARM_SUBSCRIPTION_ID` | Azure Subscription ID | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
@@ -87,188 +91,120 @@ Add the following secrets:
 ## Pipeline Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        QNT9-SRS CI/CD Pipeline                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
-│  │   Detect    │  │    Lint     │  │  Terraform  │  │    Build    │   │
-│  │   Changes   │──│   & Test    │──│  Provision  │──│   Images    │   │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │
-│         │                                                   │          │
-│         v                                                   v          │
-│  ┌─────────────┐                                    ┌─────────────┐   │
-│  │ Environment │                                    │    Push     │   │
-│  │  Detection  │                                    │   to ACR    │   │
-│  └─────────────┘                                    └─────────────┘   │
-│                                                             │          │
-│                         ┌───────────────────────────────────┘          │
-│                         v                                              │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
-│  │   Deploy    │  │ Integration │  │   Cleanup   │  │   Summary   │   │
-│  │   to AKS    │──│    Tests    │──│  (ephemeral)│──│   Report    │   │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
++-------------------------------------------------------------------------+
+|                        QNT9-SRS CI/CD Pipeline                          |
++-------------------------------------------------------------------------+
+|                                                                         |
+|  +-------------+  +-------------+  +-------------+  +-------------+     |
+|  |   Detect    |  |    Lint     |  |  Terraform  |  |    Build    |     |
+|  |   Changes   |->|   & Test    |->|  Provision  |->|   Images    |     |
+|  +-------------+  +-------------+  +-------------+  +-------------+     |
+|         |                                                   |           |
+|         v                                                   v           |
+|  +-------------+                                    +-------------+     |
+|  | Unit Tests  |                                    |   Deploy    |     |
+|  +-------------+                                    |   to AKS    |     |
+|                                                     +-------------+     |
+|                                                            |            |
+|                                                            v            |
+|                                                     +-------------+     |
+|                                                     | Integration |     |
+|                                                     |    Tests    |     |
+|                                                     +-------------+     |
+|                                                                         |
++-------------------------------------------------------------------------+
 ```
 
-## Environment Strategy
+## Pipeline Stages
 
-| Branch | Environment | Ephemeral | Infrastructure Lifecycle |
-|--------|-------------|-----------|--------------------------|
-| `main` | prd | false | Persistent |
-| `staging` | staging | true | Created/Destroyed per run |
-| `development` | dev | true | Created/Destroyed per run |
-| `feature/**` | dev | true | Created/Destroyed per run |
-| Pull Requests | dev | true | Created/Destroyed per run |
+### Stage 1: Detect Changes
+- Determines target environment based on branch
+- Detects which files changed (services, infrastructure)
 
-## Workspace Naming Convention
+### Stage 2: Lint & Format
+- Runs Black (code formatting)
+- Runs isort (import sorting)
+- Runs Ruff (linting)
+- Runs Bandit (security checks)
+- Non-blocking - issues are reported as warnings
 
-- **Production**: `qnt9-srs-prd`
-- **Staging**: `qnt9-srs-staging-run<number>`
-- **Development**: `qnt9-srs-dev-run<number>` or `qnt9-srs-dev-pr<number>`
+### Stage 3: Unit Tests
+- Runs pytest for auth-service and search-service
+- Uses PostgreSQL and Redis containers
+- Uploads coverage to Codecov
+
+### Stage 4: Terraform Provision
+- Initializes Terraform with HCP Cloud backend
+- Plans and applies infrastructure changes
+- Extracts outputs (ACR, AKS details)
+
+### Stage 5: Build Images
+- Builds Docker images for all services
+- Pushes to Azure Container Registry
+- Scans for vulnerabilities with Trivy
+
+### Stage 6: Deploy to AKS
+- Gets AKS credentials
+- Creates namespace and secrets
+- Deploys services to Kubernetes
+
+### Stage 7: Integration Tests
+- Runs health checks against deployed services
+
+## Branch to Environment Mapping
+
+| Branch | Environment | Workspace |
+|--------|-------------|-----------|
+| `main` | prd | qnt9-srs-prd |
+| `staging` | staging | qnt9-srs-staging |
+| `development` | dev | qnt9-srs-dev |
+| PRs | dev | qnt9-srs-dev |
+
+## Manual Deployment
+
+You can trigger a manual deployment via workflow_dispatch:
+
+1. Go to Actions -> QNT9-SRS CI/CD Pipeline
+2. Click "Run workflow"
+3. Select target environment (dev/staging/prd)
+4. Optionally enable "Force deployment"
 
 ## Local Development
 
-### Initialize and Plan
-
 ```bash
-cd infrastructure/terraform
+# Set workspace
+export TF_WORKSPACE=qnt9-srs-dev
 
 # Login to Terraform Cloud
 terraform login
 
-# Set workspace
-export TF_WORKSPACE=qnt9-srs-dev
-
 # Initialize
+cd infrastructure/terraform
 terraform init
 
 # Plan
 terraform plan -var-file=environments/dev.tfvars
+
+# Apply
+terraform apply -var-file=environments/dev.tfvars
 ```
 
-### Using Make Commands
+## Troubleshooting
 
-```bash
-# Show available commands
-make help
+### Terraform Init Fails
+- Ensure workspace exists in HCP Terraform Cloud
+- Check TF_API_TOKEN has correct permissions
+- Verify workspace execution mode is "Local"
 
-# Validate configuration
-make test-local
+### Build Fails
+- Check ACR credentials are correct
+- Verify Dockerfile exists in service directory
 
-# Plan for dev
-make plan ENV=dev
+### Deploy Fails
+- Check AKS credentials
+- Verify namespace permissions
+- Check image pull secret is created
 
-# Apply changes
-make apply ENV=dev
-
-# Get AKS credentials
-make aks-creds
-```
-
-## Triggering the Pipeline
-
-### Automatic Triggers
-
-- **Push to development**: Deploys to dev environment
-- **Push to staging**: Deploys to staging environment
-- **Push to main**: Deploys to production environment
-- **Pull Request**: Deploys ephemeral dev environment
-
-### Manual Trigger
-
-1. Go to Actions → QNT9-SRS CI/CD Pipeline
-2. Click "Run workflow"
-3. Select:
-   - **environment**: Target environment (dev, staging, prd)
-   - **skip_destroy**: Keep infrastructure after run (for debugging)
-   - **force_deploy**: Deploy even without code changes
-
-## Monitoring & Troubleshooting
-
-### View Pipeline Status
-
-- GitHub Actions: Repository → Actions tab
-- Terraform Cloud: app.terraform.io → Workspaces
-
-### Common Issues
-
-#### 1. Terraform Workspace Creation Failed
-```
-Check: TF_API_TOKEN is valid and has permissions
-Fix: Regenerate API token in Terraform Cloud
-```
-
-#### 2. Azure Authentication Failed
-```
-Check: ARM_* secrets are correctly set
-Fix: Recreate service principal and update secrets
-```
-
-#### 3. AKS Deployment Failed
-```
-Check: kubectl get pods -n qnt9
-Check: kubectl describe pod <pod-name> -n qnt9
-Fix: Review deployment logs and resource limits
-```
-
-#### 4. ACR Push Failed
-```
-Check: ACR credentials are correct
-Fix: Get password from Terraform output:
-     terraform output -raw acr_admin_password
-```
-
-### Viewing Logs
-
-```bash
-# AKS Pod logs
-kubectl logs -n qnt9 deployment/auth-service
-
-# All pods status
-kubectl get pods -n qnt9 -o wide
-
-# Service endpoints
-kubectl get services -n qnt9
-```
-
-## Cost Optimization
-
-### Ephemeral Infrastructure
-
-For dev and staging, infrastructure is automatically destroyed after pipeline completion:
-- Single AKS node (vs 2-5 for production)
-- Smaller VM size (Standard_B2s)
-- No Icinga monitoring VM
-- No Function App
-
-### Skip Destroy (for debugging)
-
-When debugging, use `skip_destroy: true` to keep infrastructure:
-```yaml
-# In workflow_dispatch
-skip_destroy: true
-```
-
-Remember to manually clean up:
-```bash
-# Via Terraform Cloud UI or CLI
-terraform workspace select qnt9-srs-dev-run123
-terraform destroy
-```
-
-## Security Considerations
-
-1. **Secrets**: All secrets are stored in GitHub Secrets, never in code
-2. **Service Principal**: Use least-privilege access where possible
-3. **Network**: Consider enabling private AKS clusters for production
-4. **Image Scanning**: Trivy scans all images for vulnerabilities
-5. **Code Scanning**: Bandit scans Python code for security issues
-
-## Related Documentation
-
-- [CICD-Pipeline-Architecture.md](./CICD-GH-Actions/CICD-Pipeline-Architecture.md)
-- [CICD-Architecture.md](./CICD-Architecture/CICD-Architecture.md)
-- [Terraform README](../infrastructure/terraform/README.md)
-- [Kubernetes README](../infrastructure/kubernetes/README.md)
+### Integration Tests Fail
+- Check service endpoints are accessible
+- Verify services are healthy (kubectl get pods)

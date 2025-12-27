@@ -3,9 +3,12 @@
 #
 # HCP Terraform Cloud Integration:
 # ================================
-# When running locally with Terraform Cloud, the workspace is selected via
-# TF_WORKSPACE environment variable. The cloud block omits workspace configuration
-# to allow dynamic workspace selection.
+# Uses three fixed workspaces:
+# - qnt9-srs-dev (development)
+# - qnt9-srs-staging (staging)
+# - qnt9-srs-prd (production)
+#
+# Workspace is selected via TF_WORKSPACE environment variable.
 #
 # For local development:
 #   export TF_WORKSPACE=qnt9-srs-dev
@@ -13,15 +16,14 @@
 #   terraform init
 #   terraform plan -var-file=environments/dev.tfvars
 #
-# For CI/CD (ephemeral):
-#   export TF_WORKSPACE=qnt9-srs-dev-pr123
+# For CI/CD:
+#   export TF_WORKSPACE=qnt9-srs-dev
 #   terraform init
-#   terraform apply -var-file=environments/dev.tfvars -var="ephemeral=true" -var="run_id=pr123"
+#   terraform apply -var-file=environments/dev.tfvars
 
 terraform {
   # Cloud block for HCP Terraform Cloud integration
-  # Workspace is selected dynamically via TF_WORKSPACE environment variable
-  # The CI/CD pipeline creates workspaces via API before running terraform
+  # Workspace is selected via TF_WORKSPACE environment variable
   cloud {
     organization = "tim-krebs-org"
     # No workspace block - workspace is selected via TF_WORKSPACE env var

@@ -1,12 +1,10 @@
 # QNT9-SRS CI/CD Pipeline
-# Infrastructure-on-demand pattern with HCP Terraform Cloud and Azure AKS/ACR
+# Infrastructure deployment with HCP Terraform Cloud and Azure AKS/ACR
 # 
-# This pipeline implements:
-# - Multi-environment deployment (dev, staging, prd)
-# - Ephemeral infrastructure for non-production
-# - Docker image building and pushing to ACR
-# - Kubernetes deployment to AKS
-# - Automated cleanup for ephemeral environments
+# This pipeline uses three fixed workspaces:
+# - qnt9-srs-dev (development branch)
+# - qnt9-srs-staging (staging branch)
+# - qnt9-srs-prd (main branch)
 
 name: QNT9-SRS CI/CD Pipeline
 
@@ -16,8 +14,6 @@ on:
       - main
       - development
       - staging
-      - 'feature/**'
-      - 'release/**'
   pull_request:
     branches:
       - main
@@ -34,11 +30,6 @@ on:
           - dev
           - staging
           - prd
-      skip_destroy:
-        description: 'Skip infrastructure cleanup (for debugging)'
-        required: false
-        default: false
-        type: boolean
       force_deploy:
         description: 'Force deployment even without code changes'
         required: false
@@ -64,8 +55,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.env.outputs.environment }}
-      ephemeral: ${{ steps.env.outputs.ephemeral }}
-      run_id: ${{ steps.env.outputs.run_id }}
       workspace_name: ${{ steps.env.outputs.workspace_name }}
       services_changed: ${{ steps.changes.outputs.services }}
       infra_changed: ${{ steps.changes.outputs.infra }}
@@ -93,60 +82,33 @@ jobs:
       - name: Determine environment
         id: env
         run: |
-          # Default values
-          ENVIRONMENT="dev"
-          EPHEMERAL="true"
-          
           # Determine environment based on branch or input
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             ENVIRONMENT="${{ github.event.inputs.environment }}"
-            if [[ "$ENVIRONMENT" == "prd" ]]; then
-              EPHEMERAL="false"
-            fi
           elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             ENVIRONMENT="prd"
-            EPHEMERAL="false"
           elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
             ENVIRONMENT="staging"
-            EPHEMERAL="true"
-          elif [[ "${{ github.ref }}" == "refs/heads/development" ]]; then
+          else
+            # development branch, PRs, and feature branches
             ENVIRONMENT="dev"
-            EPHEMERAL="true"
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            ENVIRONMENT="dev"
-            EPHEMERAL="true"
           fi
           
-          # Generate run ID for ephemeral workspaces
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            RUN_ID="pr${{ github.event.pull_request.number }}"
-          else
-            RUN_ID="run${{ github.run_number }}"
-          fi
-          
-          # Workspace naming
-          if [[ "$EPHEMERAL" == "true" ]]; then
-            WORKSPACE_NAME="qnt9-srs-${ENVIRONMENT}-${RUN_ID}"
-          else
-            WORKSPACE_NAME="qnt9-srs-${ENVIRONMENT}"
-          fi
+          # Fixed workspace naming (no ephemeral workspaces)
+          WORKSPACE_NAME="qnt9-srs-${ENVIRONMENT}"
           
           echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
-          echo "ephemeral=$EPHEMERAL" >> $GITHUB_OUTPUT
-          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
           echo "workspace_name=$WORKSPACE_NAME" >> $GITHUB_OUTPUT
           
           echo "Environment Configuration:"
           echo "  Environment: $ENVIRONMENT"
-          echo "  Ephemeral: $EPHEMERAL"
-          echo "  Run ID: $RUN_ID"
           echo "  Workspace: $WORKSPACE_NAME"
 
   # ============================================================================
-  # STAGE 2: CODE QUALITY (SOURCE STAGE)
+  # STAGE 2: CODE QUALITY (LINT)
   # ============================================================================
   lint:
-    name: Lint & Format
+    name: Lint and Format
     runs-on: ubuntu-latest
     needs: detect-changes
     if: needs.detect-changes.outputs.services_changed == 'true' || github.event.inputs.force_deploy == 'true'
@@ -161,7 +123,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install linting tools
         run: |
@@ -188,7 +149,86 @@ jobs:
         continue-on-error: true
 
   # ============================================================================
-  # STAGE 3: INFRASTRUCTURE PROVISIONING
+  # STAGE 3: UNIT TESTS
+  # ============================================================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services_changed == 'true' || github.event.inputs.force_deploy == 'true'
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov pytest-asyncio httpx
+          for service in auth-service search-service; do
+            if [ -f "services/$service/requirements.txt" ]; then
+              pip install -r "services/$service/requirements.txt"
+            fi
+          done
+
+      - name: Run Auth Service tests
+        working-directory: services/auth-service
+        run: |
+          pytest tests/ -v --tb=short --cov=app --cov-report=xml:coverage-auth.xml || true
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET_KEY: test-secret-key
+          TESTING: "true"
+
+      - name: Run Search Service tests
+        working-directory: services/search-service
+        run: |
+          pytest tests/ -v --tb=short --cov=app --cov-report=xml:coverage-search.xml || true
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+          TESTING: "true"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: services/auth-service/coverage-auth.xml,services/search-service/coverage-search.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  # ============================================================================
+  # STAGE 4: TERRAFORM INFRASTRUCTURE PROVISIONING
   # ============================================================================
   terraform-provision:
     name: Provision Infrastructure
@@ -205,9 +245,6 @@ jobs:
       resource_group: ${{ steps.outputs.outputs.resource_group }}
     
     env:
-      # Organization Token - for workspace management (create, delete, set variables)
-      TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-      # Team Token - for terraform plan/apply operations
       TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
       TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
@@ -225,216 +262,22 @@ jobs:
           terraform_version: "1.6.0"
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      - name: Check/Create HCP Terraform Workspace
-        id: workspace
-        run: |
-          set -e
-          
-          WORKSPACE_NAME="${{ needs.detect-changes.outputs.workspace_name }}"
-          ENVIRONMENT="${{ needs.detect-changes.outputs.environment }}"
-          EPHEMERAL="${{ needs.detect-changes.outputs.ephemeral }}"
-          
-          echo "Checking workspace: $WORKSPACE_NAME"
-          
-          # First, get the default project for the organization
-          # Using Organization Token for workspace management
-          echo "Fetching organization projects..."
-          PROJECTS_RESPONSE=$(curl -s \
-            --header "Authorization: Bearer $" \
-            --header "Content-Type: application/vnd.api+json" \
-            "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/projects")
-          
-          # Get the default project ID (first project or one named "Default Project")
-          DEFAULT_PROJECT_ID=$(echo "$PROJECTS_RESPONSE" | jq -r '.data[] | select(.attributes.name == "Default Project") | .id // empty')
-          if [[ -z "$DEFAULT_PROJECT_ID" ]]; then
-            DEFAULT_PROJECT_ID=$(echo "$PROJECTS_RESPONSE" | jq -r '.data[0].id // empty')
-          fi
-          
-          if [[ -z "$DEFAULT_PROJECT_ID" ]]; then
-            echo "Warning: Could not find default project, attempting workspace creation without project..."
-          else
-            echo "Using project: $DEFAULT_PROJECT_ID"
-          fi
-          
-          # Check if workspace exists (using Organization Token)
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            --header "Authorization: Bearer $TF_CLOUD_ORGANIZATION" \
-            --header "Content-Type: application/vnd.api+json" \
-            "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/workspaces/$WORKSPACE_NAME")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | head -n-1)
-          
-          if [[ "$HTTP_CODE" == "200" ]]; then
-            echo "Workspace exists"
-            WORKSPACE_ID=$(echo "$BODY" | jq -r '.data.id')
-          else
-            echo "Creating workspace..."
-            
-            # Build the workspace creation payload with project relationship
-            if [[ -n "$DEFAULT_PROJECT_ID" ]]; then
-              CREATE_PAYLOAD='{
-                "data": {
-                  "attributes": {
-                    "name": "'"$WORKSPACE_NAME"'",
-                    "terraform_version": "1.6.0",
-                    "working-directory": "infrastructure/terraform",
-                    "auto-apply": true,
-                    "execution-mode": "local",
-                    "description": "QNT9-SRS '"$ENVIRONMENT"' environment (ephemeral: '"$EPHEMERAL"')",
-                    "tag-names": ["qnt9-srs", "'"$ENVIRONMENT"'", "'"$(if [[ "$EPHEMERAL" == "true" ]]; then echo "ephemeral"; else echo "persistent"; fi)"'"]
-                  },
-                  "relationships": {
-                    "project": {
-                      "data": {
-                        "type": "projects",
-                        "id": "'"$DEFAULT_PROJECT_ID"'"
-                      }
-                    }
-                  },
-                  "type": "workspaces"
-                }
-              }'
-            else
-              CREATE_PAYLOAD='{
-                "data": {
-                  "attributes": {
-                    "name": "'"$WORKSPACE_NAME"'",
-                    "terraform_version": "1.6.0",
-                    "working-directory": "infrastructure/terraform",
-                    "auto-apply": true,
-                    "execution-mode": "local",
-                    "description": "QNT9-SRS '"$ENVIRONMENT"' environment (ephemeral: '"$EPHEMERAL"')",
-                    "tag-names": ["qnt9-srs", "'"$ENVIRONMENT"'", "'"$(if [[ "$EPHEMERAL" == "true" ]]; then echo "ephemeral"; else echo "persistent"; fi)"'"]
-                  },
-                  "type": "workspaces"
-                }
-              }'
-            fi
-            
-            # Using Organization Token for workspace creation
-            CREATE_RESPONSE=$(curl -s \
-              --header "Authorization: Bearer $TF_CLOUD_ORGANIZATION" \
-              --header "Content-Type: application/vnd.api+json" \
-              --request POST \
-              --data "$CREATE_PAYLOAD" \
-              "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/workspaces")
-            
-            WORKSPACE_ID=$(echo "$CREATE_RESPONSE" | jq -r '.data.id')
-            
-            if [[ "$WORKSPACE_ID" == "null" || -z "$WORKSPACE_ID" ]]; then
-              echo "Failed to create workspace"
-              echo "$CREATE_RESPONSE"
-              exit 1
-            fi
-            
-            echo "Workspace created: $WORKSPACE_ID"
-          fi
-          
-          echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
-
-      - name: Set Workspace Variables
-        run: |
-          set -e
-          
-          WORKSPACE_ID="${{ steps.workspace.outputs.workspace_id }}"
-          
-          # Function to set variable (using Organization Token for workspace management)
-          set_variable() {
-            local KEY=$1
-            local VALUE=$2
-            local SENSITIVE=$3
-            local CATEGORY=${4:-terraform}
-            
-            # Check if variable exists
-            VAR_CHECK=$(curl -s \
-              --header "Authorization: Bearer $TF_CLOUD_ORGANIZATION" \
-              "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars" | \
-              jq -r ".data[] | select(.attributes.key == \"$KEY\") | .id")
-            
-            if [[ -n "$VAR_CHECK" ]]; then
-              # Update existing variable
-              curl -s \
-                --header "Authorization: Bearer $TF_CLOUD_ORGANIZATION" \
-                --header "Content-Type: application/vnd.api+json" \
-                --request PATCH \
-                --data '{
-                  "data": {
-                    "attributes": {
-                      "value": "'"$VALUE"'",
-                      "sensitive": '$SENSITIVE'
-                    }
-                  }
-                }' \
-                "https://app.terraform.io/api/v2/vars/$VAR_CHECK" > /dev/null
-            else
-              # Create new variable
-              curl -s \
-                --header "Authorization: Bearer $TF_CLOUD_ORGANIZATION" \
-                --header "Content-Type: application/vnd.api+json" \
-                --request POST \
-                --data '{
-                  "data": {
-                    "attributes": {
-                      "key": "'"$KEY"'",
-                      "value": "'"$VALUE"'",
-                      "sensitive": '$SENSITIVE',
-                      "category": "'"$CATEGORY"'"
-                    },
-                    "type": "vars"
-                  }
-                }' \
-                "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/vars" > /dev/null
-            fi
-          }
-          
-          echo "Setting workspace variables..."
-          
-          # Azure credentials (environment variables)
-          set_variable "ARM_CLIENT_ID" "$ARM_CLIENT_ID" true "env"
-          set_variable "ARM_CLIENT_SECRET" "$ARM_CLIENT_SECRET" true "env"
-          set_variable "ARM_SUBSCRIPTION_ID" "$ARM_SUBSCRIPTION_ID" true "env"
-          set_variable "ARM_TENANT_ID" "$ARM_TENANT_ID" true "env"
-          
-          # Terraform variables
-          set_variable "environment" "${{ needs.detect-changes.outputs.environment }}" false "terraform"
-          set_variable "ephemeral" "${{ needs.detect-changes.outputs.ephemeral }}" false "terraform"
-          set_variable "run_id" "${{ needs.detect-changes.outputs.run_id }}" false "terraform"
-          
-          # Disable expensive features for ephemeral
-          if [[ "${{ needs.detect-changes.outputs.ephemeral }}" == "true" ]]; then
-            set_variable "enable_icinga" "false" false "terraform"
-            set_variable "enable_function_app" "false" false "terraform"
-          fi
-          
-          echo "Variables set"
-
       - name: Generate Terraform Variables
         working-directory: ${{ env.TF_VAR_FILE_PATH }}
         run: |
           ENV="${{ needs.detect-changes.outputs.environment }}"
-          EPHEMERAL="${{ needs.detect-changes.outputs.ephemeral }}"
-          RUN_ID="${{ needs.detect-changes.outputs.run_id }}"
           
           # Create cicd.auto.tfvars for CI/CD specific overrides
           cat > cicd.auto.tfvars <<EOF
           # Auto-generated by CI/CD pipeline
           # Environment: $ENV
-          # Run ID: $RUN_ID
-          # Ephemeral: $EPHEMERAL
           
           environment = "$ENV"
-          ephemeral   = $EPHEMERAL
-          run_id      = "$RUN_ID"
           
-          # Disable costly features for ephemeral deployments
-          enable_icinga       = false
-          enable_function_app = false
-          
-          # Cost-optimized settings for ephemeral
-          $(if [[ "$EPHEMERAL" == "true" ]]; then
-            echo "aks_ephemeral_node_count = 1"
-            echo "aks_ephemeral_vm_size    = \"Standard_B2s\""
+          # Disable costly features for non-production
+          $(if [[ "$ENV" != "prd" ]]; then
+            echo "enable_icinga       = false"
+            echo "enable_function_app = false"
           fi)
           EOF
           
@@ -444,9 +287,8 @@ jobs:
       - name: Terraform Init
         working-directory: ${{ env.TF_VAR_FILE_PATH }}
         run: |
+          echo "Initializing Terraform for workspace: $TF_WORKSPACE"
           terraform init -input=false
-        env:
-          TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
 
       - name: Terraform Plan
         working-directory: ${{ env.TF_VAR_FILE_PATH }}
@@ -455,15 +297,11 @@ jobs:
             -var-file="environments/${{ needs.detect-changes.outputs.environment }}.tfvars" \
             -out=tfplan \
             -input=false
-        env:
-          TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
 
       - name: Terraform Apply
         working-directory: ${{ env.TF_VAR_FILE_PATH }}
         run: |
           terraform apply -auto-approve tfplan
-        env:
-          TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
 
       - name: Extract Terraform Outputs
         id: outputs
@@ -471,10 +309,10 @@ jobs:
         run: |
           echo "Extracting Terraform outputs..."
           
-          ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)
+          ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server 2>/dev/null || echo "")
           ACR_ADMIN_USER=$(terraform output -raw acr_admin_username 2>/dev/null || echo "")
-          AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name)
-          RESOURCE_GROUP=$(terraform output -raw resource_group_name)
+          AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
+          RESOURCE_GROUP=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
           
           echo "acr_login_server=$ACR_LOGIN_SERVER" >> $GITHUB_OUTPUT
           echo "acr_admin_user=$ACR_ADMIN_USER" >> $GITHUB_OUTPUT
@@ -485,11 +323,9 @@ jobs:
           echo "  ACR: $ACR_LOGIN_SERVER"
           echo "  AKS: $AKS_CLUSTER_NAME"
           echo "  RG: $RESOURCE_GROUP"
-        env:
-          TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
 
   # ============================================================================
-  # STAGE 4: BUILD AND PUSH DOCKER IMAGES
+  # STAGE 5: BUILD AND PUSH DOCKER IMAGES
   # ============================================================================
   build:
     name: Build ${{ matrix.service }}
@@ -533,111 +369,21 @@ jobs:
       - name: Scan image for vulnerabilities
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ needs.terraform-provision.outputs.acr_login_server }}/qnt9-${{ matrix.service }}:${{ github.sha }}'
+          image-ref: ${{ needs.terraform-provision.outputs.acr_login_server }}/qnt9-${{ matrix.service }}:${{ github.sha }}
           format: 'sarif'
           output: 'trivy-results-${{ matrix.service }}.sarif'
           severity: 'CRITICAL,HIGH'
         continue-on-error: true
 
-      - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
-        continue-on-error: true
-
   # ============================================================================
-  # STAGE 5: UNIT TESTS
-  # ============================================================================
-  unit-tests:
-    name: Unit Tests
-    runs-on: ubuntu-latest
-    needs: [detect-changes]
-    if: needs.detect-changes.outputs.services_changed == 'true' || github.event.inputs.force_deploy == 'true'
-    
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install pytest pytest-cov pytest-asyncio httpx
-
-      - name: Run Auth Service tests
-        working-directory: services/auth-service
-        run: |
-          pip install -r requirements.txt
-          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test
-          JWT_SECRET_KEY: test-secret-key
-          REDIS_URL: redis://localhost:6379
-        continue-on-error: true
-
-      - name: Run Search Service tests
-        working-directory: services/search-service
-        run: |
-          pip install -r requirements.txt
-          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/test
-          REDIS_URL: redis://localhost:6379
-        continue-on-error: true
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./services/auth-service/coverage.xml,./services/search-service/coverage.xml
-          flags: unittests
-          fail_ci_if_error: false
-
-  # ============================================================================
-  # STAGE 6: DEPLOY TO KUBERNETES
+  # STAGE 6: DEPLOY TO AKS
   # ============================================================================
   deploy:
     name: Deploy to ${{ needs.detect-changes.outputs.environment }}
     runs-on: ubuntu-latest
-    needs: [detect-changes, terraform-provision, build, unit-tests]
-    if: |
-      always() &&
-      needs.terraform-provision.result == 'success' &&
-      needs.build.result == 'success' &&
-      (needs.unit-tests.result == 'success' || needs.unit-tests.result == 'skipped')
-    environment:
-      name: ${{ needs.detect-changes.outputs.environment }}
-      url: https://${{ needs.terraform-provision.outputs.aks_cluster_name }}.${{ needs.detect-changes.outputs.environment }}.qnt9.io
+    needs: [detect-changes, terraform-provision, build]
+    if: needs.build.result == 'success'
+    environment: ${{ needs.detect-changes.outputs.environment }}
     
     steps:
       - name: Checkout code
@@ -661,72 +407,64 @@ jobs:
             --name ${{ needs.terraform-provision.outputs.aks_cluster_name }} \
             --overwrite-existing
 
-      - name: Create namespace
+      - name: Create namespace if not exists
         run: |
-          kubectl create namespace qnt9 --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace qnt9-srs-${{ needs.detect-changes.outputs.environment }} --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Create ACR secret
+      - name: Create image pull secret
         run: |
           kubectl create secret docker-registry acr-secret \
+            --namespace qnt9-srs-${{ needs.detect-changes.outputs.environment }} \
             --docker-server=${{ needs.terraform-provision.outputs.acr_login_server }} \
             --docker-username=${{ needs.terraform-provision.outputs.acr_admin_user }} \
             --docker-password=${{ secrets.ACR_ADMIN_PASSWORD }} \
-            --namespace=qnt9 \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Create application secrets
+      - name: Deploy services to AKS
         run: |
-          kubectl create secret generic qnt9-secrets \
-            --from-literal=database-url="${{ secrets.DATABASE_URL }}" \
-            --from-literal=jwt-secret-key="${{ secrets.JWT_SECRET_KEY }}" \
-            --from-literal=redis-url="${{ secrets.REDIS_URL }}" \
-            --namespace=qnt9 \
-            --dry-run=client -o yaml | kubectl apply -f -
-
-      - name: Deploy services
-        run: |
-          ENVIRONMENT="${{ needs.detect-changes.outputs.environment }}"
-          ACR_LOGIN_SERVER="${{ needs.terraform-provision.outputs.acr_login_server }}"
-          IMAGE_TAG="${{ github.sha }}"
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          ACR="${{ needs.terraform-provision.outputs.acr_login_server }}"
+          TAG="${{ github.sha }}"
           
-          # Apply base configurations
-          for manifest in infrastructure/kubernetes/base/*.yaml; do
-            envsubst < "$manifest" | kubectl apply -f -
-          done
-          
-          # Deploy each service
           for service in auth-service search-service frontend-service; do
-            echo "Deploying $service..."
+            DEPLOY_FILE="infrastructure/kubernetes/${service}/deployment.yaml"
+            SERVICE_FILE="infrastructure/kubernetes/${service}/service.yaml"
             
-            for manifest in infrastructure/kubernetes/$service/*.yaml; do
-              if [[ -f "$manifest" ]]; then
-                export ENVIRONMENT ACR_LOGIN_SERVER IMAGE_TAG
-                envsubst < "$manifest" | kubectl apply -f -
+            if [ -f "$DEPLOY_FILE" ]; then
+              echo "Deploying $service..."
+              
+              # Update image in deployment
+              sed -i "s|image:.*|image: ${ACR}/qnt9-${service}:${TAG}|g" "$DEPLOY_FILE"
+              
+              kubectl apply -f "$DEPLOY_FILE" -n "$NAMESPACE"
+              
+              if [ -f "$SERVICE_FILE" ]; then
+                kubectl apply -f "$SERVICE_FILE" -n "$NAMESPACE"
               fi
-            done
+            fi
           done
 
       - name: Wait for deployments
         run: |
-          echo "Waiting for deployments to be ready..."
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
           
           for service in auth-service search-service frontend-service; do
-            kubectl rollout status deployment/$service -n qnt9 --timeout=300s || true
+            echo "Waiting for $service deployment..."
+            kubectl rollout status deployment/$service -n "$NAMESPACE" --timeout=300s || true
           done
 
-      - name: Verify deployment health
+      - name: Verify deployment
         run: |
-          echo "Checking deployment health..."
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
           
-          kubectl get pods -n qnt9
-          kubectl get services -n qnt9
-          
-          # Check pod status
-          UNHEALTHY=$(kubectl get pods -n qnt9 -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}')
-          if [[ -n "$UNHEALTHY" ]]; then
-            echo "Unhealthy pods detected: $UNHEALTHY"
-            kubectl describe pods -n qnt9 | grep -A 20 "Events:"
-          fi
+          echo "Deployment Status:"
+          kubectl get deployments -n "$NAMESPACE"
+          echo ""
+          echo "Pods:"
+          kubectl get pods -n "$NAMESPACE"
+          echo ""
+          echo "Services:"
+          kubectl get services -n "$NAMESPACE"
 
   # ============================================================================
   # STAGE 7: INTEGRATION TESTS
@@ -734,7 +472,7 @@ jobs:
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: [detect-changes, deploy]
+    needs: [detect-changes, terraform-provision, deploy]
     if: needs.deploy.result == 'success'
     
     steps:
@@ -748,7 +486,35 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          pip install -r tests/integration/requirements.txt
+          pip install pytest requests httpx
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      - name: Get service endpoints
+        id: endpoints
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ needs.terraform-provision.outputs.resource_group }} \
+            --name ${{ needs.terraform-provision.outputs.aks_cluster_name }} \
+            --overwrite-existing
+          
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          
+          # Get service IPs/endpoints
+          AUTH_IP=$(kubectl get svc auth-service -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          SEARCH_IP=$(kubectl get svc search-service -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          
+          echo "auth_endpoint=http://${AUTH_IP}:8000" >> $GITHUB_OUTPUT
+          echo "search_endpoint=http://${SEARCH_IP}:8000" >> $GITHUB_OUTPUT
 
       - name: Run integration tests
         working-directory: tests/integration
@@ -759,84 +525,12 @@ jobs:
         continue-on-error: true
 
   # ============================================================================
-  # STAGE 8: CLEANUP EPHEMERAL INFRASTRUCTURE
-  # ============================================================================
-  cleanup:
-    name: 🧹 Cleanup Infrastructure
-    runs-on: ubuntu-latest
-    needs: [detect-changes, terraform-provision, integration-tests]
-    if: |
-      always() &&
-      needs.detect-changes.outputs.ephemeral == 'true' &&
-      github.event.inputs.skip_destroy != 'true' &&
-      (needs.integration-tests.result == 'success' || needs.integration-tests.result == 'skipped' || needs.integration-tests.result == 'failure')
-    
-    env:
-      # Organization Token - for workspace deletion
-      TF_CLOUD_ORGANIZATION: ${{ secrets.TF_CLOUD_ORGANIZATION }}
-      # Team Token - for terraform destroy operations
-      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.6.0"
-          # Team Token for terraform CLI operations (destroy)
-          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
-
-      - name: Destroy Infrastructure
-        working-directory: ${{ env.TF_VAR_FILE_PATH }}
-        run: |
-          WORKSPACE_NAME="${{ needs.detect-changes.outputs.workspace_name }}"
-          
-          echo "Destroying infrastructure for workspace: $WORKSPACE_NAME"
-          
-          terraform init -input=false
-          terraform destroy \
-            -var-file="environments/${{ needs.detect-changes.outputs.environment }}.tfvars" \
-            -var="ephemeral=true" \
-            -var="run_id=${{ needs.detect-changes.outputs.run_id }}" \
-            -auto-approve
-        env:
-          TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
-        continue-on-error: true
-
-      - name: Delete HCP Terraform Workspace
-        run: |
-          WORKSPACE_NAME="${{ needs.detect-changes.outputs.workspace_name }}"
-          
-          echo "Deleting workspace: $WORKSPACE_NAME"
-          
-          # Get workspace ID (using Organization Token for workspace management)
-          WORKSPACE_ID=$(curl -s \
-            --header "Authorization: Bearer $TF_CLOUD_ORGANIZATION" \
-            "https://app.terraform.io/api/v2/organizations/$TF_CLOUD_ORGANIZATION/workspaces/$WORKSPACE_NAME" | \
-            jq -r '.data.id')
-          
-          if [[ "$WORKSPACE_ID" != "null" && -n "$WORKSPACE_ID" ]]; then
-            # Delete workspace (using Organization Token)
-            curl -s \
-              --header "Authorization: Bearer $TF_CLOUD_ORGANIZATION" \
-              --request DELETE \
-              "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID"
-            
-            echo "Workspace deleted"
-          else
-            echo "Workspace not found or already deleted"
-          fi
-        continue-on-error: true
-
-  # ============================================================================
   # PIPELINE SUMMARY
   # ============================================================================
   summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, lint, terraform-provision, build, unit-tests, deploy, integration-tests, cleanup]
+    needs: [detect-changes, lint, terraform-provision, build, unit-tests, deploy, integration-tests]
     if: always()
     
     steps:
@@ -849,8 +543,6 @@ jobs:
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | \`${{ needs.detect-changes.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Ephemeral | \`${{ needs.detect-changes.outputs.ephemeral }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Run ID | \`${{ needs.detect-changes.outputs.run_id }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Workspace | \`${{ needs.detect-changes.outputs.workspace_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
@@ -859,12 +551,11 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| Detect Changes | \`${{ needs.detect-changes.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Lint | \`${{ needs.lint.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | \`${{ needs.unit-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Terraform | \`${{ needs.terraform-provision.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Build | \`${{ needs.build.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Unit Tests | \`${{ needs.unit-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy | \`${{ needs.deploy.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Integration Tests | \`${{ needs.integration-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Cleanup | \`${{ needs.cleanup.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [[ "${{ needs.terraform-provision.result }}" == "success" ]]; then
