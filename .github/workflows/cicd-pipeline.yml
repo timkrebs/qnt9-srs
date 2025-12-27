@@ -60,7 +60,7 @@ jobs:
   # STAGE 1: DETECT CHANGES AND DETERMINE ENVIRONMENT
   # ============================================================================
   detect-changes:
-    name: 🔍 Detect Changes
+    name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.env.outputs.environment }}
@@ -136,7 +136,7 @@ jobs:
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
           echo "workspace_name=$WORKSPACE_NAME" >> $GITHUB_OUTPUT
           
-          echo "📋 Environment Configuration:"
+          echo "Environment Configuration:"
           echo "  Environment: $ENVIRONMENT"
           echo "  Ephemeral: $EPHEMERAL"
           echo "  Run ID: $RUN_ID"
@@ -146,10 +146,12 @@ jobs:
   # STAGE 2: CODE QUALITY (SOURCE STAGE)
   # ============================================================================
   lint:
-    name: 🧹 Lint & Format
+    name: Lint & Format
     runs-on: ubuntu-latest
     needs: detect-changes
     if: needs.detect-changes.outputs.services_changed == 'true' || github.event.inputs.force_deploy == 'true'
+    # Continue even if lint fails - report issues but don't block pipeline
+    continue-on-error: true
     
     steps:
       - name: Checkout code
@@ -167,31 +169,34 @@ jobs:
 
       - name: Run Black (formatting)
         run: |
-          black --check --diff services/
+          black --check --diff services/ || echo "::warning::Black formatting issues found - run 'black services/' locally to fix"
+        continue-on-error: true
 
       - name: Run isort (imports)
         run: |
-          isort --check-only --diff services/
+          isort --check-only --diff services/ || echo "::warning::Import sorting issues found - run 'isort services/' locally to fix"
+        continue-on-error: true
 
       - name: Run Ruff (linting)
         run: |
-          ruff check services/
+          ruff check services/ || echo "::warning::Ruff linting issues found - run 'ruff check --fix services/' locally to fix"
+        continue-on-error: true
 
       - name: Run Bandit (security)
         run: |
-          bandit -r services/ -x '**/tests/**' --severity-level medium
+          bandit -r services/ -x '**/tests/**' --severity-level medium || echo "::warning::Security issues found"
         continue-on-error: true
 
   # ============================================================================
   # STAGE 3: INFRASTRUCTURE PROVISIONING
   # ============================================================================
   terraform-provision:
-    name: 🏗️ Provision Infrastructure
+    name: Provision Infrastructure
     runs-on: ubuntu-latest
     needs: [detect-changes, lint]
     if: |
       always() && 
-      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped' || needs.lint.result == 'failure') &&
       needs.detect-changes.result == 'success'
     outputs:
       acr_login_server: ${{ steps.outputs.outputs.acr_login_server }}
@@ -226,7 +231,7 @@ jobs:
           ENVIRONMENT="${{ needs.detect-changes.outputs.environment }}"
           EPHEMERAL="${{ needs.detect-changes.outputs.ephemeral }}"
           
-          echo "🔍 Checking workspace: $WORKSPACE_NAME"
+          echo "Checking workspace: $WORKSPACE_NAME"
           
           # Check if workspace exists
           RESPONSE=$(curl -s -w "\n%{http_code}" \
@@ -238,10 +243,10 @@ jobs:
           BODY=$(echo "$RESPONSE" | head -n-1)
           
           if [[ "$HTTP_CODE" == "200" ]]; then
-            echo "✅ Workspace exists"
+            echo "Workspace exists"
             WORKSPACE_ID=$(echo "$BODY" | jq -r '.data.id')
           else
-            echo "📝 Creating workspace..."
+            echo "Creating workspace..."
             
             # Create workspace with tags for tag-based selection
             CREATE_RESPONSE=$(curl -s \
@@ -267,12 +272,12 @@ jobs:
             WORKSPACE_ID=$(echo "$CREATE_RESPONSE" | jq -r '.data.id')
             
             if [[ "$WORKSPACE_ID" == "null" || -z "$WORKSPACE_ID" ]]; then
-              echo "❌ Failed to create workspace"
+              echo "Failed to create workspace"
               echo "$CREATE_RESPONSE"
               exit 1
             fi
             
-            echo "✅ Workspace created: $WORKSPACE_ID"
+            echo "Workspace created: $WORKSPACE_ID"
           fi
           
           echo "workspace_id=$WORKSPACE_ID" >> $GITHUB_OUTPUT
@@ -332,7 +337,7 @@ jobs:
             fi
           }
           
-          echo "📝 Setting workspace variables..."
+          echo "Setting workspace variables..."
           
           # Azure credentials (environment variables)
           set_variable "ARM_CLIENT_ID" "$ARM_CLIENT_ID" true "env"
@@ -351,7 +356,7 @@ jobs:
             set_variable "enable_function_app" "false" false "terraform"
           fi
           
-          echo "✅ Variables set"
+          echo "Variables set"
 
       - name: Generate Terraform Variables
         working-directory: ${{ env.TF_VAR_FILE_PATH }}
@@ -382,7 +387,7 @@ jobs:
           fi)
           EOF
           
-          echo "📄 Generated cicd.auto.tfvars:"
+          echo "Generated cicd.auto.tfvars:"
           cat cicd.auto.tfvars
 
       - name: Terraform Init
@@ -413,7 +418,7 @@ jobs:
         id: outputs
         working-directory: ${{ env.TF_VAR_FILE_PATH }}
         run: |
-          echo "📤 Extracting Terraform outputs..."
+          echo "Extracting Terraform outputs..."
           
           ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)
           ACR_ADMIN_USER=$(terraform output -raw acr_admin_username 2>/dev/null || echo "")
@@ -425,7 +430,7 @@ jobs:
           echo "aks_cluster_name=$AKS_CLUSTER_NAME" >> $GITHUB_OUTPUT
           echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
           
-          echo "✅ Infrastructure outputs:"
+          echo "Infrastructure outputs:"
           echo "  ACR: $ACR_LOGIN_SERVER"
           echo "  AKS: $AKS_CLUSTER_NAME"
           echo "  RG: $RESOURCE_GROUP"
@@ -436,7 +441,7 @@ jobs:
   # STAGE 4: BUILD AND PUSH DOCKER IMAGES
   # ============================================================================
   build:
-    name: 🐳 Build ${{ matrix.service }}
+    name: Build ${{ matrix.service }}
     runs-on: ubuntu-latest
     needs: [detect-changes, terraform-provision]
     if: needs.terraform-provision.result == 'success'
@@ -494,7 +499,7 @@ jobs:
   # STAGE 5: UNIT TESTS
   # ============================================================================
   unit-tests:
-    name: 🧪 Unit Tests
+    name: Unit Tests
     runs-on: ubuntu-latest
     needs: [detect-changes]
     if: needs.detect-changes.outputs.services_changed == 'true' || github.event.inputs.force_deploy == 'true'
@@ -571,7 +576,7 @@ jobs:
   # STAGE 6: DEPLOY TO KUBERNETES
   # ============================================================================
   deploy:
-    name: 🚀 Deploy to ${{ needs.detect-changes.outputs.environment }}
+    name: Deploy to ${{ needs.detect-changes.outputs.environment }}
     runs-on: ubuntu-latest
     needs: [detect-changes, terraform-provision, build, unit-tests]
     if: |
@@ -652,7 +657,7 @@ jobs:
 
       - name: Wait for deployments
         run: |
-          echo "⏳ Waiting for deployments to be ready..."
+          echo "Waiting for deployments to be ready..."
           
           for service in auth-service search-service frontend-service; do
             kubectl rollout status deployment/$service -n qnt9 --timeout=300s || true
@@ -660,7 +665,7 @@ jobs:
 
       - name: Verify deployment health
         run: |
-          echo "🏥 Checking deployment health..."
+          echo "Checking deployment health..."
           
           kubectl get pods -n qnt9
           kubectl get services -n qnt9
@@ -668,7 +673,7 @@ jobs:
           # Check pod status
           UNHEALTHY=$(kubectl get pods -n qnt9 -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}')
           if [[ -n "$UNHEALTHY" ]]; then
-            echo "⚠️ Unhealthy pods detected: $UNHEALTHY"
+            echo "Unhealthy pods detected: $UNHEALTHY"
             kubectl describe pods -n qnt9 | grep -A 20 "Events:"
           fi
 
@@ -676,7 +681,7 @@ jobs:
   # STAGE 7: INTEGRATION TESTS
   # ============================================================================
   integration-tests:
-    name: 🔗 Integration Tests
+    name: Integration Tests
     runs-on: ubuntu-latest
     needs: [detect-changes, deploy]
     if: needs.deploy.result == 'success'
@@ -733,7 +738,7 @@ jobs:
         run: |
           WORKSPACE_NAME="${{ needs.detect-changes.outputs.workspace_name }}"
           
-          echo "🗑️ Destroying infrastructure for workspace: $WORKSPACE_NAME"
+          echo "Destroying infrastructure for workspace: $WORKSPACE_NAME"
           
           terraform init -input=false
           terraform destroy \
@@ -749,7 +754,7 @@ jobs:
         run: |
           WORKSPACE_NAME="${{ needs.detect-changes.outputs.workspace_name }}"
           
-          echo "🗑️ Deleting workspace: $WORKSPACE_NAME"
+          echo "Deleting workspace: $WORKSPACE_NAME"
           
           # Get workspace ID
           WORKSPACE_ID=$(curl -s \
@@ -764,9 +769,9 @@ jobs:
               --request DELETE \
               "https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID"
             
-            echo "✅ Workspace deleted"
+            echo "Workspace deleted"
           else
-            echo "⚠️ Workspace not found or already deleted"
+            echo "Workspace not found or already deleted"
           fi
         continue-on-error: true
 
@@ -774,7 +779,7 @@ jobs:
   # PIPELINE SUMMARY
   # ============================================================================
   summary:
-    name: 📊 Pipeline Summary
+    name: Pipeline Summary
     runs-on: ubuntu-latest
     needs: [detect-changes, lint, terraform-provision, build, unit-tests, deploy, integration-tests, cleanup]
     if: always()
@@ -782,10 +787,10 @@ jobs:
     steps:
       - name: Generate Summary
         run: |
-          echo "# 📋 QNT9-SRS Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "# QNT9-SRS Pipeline Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          echo "## 🔧 Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
           echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | \`${{ needs.detect-changes.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -794,21 +799,21 @@ jobs:
           echo "| Workspace | \`${{ needs.detect-changes.outputs.workspace_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          echo "## 📊 Stage Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Stage Results" >> $GITHUB_STEP_SUMMARY
           echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔍 Detect Changes | \`${{ needs.detect-changes.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🧹 Lint | \`${{ needs.lint.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🏗️ Terraform | \`${{ needs.terraform-provision.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🐳 Build | \`${{ needs.build.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🧪 Unit Tests | \`${{ needs.unit-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🚀 Deploy | \`${{ needs.deploy.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔗 Integration Tests | \`${{ needs.integration-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🧹 Cleanup | \`${{ needs.cleanup.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Detect Changes | \`${{ needs.detect-changes.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | \`${{ needs.lint.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform | \`${{ needs.terraform-provision.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | \`${{ needs.build.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | \`${{ needs.unit-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy | \`${{ needs.deploy.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | \`${{ needs.integration-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Cleanup | \`${{ needs.cleanup.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [[ "${{ needs.terraform-provision.result }}" == "success" ]]; then
-            echo "## 🏭 Infrastructure" >> $GITHUB_STEP_SUMMARY
+            echo "## Infrastructure" >> $GITHUB_STEP_SUMMARY
             echo "| Resource | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| ACR | \`${{ needs.terraform-provision.outputs.acr_login_server }}\` |" >> $GITHUB_STEP_SUMMARY

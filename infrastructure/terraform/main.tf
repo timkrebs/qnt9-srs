@@ -3,8 +3,9 @@
 #
 # HCP Terraform Cloud Integration:
 # ================================
-# Workspace selection is done via TF_WORKSPACE environment variable.
-# The cloud block uses tag-based workspace selection to support dynamic workspace names.
+# When running locally with Terraform Cloud, the workspace is selected via
+# TF_WORKSPACE environment variable. The cloud block omits workspace configuration
+# to allow dynamic workspace selection.
 #
 # For local development:
 #   export TF_WORKSPACE=qnt9-srs-dev
@@ -19,15 +20,11 @@
 
 terraform {
   # Cloud block for HCP Terraform Cloud integration
-  # Uses tag-based workspace selection to support both persistent and ephemeral workspaces
-  # The actual workspace name is set via TF_WORKSPACE environment variable
+  # Workspace is selected dynamically via TF_WORKSPACE environment variable
+  # The CI/CD pipeline creates workspaces via API before running terraform
   cloud {
     organization = "tim-krebs-org"
-
-    workspaces {
-      # Use tags to match workspaces - allows dynamic workspace selection via TF_WORKSPACE
-      tags = ["qnt9-srs"]
-    }
+    # No workspace block - workspace is selected via TF_WORKSPACE env var
   }
 
   required_version = ">= 1.3.0"
