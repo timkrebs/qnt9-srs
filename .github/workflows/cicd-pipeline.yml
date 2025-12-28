@@ -44,7 +44,7 @@ concurrency:
 env:
   TF_CLOUD_ORGANIZATION: "tim-krebs-org"
   TF_VAR_FILE_PATH: "infrastructure/terraform"
-  SERVICES: "auth-service,search-service,frontend-service"
+  SERVICES: "auth-service,search-service,frontend-service,watchlist-service,user-service"
 
 jobs:
   # ============================================================================
@@ -195,7 +195,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pytest pytest-cov pytest-asyncio httpx
-          for service in auth-service search-service; do
+          for service in auth-service search-service watchlist-service user-service; do
             if [ -f "services/$service/requirements.txt" ]; then
               pip install -r "services/$service/requirements.txt"
             fi
@@ -220,10 +220,28 @@ jobs:
           REDIS_URL: redis://localhost:6379
           TESTING: "true"
 
+      - name: Run Watchlist Service tests
+        working-directory: services/watchlist-service
+        run: |
+          pytest test_watchlist_service.py -v --tb=short --cov=app --cov-report=xml:coverage-watchlist.xml || true
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          JWT_SECRET_KEY: test-secret-key
+          TESTING: "true"
+
+      - name: Run User Service tests
+        working-directory: services/user-service
+        run: |
+          pytest tests/ -v --tb=short --cov=app --cov-report=xml:coverage-user.xml || true
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          TESTING: "true"
+        continue-on-error: true
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: services/auth-service/coverage-auth.xml,services/search-service/coverage-search.xml
+          files: services/auth-service/coverage-auth.xml,services/search-service/coverage-search.xml,services/watchlist-service/coverage-watchlist.xml,services/user-service/coverage-user.xml
           fail_ci_if_error: false
         continue-on-error: true
 
@@ -334,7 +352,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [auth-service, search-service, frontend-service]
+        service: [auth-service, search-service, frontend-service, watchlist-service, user-service]
     
     steps:
       - name: Checkout code
@@ -500,7 +518,7 @@ jobs:
           find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${ACR_LOGIN_SERVER}/'"${ACR}"'/g' {} \;
           find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${IMAGE_TAG}/'"${TAG}"'/g' {} \;
           
-          for service in auth-service search-service frontend-service; do
+          for service in auth-service search-service frontend-service watchlist-service user-service; do
             DEPLOY_FILE="infrastructure/kubernetes/${service}/deployment.yaml"
             SERVICE_FILE="infrastructure/kubernetes/${service}/service.yaml"
             
@@ -519,7 +537,7 @@ jobs:
         run: |
           NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
           
-          for service in auth-service search-service frontend-service; do
+          for service in auth-service search-service frontend-service watchlist-service user-service; do
             echo "Waiting for $service deployment..."
             kubectl rollout status deployment/$service -n "$NAMESPACE" --timeout=300s || true
           done

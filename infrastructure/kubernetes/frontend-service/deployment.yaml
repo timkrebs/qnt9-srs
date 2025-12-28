@@ -47,6 +47,8 @@ spec:
               value: "http://search-service:8000"
             - name: USER_SERVICE_URL
               value: "http://user-service:8020"
+            - name: WATCHLIST_SERVICE_URL
+              value: "http://watchlist-service:8012"
             - name: LOG_LEVEL
               value: "INFO"
           resources:

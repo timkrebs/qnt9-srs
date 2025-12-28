@@ -1,18 +1,62 @@
+# Watchlist Service Kubernetes Service
 apiVersion: v1
 kind: Service
 metadata:
   name: watchlist-service
-  namespace: qnt9-srs
+  namespace: qnt9
   labels:
     app: watchlist-service
-    tier: backend
 spec:
   type: ClusterIP
   selector:
     app: watchlist-service
   ports:
-  - name: http
-    port: 8012
-    targetPort: 8012
-    protocol: TCP
-  sessionAffinity: None
+    - name: http
+      port: 8012
+      targetPort: 8012
+      protocol: TCP
+---
+# Watchlist Service Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: watchlist-service-hpa
+  namespace: qnt9
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: watchlist-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+      selectPolicy: Max
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+      selectPolicy: Max
