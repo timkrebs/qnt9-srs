@@ -1,5 +1,16 @@
 # Outputs - Important resource IDs and endpoints for external consumption
 
+# Ephemeral Mode Information
+output "is_ephemeral" {
+  description = "Whether this is an ephemeral deployment"
+  value       = var.ephemeral
+}
+
+output "run_id" {
+  description = "CI/CD run identifier for ephemeral deployments"
+  value       = var.run_id
+}
+
 # Resource Group
 output "resource_group_name" {
   description = "Name of the resource group"
@@ -27,24 +38,6 @@ output "reports_container_name" {
   value       = azurerm_storage_container.reports.name
 }
 
-# PostgreSQL Database
-output "postgresql_server_fqdn" {
-  description = "FQDN of the PostgreSQL server"
-  value       = module.postgresql.server_fqdn
-  sensitive   = true
-}
-
-output "postgresql_database_name" {
-  description = "Name of the PostgreSQL database"
-  value       = module.postgresql.database_name
-}
-
-output "postgresql_connection_string" {
-  description = "PostgreSQL connection string (sensitive)"
-  value       = module.postgresql.connection_string
-  sensitive   = true
-}
-
 # AKS Cluster
 output "aks_cluster_name" {
   description = "Name of the AKS cluster"
@@ -67,39 +60,15 @@ output "aks_get_credentials_command" {
   value       = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
 }
 
-# Application Insights
-output "app_insights_instrumentation_key" {
-  description = "Application Insights instrumentation key"
-  value       = module.app_insights.instrumentation_key
-  sensitive   = true
-}
-
-output "app_insights_connection_string" {
-  description = "Application Insights connection string"
-  value       = module.app_insights.connection_string
-  sensitive   = true
-}
-
-# Function App
+# Function App (only if enabled and not ephemeral)
 output "function_app_name" {
   description = "Name of the Function App"
-  value       = module.function_app.function_app_name
+  value       = var.enable_function_app && !var.ephemeral ? module.function_app[0].function_app_name : null
 }
 
 output "function_app_url" {
   description = "Default hostname of the Function App"
-  value       = module.function_app.function_app_url
-}
-
-# Key Vault
-output "key_vault_name" {
-  description = "Name of the Key Vault"
-  value       = module.key_vault.key_vault_name
-}
-
-output "key_vault_uri" {
-  description = "URI of the Key Vault"
-  value       = module.key_vault.key_vault_uri
+  value       = var.enable_function_app && !var.ephemeral ? module.function_app[0].function_app_url : null
 }
 
 # Azure Container Registry
@@ -152,11 +121,23 @@ output "quick_start_commands" {
   description = "Quick start commands for accessing resources"
   value = {
     configure_kubectl = "az aks get-credentials --resource-group ${azurerm_resource_group.main.name} --name ${module.aks.cluster_name}"
-    view_function_app = "az functionapp show --name ${module.function_app.function_app_name} --resource-group ${azurerm_resource_group.main.name}"
-    list_secrets      = "az keyvault secret list --vault-name ${module.key_vault.key_vault_name}"
+    view_function_app = var.enable_function_app && !var.ephemeral ? "az functionapp show --name ${module.function_app[0].function_app_name} --resource-group ${azurerm_resource_group.main.name}" : null
     acr_login         = "az acr login --name ${module.acr.acr_name}"
-    # Note: Use 'az acr login' or retrieve credentials from Key Vault for docker login
   }
-  # Mark as sensitive since it contains resource names that might be considered sensitive
+  sensitive = true
+}
+
+# CI/CD Integration Outputs (for GitHub Actions)
+output "cicd_outputs" {
+  description = "Outputs specifically formatted for CI/CD pipeline consumption"
+  value = {
+    acr_login_server = module.acr.acr_login_server
+    acr_admin_user   = module.acr.acr_admin_username
+    aks_cluster_name = module.aks.cluster_name
+    resource_group   = azurerm_resource_group.main.name
+    environment      = var.environment
+    is_ephemeral     = var.ephemeral
+    run_id           = var.run_id
+  }
   sensitive = true
 }

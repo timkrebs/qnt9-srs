@@ -1,144 +1,72 @@
 """
-Database configuration and connection management for search service.
+Database configuration and connection management.
 
-This module implements a fallback pattern for database configuration:
-1. Supabase PostgreSQL (free tier production)
-2. Vault KV secrets (production)
-3. Environment variables
-4. Local SQLite (development fallback)
-
-The module provides database session management and initialization functionality.
+Simplified configuration using environment variables for maximum performance.
 """
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Generator
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
 from .models import Base
-from .supabase_config import get_supabase_connection_string
 
-# Load environment variables from .env file
-# Search for .env in current directory and parent directories
+# Load environment variables
 env_path = Path(__file__).parent.parent / ".env"
-if not env_path.exists():
-    # Try repository root
-    env_path = Path(__file__).parent.parent.parent.parent / ".env"
-
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
-    logger = logging.getLogger(__name__)
-    logger.info(f"Loaded environment variables from: {env_path}")
-else:
-    logger = logging.getLogger(__name__)
-    logger.warning("No .env file found, using system environment variables")
 
 logger = logging.getLogger(__name__)
 
-# Database configuration constants
-DEFAULT_SQLITE_URL = "sqlite:///./search_service.db"
-DEFAULT_LOCAL_POSTGRES_URL = (
-    "postgresql://srs_admin:local_dev_password@localhost:5432/srs_db"
-)
-POSTGRES_CONNECTION_TIMEOUT = 10
-POOL_SIZE = 5
-MAX_OVERFLOW = 10
-POOL_RECYCLE_SECONDS = 3600
+# Database configuration
+# Default for local development (overridden by environment variables)
+DEFAULT_DATABASE_URL = "postgresql://qnt9_user:qnt9_password@localhost:5432/qnt9_search"
+
+# Connection Pool Settings (Phase 5 Optimization)
+POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "20"))
+MAX_OVERFLOW = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+POOL_RECYCLE_SECONDS = int(os.getenv("DB_POOL_RECYCLE", "3600"))
+POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "30"))
+POOL_PRE_PING = os.getenv("DB_POOL_PRE_PING", "true").lower() == "true"
+
+# Query Performance Settings
+QUERY_LOGGING_THRESHOLD_MS = int(os.getenv("QUERY_LOG_THRESHOLD_MS", "100"))
+ENABLE_QUERY_CACHE = os.getenv("ENABLE_QUERY_CACHE", "true").lower() == "true"
+QUERY_CACHE_SIZE = int(os.getenv("QUERY_CACHE_SIZE", "500"))
+
+# Read Replica Settings
+READ_REPLICA_URL = os.getenv("DATABASE_READ_REPLICA_URL")
+ENABLE_READ_REPLICA = os.getenv("ENABLE_READ_REPLICA", "false").lower() == "true"
 
 
-def _get_database_url() -> str:
+def get_database_url() -> str:
     """
-    Get database connection URL using fallback strategy.
-
-    Strategy:
-    1. Check DATABASE_URL environment variable first (highest priority)
-    2. Check USE_LOCAL_DB environment variable for local development
-    3. Try to get Supabase PostgreSQL connection (free tier)
-    4. Try to get credentials from Vault KV
-    5. Default to SQLite for local development
+    Get database URL from environment.
+    Uses DATABASE_URL environment variable or default.
 
     Returns:
-        Database connection URL string
+        Database connection URL
     """
-    # Priority 1: Direct DATABASE_URL (overrides everything)
-    direct_db_url = os.getenv("DATABASE_URL")
-    if direct_db_url:
-        # Verify it's not a placeholder
-        if "[YOUR_PASSWORD]" in direct_db_url or "[YOUR-PASSWORD]" in direct_db_url:
-            logger.warning("DATABASE_URL contains placeholder - ignoring")
-        else:
-            logger.info(
-                f"Using DATABASE_URL from environment: {_sanitize_db_url(direct_db_url)}"
-            )
-            return direct_db_url
+    db_url = os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
 
-    # Priority 2: Local development mode
-    use_local_db = os.getenv("USE_LOCAL_DB", "false").lower() == "true"
-
-    if use_local_db:
-        logger.info("LOCAL DEVELOPMENT MODE - Using local database")
-        db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
-        logger.info(f"Using local database: {_sanitize_db_url(db_url)}")
-        return db_url
-
-    # Priority 3: Try Supabase
-    try:
-        logger.debug("Attempting to get Supabase connection string...")
-        supabase_url = get_supabase_connection_string()
-        if supabase_url:
-            logger.info("Using Supabase PostgreSQL database (free tier)")
-            return supabase_url
-        else:
-            logger.debug("Supabase connection string not available, trying Vault...")
-    except Exception as supabase_error:
-        logger.warning(f"Supabase configuration failed: {supabase_error}")
-
-    # Priority 4: Try Vault KV, fallback to SQLite
-    try:
-        logger.debug("Attempting to import Vault KV module...")
-        from .vault_kv import get_db_connection_string
-
-        logger.debug("Vault KV module imported successfully")
-        try:
-            logger.debug("Calling get_db_connection_string()...")
-            db_url = get_db_connection_string()
-            logger.info("Using database credentials from Vault")
-            return db_url
-        except Exception as vault_error:
-            logger.warning(f"Could not read from Vault KV: {vault_error}")
-            logger.info("Falling back to SQLite for local development...")
-            db_url = DEFAULT_SQLITE_URL
-            logger.info(f"Using database URL: {_sanitize_db_url(db_url)}")
-            return db_url
-            return db_url
-    except ImportError as e:
-        logger.warning(f"Vault module not available: {e}")
-        db_url = os.getenv("DATABASE_URL", DEFAULT_SQLITE_URL)
-        logger.info(f"Using database URL: {_sanitize_db_url(db_url)}")
-        return db_url
-
-
-def _sanitize_db_url(db_url: str) -> str:
-    """
-    Remove sensitive information from database URL for logging.
-
-    Args:
-        db_url: Database connection URL
-
-    Returns:
-        Sanitized URL with password removed
-    """
+    # Sanitize for logging
     if "@" in db_url:
-        return db_url.split("@")[0] + "@..."
+        safe_url = db_url.split("@")[0] + "@..."
+    else:
+        safe_url = db_url
+
+    logger.info(f"Using database: {safe_url}")
     return db_url
 
 
-def _get_connect_args(db_url: str) -> dict:
+def get_connect_args(db_url: str) -> dict:
     """
     Get database-specific connection arguments.
 
@@ -146,87 +74,161 @@ def _get_connect_args(db_url: str) -> dict:
         db_url: Database connection URL
 
     Returns:
-        Dictionary of connection arguments
+        Connection arguments dict
     """
-    if db_url.startswith("postgresql"):
-        return {"connect_timeout": POSTGRES_CONNECTION_TIMEOUT}
-    elif db_url.startswith("sqlite"):
+    if "sqlite" in db_url:
         return {"check_same_thread": False}
+    
+    # For PostgreSQL with pgbouncer (Supabase Transaction Pooler)
+    # Disable prepared statements as they are not supported
+    if "postgresql" in db_url and "pooler.supabase.com" in db_url:
+        return {"prepare_threshold": None}
+    
     return {}
 
 
-# Get database URL using fallback strategy
-db_url = _get_database_url()
-connect_args = _get_connect_args(db_url)
+# Query performance tracking (Phase 5)
+@event.listens_for(Engine, "before_cursor_execute")
+def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """Track query start time."""
+    conn.info.setdefault("query_start_time", []).append(time.time())
 
-# Create engine with connection pooling
-logger.debug("Creating SQLAlchemy engine...")
+
+@event.listens_for(Engine, "after_cursor_execute")
+def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """Log slow queries."""
+    total_time = time.time() - conn.info["query_start_time"].pop()
+    total_time_ms = total_time * 1000
+
+    if total_time_ms > QUERY_LOGGING_THRESHOLD_MS:
+        logger.warning(
+            f"Slow query detected: {total_time_ms:.2f}ms",
+            extra={
+                "query_time_ms": total_time_ms,
+                "statement": statement[:200],
+                "parameters": str(parameters)[:100] if parameters else None,
+            },
+        )
+
+
+# Initialize database connection
+db_url = get_database_url()
+connect_args = get_connect_args(db_url)
+
+# Create primary engine with optimized connection pooling (Phase 5)
 engine = create_engine(
     db_url,
     connect_args=connect_args,
-    pool_pre_ping=True,
+    pool_pre_ping=POOL_PRE_PING,
     pool_recycle=POOL_RECYCLE_SECONDS,
+    pool_timeout=POOL_TIMEOUT,
     poolclass=QueuePool,
     pool_size=POOL_SIZE,
     max_overflow=MAX_OVERFLOW,
     echo=False,
+    query_cache_size=QUERY_CACHE_SIZE if ENABLE_QUERY_CACHE else 0,
 )
-logger.debug("SQLAlchemy engine created successfully")
 
-# Create session factory
+# Create read replica engine if enabled (Phase 5)
+read_engine = None
+if ENABLE_READ_REPLICA and READ_REPLICA_URL:
+    logger.info("Read replica enabled")
+    read_engine = create_engine(
+        READ_REPLICA_URL,
+        connect_args=get_connect_args(READ_REPLICA_URL),
+        pool_pre_ping=POOL_PRE_PING,
+        pool_recycle=POOL_RECYCLE_SECONDS,
+        pool_timeout=POOL_TIMEOUT,
+        poolclass=QueuePool,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_OVERFLOW,
+        echo=False,
+        query_cache_size=QUERY_CACHE_SIZE if ENABLE_QUERY_CACHE else 0,
+    )
+
+# Create session factories
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+ReadSessionLocal = (
+    sessionmaker(autocommit=False, autoflush=False, bind=read_engine) if read_engine else None
+)
 
 
 def init_db() -> None:
     """
     Initialize database tables.
 
-    Creates all tables defined in the Base metadata.
-    Should be called on application startup.
-
-    Note: Uses checkfirst=True to avoid errors with existing tables/indexes.
-    For production, consider using Alembic migrations instead.
-
-    Raises:
-        Exception: If database initialization fails
+    Creates all tables on application startup.
+    Uses checkfirst=True to safely handle existing tables.
     """
     try:
         logger.info("Initializing database tables...")
-
-        # Create tables with checkfirst=True (default)
-        # This checks if tables exist before trying to create them
         Base.metadata.create_all(bind=engine, checkfirst=True)
-
-        logger.info("Database tables initialized successfully")
+        logger.info(
+            f"Database initialized successfully (pool_size={POOL_SIZE}, "
+            f"max_overflow={MAX_OVERFLOW}, query_cache={ENABLE_QUERY_CACHE})"
+        )
     except Exception as e:
-        # Log error but don't crash if tables already exist
         error_msg = str(e).lower()
         if "already exists" in error_msg or "duplicate" in error_msg:
-            logger.warning(f"Database objects already exist (expected): {e}")
-            logger.info("Continuing with existing database schema...")
+            logger.warning("Database objects already exist (expected)")
         else:
             logger.error(f"Failed to initialize database: {e}")
             raise
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db(use_replica: bool = False) -> Generator[Session, None, None]:
     """
-    Dependency function for FastAPI to get database session.
+    Get database session for dependency injection.
 
-    Creates a new database session for each request and ensures
-    proper cleanup after the request completes.
+    Args:
+        use_replica: If True and replica is available, use read replica
 
     Yields:
-        Database session
-
-    Example:
-        @app.get("/endpoint")
-        def endpoint(db: Session = Depends(get_db)):
-            # Use db session here
-            pass
+        SQLAlchemy database session
     """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    # Phase 5: Use read replica for read-only operations if available
+    if use_replica and ReadSessionLocal:
+        db = ReadSessionLocal()
+        try:
+            yield db
+        except Exception as e:
+            logger.warning(f"Read replica error, falling back to primary: {e}")
+            db.close()
+            # Fallback to primary
+            db = SessionLocal()
+            try:
+                yield db
+            finally:
+                db.close()
+        else:
+            db.close()
+    else:
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+
+def get_db_stats() -> dict:
+    """
+    Get database connection pool statistics.
+
+    Phase 5: Monitor connection pool health and performance.
+
+    Returns:
+        Dict with pool statistics
+    """
+    pool = engine.pool
+
+    return {
+        "pool_size": POOL_SIZE,
+        "max_overflow": MAX_OVERFLOW,
+        "checked_out": pool.checkedout(),
+        "checked_in": pool.size() - pool.checkedout(),
+        "overflow": pool.overflow(),
+        "total_connections": pool.size(),
+        "query_cache_enabled": ENABLE_QUERY_CACHE,
+        "query_cache_size": QUERY_CACHE_SIZE,
+        "read_replica_enabled": ENABLE_READ_REPLICA and read_engine is not None,
+    }

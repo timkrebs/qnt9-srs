@@ -94,30 +94,76 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
 
             return response
-
         except Exception as exc:
-            # Calculate request duration even on error
             duration_ms = (time.perf_counter() - start_time) * 1000
-
-            # Log failed request
             logger.error(
-                f"Request failed: {request.method} {request.url.path} "
-                f"({duration_ms:.2f}ms): {exc}",
-                extra={
-                    "extra_fields": {
-                        "method": request.method,
-                        "path": request.url.path,
-                        "duration_ms": duration_ms,
-                        "error_type": type(exc).__name__,
-                    }
-                },
-                exc_info=True,
+                f"Request failed: {request.method} {request.url.path} ({duration_ms:.2f}ms)",
+                extra={"extra_fields": {"error": str(exc)}},
             )
             raise
-
         finally:
-            # Clean up request context
             clear_request_id()
+
+
+class StaticFileCacheMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware for adding cache-control headers to static files.
+
+    Improves performance by enabling browser caching for static assets
+    like CSS, JavaScript, and images.
+    """
+
+    # Cache durations for different file types (in seconds)
+    CACHE_DURATIONS = {
+        ".css": 86400,  # 1 day
+        ".js": 86400,  # 1 day
+        ".png": 604800,  # 7 days
+        ".jpg": 604800,  # 7 days
+        ".jpeg": 604800,  # 7 days
+        ".gif": 604800,  # 7 days
+        ".ico": 604800,  # 7 days
+        ".svg": 604800,  # 7 days
+        ".woff": 2592000,  # 30 days
+        ".woff2": 2592000,  # 30 days
+        ".ttf": 2592000,  # 30 days
+    }
+
+    def __init__(self, app: ASGIApp) -> None:
+        """
+        Initialize static file cache middleware.
+
+        Args:
+            app: ASGI application instance
+        """
+        super().__init__(app)
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """
+        Add cache headers to static file responses.
+
+        Args:
+            request: Incoming HTTP request
+            call_next: Next middleware or route handler
+
+        Returns:
+            HTTP response with cache headers for static files
+        """
+        response = await call_next(request)
+
+        # Only process static file requests
+        path = request.url.path
+        if path.startswith("/static/"):
+            # Determine cache duration based on file extension
+            for ext, duration in self.CACHE_DURATIONS.items():
+                if path.endswith(ext):
+                    response.headers["Cache-Control"] = f"public, max-age={duration}"
+                    response.headers["Vary"] = "Accept-Encoding"
+                    break
+            else:
+                # Default cache for other static files
+                response.headers["Cache-Control"] = "public, max-age=3600"
+
+        return response
 
 
 class PerformanceMonitoringMiddleware(BaseHTTPMiddleware):

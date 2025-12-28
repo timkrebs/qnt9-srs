@@ -27,8 +27,7 @@ resource "azurerm_linux_function_app" "main" {
       python_version = "3.11"
     }
 
-    application_insights_key               = var.app_insights_key
-    application_insights_connection_string = var.app_insights_key
+    # Application Insights removed - using Icinga for monitoring instead
   }
 
   app_settings = {

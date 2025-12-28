@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
+import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,8 +18,13 @@ from fastapi.templating import Jinja2Templates
 
 from .api_client import search_client
 from .config import settings
+from .consul import ConsulClient, get_service_id
 from .logging_config import get_logger, setup_logging
-from .middleware import PerformanceMonitoringMiddleware, RequestLoggingMiddleware
+from .middleware import (
+    PerformanceMonitoringMiddleware,
+    RequestLoggingMiddleware,
+    StaticFileCacheMiddleware,
+)
 
 # Setup logging with structured format
 use_json_logging = settings.LOG_LEVEL == "DEBUG"
@@ -28,6 +34,13 @@ setup_logging(
     use_json=use_json_logging,
 )
 logger = get_logger(__name__)
+
+# Initialize Consul client
+consul_client = ConsulClient(
+    enabled=settings.CONSUL_ENABLED,
+    host=settings.CONSUL_HOST,
+    port=settings.CONSUL_PORT,
+)
 
 
 @asynccontextmanager
@@ -42,6 +55,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("=" * 80)
     logger.info("Starting Frontend Service")
     logger.info("=" * 80)
+
+    # Register with Consul
+    service_id = get_service_id(settings.SERVICE_NAME)
+    consul_client.register_service(
+        service_id=service_id,
+        service_name=settings.SERVICE_NAME,
+        port=settings.PORT,
+        health_check_path="/health",
+        tags=["v1", "http", "frontend", "ui"],
+        meta={"version": "1.0.0"},
+    )
     logger.info(
         "Configuration loaded",
         extra={
@@ -94,6 +118,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Shutting down Frontend Service")
     logger.info("=" * 80)
 
+    # Close HTTP client connections
+    await search_client.close()
+    if _auth_http_client is not None:
+        await _auth_http_client.aclose()
+    logger.info("HTTP clients closed")
+
+    # Deregister from Consul
+    consul_client.deregister_service(service_id)
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -106,12 +139,40 @@ app = FastAPI(
 )
 
 # Add middleware (order matters - first added is last executed)
+app.add_middleware(StaticFileCacheMiddleware)
 app.add_middleware(PerformanceMonitoringMiddleware, slow_request_threshold_ms=1000.0)
 app.add_middleware(RequestLoggingMiddleware)
 
 # Setup templates and static files
 BASE_PATH = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE_PATH / "templates"))
+
+# Shared HTTP client for auth/watchlist proxy requests (connection pooling)
+# Reduces TCP connection overhead by ~50-100ms per request
+_auth_http_client: Optional[httpx.AsyncClient] = None
+
+
+async def get_auth_http_client() -> httpx.AsyncClient:
+    """
+    Get or create shared HTTP client for auth/watchlist proxy requests.
+
+    Uses connection pooling for improved performance.
+
+    Returns:
+        Configured httpx.AsyncClient instance
+    """
+    global _auth_http_client
+    if _auth_http_client is None or _auth_http_client.is_closed:
+        _auth_http_client = httpx.AsyncClient(
+            timeout=30.0,
+            limits=httpx.Limits(
+                max_keepalive_connections=10,
+                max_connections=50,
+                keepalive_expiry=30.0,
+            ),
+        )
+        logger.debug("Created auth HTTP client with connection pooling")
+    return _auth_http_client
 
 
 # Add custom Jinja2 filters
@@ -137,6 +198,64 @@ def timestamp_to_date(timestamp: Optional[int]) -> str:
 
 
 templates.env.filters["timestamp_to_date"] = timestamp_to_date
+
+
+def _flatten_stock_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Flatten nested stock data structure for template rendering.
+
+    Converts the nested API response structure (identifier.name, price.current, etc.)
+    to a flat structure (name, current_price, etc.) that the template expects.
+
+    Args:
+        data: Nested stock data from search service
+
+    Returns:
+        Flattened stock data dictionary
+    """
+    identifier = data.get("identifier", {})
+    price = data.get("price", {})
+    metadata = data.get("metadata", {})
+
+    return {
+        # Identifier fields
+        "isin": identifier.get("isin"),
+        "wkn": identifier.get("wkn"),
+        "symbol": identifier.get("symbol"),
+        "name": identifier.get("name"),
+        # Price fields
+        "current_price": price.get("current"),
+        "currency": price.get("currency"),
+        "change_absolute": price.get("change_absolute"),
+        "change_percent": price.get("change_percent"),
+        "previous_close": price.get("previous_close"),
+        "open_price": price.get("open"),
+        "day_high": price.get("day_high"),
+        "day_low": price.get("day_low"),
+        "week_52_high": price.get("week_52_high"),
+        "week_52_low": price.get("week_52_low"),
+        "volume": price.get("volume"),
+        "avg_volume": price.get("avg_volume"),
+        "timestamp": price.get("timestamp"),
+        # Metadata fields
+        "exchange": metadata.get("exchange"),
+        "sector": metadata.get("sector"),
+        "industry": metadata.get("industry"),
+        "market_cap": metadata.get("market_cap"),
+        "pe_ratio": metadata.get("pe_ratio"),
+        "dividend_yield": metadata.get("dividend_yield"),
+        "beta": metadata.get("beta"),
+        "description": metadata.get("description"),
+        "employees": metadata.get("employees"),
+        "founded": metadata.get("founded"),
+        "headquarters": metadata.get("headquarters"),
+        "website": metadata.get("website"),
+        # Top-level fields
+        "data_source": data.get("data_source"),
+        "last_updated": data.get("last_updated"),
+        "cache_age_seconds": data.get("cache_age_seconds"),
+    }
+
 
 # Mount static files
 try:
@@ -264,14 +383,17 @@ async def search_stock(
     if result.get("success"):
         stock_data = result.get("data", {})
 
+        # Flatten nested structure for template
+        flattened_stock = _flatten_stock_data(stock_data)
+
         logger.info(
             "Stock search successful, rendering stock card",
             extra={
                 "extra_fields": {
                     "query": query,
-                    "stock_name": stock_data.get("name"),
-                    "stock_symbol": stock_data.get("symbol"),
-                    "stock_isin": stock_data.get("isin"),
+                    "stock_name": flattened_stock.get("name"),
+                    "stock_symbol": flattened_stock.get("symbol"),
+                    "stock_isin": flattened_stock.get("isin"),
                     "query_type": result.get("query_type"),
                     "response_time_ms": result.get("response_time_ms", 0),
                 }
@@ -282,7 +404,7 @@ async def search_stock(
             request=request,
             name="components/stock_card.html",
             context={
-                "stock": stock_data,
+                "stock": flattened_stock,
                 "response_time": result.get("response_time_ms", 0),
                 "query_type": result.get("query_type", "unknown"),
             },
@@ -471,7 +593,8 @@ async def get_suggestions(
     """
     logger.debug(f"Suggestions request: query='{query}'")
 
-    suggestions = await search_client.get_suggestions(query, limit=5)
+    # Fetch more suggestions like Yahoo Finance (show up to 8 results)
+    suggestions = await search_client.get_suggestions(query, limit=8)
 
     return templates.TemplateResponse(
         request=request,
@@ -529,6 +652,140 @@ def _get_search_suggestions() -> List[str]:
         "Check if the stock symbol includes the exchange (e.g., DBK.DE for Deutsche Bank)",
         "Try searching with a different identifier type",
     ]
+
+
+# ==================== AUTH PAGES & PROXY ENDPOINTS ====================
+
+
+@app.get("/login", response_class=HTMLResponse, tags=["Pages"])
+async def login_page(request: Request):
+    """Render login page."""
+    return templates.TemplateResponse(
+        request=request, name="login.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.get("/signup", response_class=HTMLResponse, tags=["Pages"])
+async def signup_page(request: Request):
+    """Render signup page."""
+    return templates.TemplateResponse(
+        request=request, name="signup.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.post("/auth/signup", tags=["Auth"])
+async def signup_proxy(request: Request):
+    """Proxy signup request to auth-service."""
+    body = await request.json()
+    client = await get_auth_http_client()
+    response = await client.post(f"{settings.AUTH_SERVICE_URL}/auth/signup", json=body)
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.post("/auth/signin", tags=["Auth"])
+async def signin_proxy(request: Request):
+    """Proxy signin request to auth-service."""
+    body = await request.json()
+    client = await get_auth_http_client()
+    response = await client.post(f"{settings.AUTH_SERVICE_URL}/auth/signin", json=body)
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.post("/auth/signout", tags=["Auth"])
+async def signout_proxy(request: Request):
+    """Proxy signout request to auth-service."""
+    auth_header = request.headers.get("Authorization")
+    client = await get_auth_http_client()
+    response = await client.post(
+        f"{settings.AUTH_SERVICE_URL}/auth/signout",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.get("/auth/me", tags=["Auth"])
+async def get_user_proxy(request: Request):
+    """Proxy get user request to auth-service."""
+    auth_header = request.headers.get("Authorization")
+    client = await get_auth_http_client()
+    response = await client.get(
+        f"{settings.AUTH_SERVICE_URL}/auth/me",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+# ==================== WATCHLIST PAGES & PROXY ENDPOINTS ====================
+
+
+@app.get("/watchlist", response_class=HTMLResponse, tags=["Pages"])
+async def watchlist_page(request: Request):
+    """Render watchlist page."""
+    return templates.TemplateResponse(
+        request=request, name="watchlist.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.get("/api/watchlist", tags=["Watchlist"])
+async def get_watchlist_proxy(request: Request):
+    """Proxy get watchlist request to watchlist-service."""
+    auth_header = request.headers.get("Authorization")
+    client = await get_auth_http_client()
+    response = await client.get(
+        f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.post("/api/watchlist", tags=["Watchlist"])
+async def add_to_watchlist_proxy(request: Request):
+    """Proxy add to watchlist request to watchlist-service."""
+    auth_header = request.headers.get("Authorization")
+    body = await request.json()
+    client = await get_auth_http_client()
+    response = await client.post(
+        f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+        headers={"Authorization": auth_header} if auth_header else {},
+        json=body,
+    )
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+@app.delete("/api/watchlist/{symbol}", tags=["Watchlist"])
+async def remove_from_watchlist_proxy(symbol: str, request: Request):
+    """Proxy remove from watchlist request to watchlist-service."""
+    auth_header = request.headers.get("Authorization")
+    client = await get_auth_http_client()
+    response = await client.delete(
+        f"{settings.WATCHLIST_SERVICE_URL}/watchlists/{symbol}",
+        headers={"Authorization": auth_header} if auth_header else {},
+    )
+    return JSONResponse(status_code=response.status_code, content=response.json())
+
+
+# ==================== UPGRADE PAGE & ENDPOINT ====================
+
+
+@app.get("/upgrade", response_class=HTMLResponse, tags=["Pages"])
+async def upgrade_page(request: Request):
+    """Render upgrade page."""
+    return templates.TemplateResponse(
+        request=request, name="upgrade.html", context={"app_name": settings.APP_NAME}
+    )
+
+
+@app.post("/api/upgrade", tags=["User"])
+async def upgrade_user_proxy(request: Request):
+    """Proxy upgrade request to auth-service."""
+    auth_header = request.headers.get("Authorization")
+    client = await get_auth_http_client()
+    response = await client.patch(
+        f"{settings.AUTH_SERVICE_URL}/auth/me/tier",
+        headers={"Authorization": auth_header} if auth_header else {},
+        json={"tier": "paid"},
+    )
+    return JSONResponse(status_code=response.status_code, content=response.json())
 
 
 if __name__ == "__main__":

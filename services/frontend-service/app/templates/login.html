@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Sign In - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-md mx-auto">
+    <div class="modern-card p-8">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-primary mb-2">Welcome Back</h1>
+            <p class="text-secondary">Sign in to access your watchlist and predictions</p>
+        </div>
+        
+        <form 
+            x-data="loginForm()" 
+            @submit.prevent="handleSubmit()"
+            class="space-y-6"
+        >
+            <!-- Error message -->
+            <div x-show="error" x-transition class="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p class="text-sm text-red-600" x-text="error"></p>
+            </div>
+            
+            <!-- Email -->
+            <div>
+                <label for="email" class="block text-sm font-medium text-primary mb-2">Email</label>
+                <input 
+                    type="email" 
+                    id="email" 
+                    x-model="email"
+                    required
+                    class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="you@example.com"
+                >
+            </div>
+            
+            <!-- Password -->
+            <div>
+                <label for="password" class="block text-sm font-medium text-primary mb-2">Password</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    x-model="password"
+                    required
+                    class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                    placeholder="••••••••"
+                >
+            </div>
+            
+            <!-- Submit button -->
+            <button 
+                type="submit"
+                :disabled="loading"
+                class="w-full bg-primary text-white py-3 rounded-xl font-medium hover:bg-opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+                <span x-show="!loading">Sign In</span>
+                <span x-show="loading" class="flex items-center justify-center">
+                    <svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Signing in...
+                </span>
+            </button>
+        </form>
+        
+        <div class="mt-6 text-center">
+            <p class="text-sm text-secondary">
+                Don't have an account? 
+                <a href="/signup" class="text-primary font-medium hover:underline">Sign up</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function loginForm() {
+        return {
+            email: '',
+            password: '',
+            loading: false,
+            error: null,
+            
+            async handleSubmit() {
+                this.loading = true;
+                this.error = null;
+                
+                try {
+                    const response = await fetch('/auth/signin', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            email: this.email,
+                            password: this.password
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Sign in failed');
+                    }
+                    
+                    // Store auth data
+                    Alpine.store('auth').setAuth(data.user, data.session);
+                    
+                    // Redirect to home
+                    window.location.href = '/';
+                    
+                } catch (err) {
+                    this.error = err.message;
+                } finally {
+                    this.loading = false;
+                }
+            }
+        }
+    }
+</script>
+{% endblock %}
+

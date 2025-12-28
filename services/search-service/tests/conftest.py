@@ -2,6 +2,8 @@
 Test configuration and fixtures
 """
 
+import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -10,9 +12,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.app import app
-from app.database import get_db
-from app.models import Base
+# Add parent directory (search-service) to sys.path so 'app' can be imported
+service_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(service_dir))
+
+from app.app import app  # noqa: E402
+from app.database import get_db  # noqa: E402
+from app.models import Base  # noqa: E402
 
 # Create in-memory SQLite database for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -28,12 +34,16 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(scope="function")
 def db_session():
     """Create a fresh database session for each test"""
+    # Drop all tables first to ensure clean state
+    Base.metadata.drop_all(bind=engine)
+    # Create all tables
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     try:
         yield db
     finally:
         db.close()
+        # Clean up after test
         Base.metadata.drop_all(bind=engine)
 
 

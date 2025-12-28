@@ -5,10 +5,12 @@ This module defines SQLAlchemy ORM models for managing stock data cache,
 API rate limiting, and search history tracking.
 """
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import BigInteger, Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
@@ -71,9 +73,7 @@ class StockCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -147,6 +147,7 @@ class SearchHistory(Base):
         query_type: Type of query ('isin', 'wkn', or 'symbol')
         result_found: Whether result was found (1) or not (0)
         search_count: Number of times this query has been searched
+        user_id: Optional user ID for tracking user-specific history
         created_at: Timestamp of first search
         last_searched: Timestamp of most recent search
     """
@@ -158,14 +159,14 @@ class SearchHistory(Base):
     query_type = Column(String(10), nullable=False)
     result_found = Column(Integer, default=0, nullable=False)
     search_count = Column(Integer, default=1, nullable=False)
+    user_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    last_searched = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    last_searched = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
         Index("idx_query_type", "query", "query_type"),
         Index("idx_search_count", "search_count"),
+        Index("idx_user_id", "user_id"),
     )
 
 
@@ -244,15 +245,13 @@ class StockReportCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(
-        DateTime, default=func.now(), onupdate=func.now(), nullable=False
-    )
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
     # Indexes for faster lookups
     __table_args__ = (
-        Index("idx_symbol_expires", "symbol", "expires_at"),
+        Index("idx_report_symbol_expires", "symbol", "expires_at"),
         Index("idx_isin_expires_report", "isin", "expires_at"),
     )
 
@@ -272,3 +271,106 @@ class StockReportCache(Base):
         Tracks how many times this cached entry has been served to requests.
         """
         self.cache_hits += CACHE_HIT_INCREMENT
+
+
+class UserFavorite(Base):
+    """
+    User favorite stocks model.
+
+    Tracks user's favorite stocks for quick access.
+
+    Attributes:
+        id: Primary key identifier (UUID)
+        user_id: User UUID from auth-service
+        symbol: Stock ticker symbol
+        added_at: Timestamp when favorite was added
+    """
+
+    __tablename__ = "user_favorites"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    symbol = Column(String(10), nullable=False, index=True)
+    added_at = Column(DateTime, default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("idx_user_favorites_user_id", "user_id"),
+        Index("idx_user_favorites_symbol", "symbol"),
+        Index("idx_user_favorites_user_symbol", "user_id", "symbol", unique=True),
+    )
+
+
+class StockSearchIndex(Base):
+    """
+    Optimized stock search index model.
+
+    Denormalized table optimized for ultra-fast search with full-text
+    and fuzzy matching capabilities. Includes pre-computed popularity scores
+    and PostgreSQL tsvector for intelligent search ranking.
+
+    This table is designed for read-heavy workloads with comprehensive indices
+    for exact, prefix, and fuzzy matching. The search_vector column is
+    automatically maintained via database triggers.
+
+    Attributes:
+        id: Primary key identifier
+        symbol: Stock ticker symbol (e.g., AAPL, TSLA)
+        name: Company name (e.g., Apple Inc.)
+        exchange: Stock exchange (e.g., NASDAQ, NYSE)
+        security_type: Security type (e.g., Common Stock, ETF, REIT)
+        market_cap: Market capitalization in USD
+        avg_volume: Average daily trading volume
+        sector: Business sector (e.g., Technology, Healthcare)
+        industry: Industry classification (e.g., Consumer Electronics)
+        isin: International Securities Identification Number
+        wkn: German securities identification number
+        popularity_score: Computed popularity score (0-200) based on:
+            - Search frequency (0-100)
+            - Market cap percentile (0-100)
+        search_vector: PostgreSQL tsvector for full-text search
+            - Symbol weighted 'A' (highest)
+            - Name weighted 'B'
+            - Exchange weighted 'C'
+            - Sector weighted 'D' (lowest)
+        created_at: Timestamp of index entry creation
+        updated_at: Timestamp of last update
+    """
+
+    __tablename__ = "stock_search_index"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Core identifiers
+    symbol = Column(String(20), nullable=False, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    exchange = Column(String(50), nullable=True)
+    security_type = Column(String(50), nullable=True)
+
+    # Market data
+    market_cap = Column(Float, nullable=True)
+    avg_volume = Column(BigInteger, nullable=True)
+    sector = Column(String(100), nullable=True)
+    industry = Column(String(100), nullable=True)
+
+    # Alternative identifiers
+    isin = Column(String(12), nullable=True, index=True)
+    wkn = Column(String(6), nullable=True, index=True)
+
+    # Search optimization fields
+    popularity_score = Column(Float, nullable=False, default=0, server_default="0")
+    search_vector = Column(TSVECTOR, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Composite indices defined in migration
+    __table_args__ = (
+        Index("idx_search_symbol", "symbol"),
+        Index("idx_search_name", "name"),
+        Index("idx_search_isin", "isin"),
+        Index("idx_search_wkn", "wkn"),
+        Index("idx_search_symbol_exchange", "symbol", "exchange", unique=True),
+        Index("idx_search_popularity", "popularity_score"),
+        # GIN indices for full-text and trigram search defined in migration
+    )

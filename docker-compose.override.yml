@@ -1,0 +1,54 @@
+# Docker Compose Override for External Services (Supabase + Upstash Redis)
+# This file is automatically loaded with docker-compose.yml
+# Uses .env file for credentials
+
+services:
+  # Keep PostgreSQL but make it a no-op that stays healthy
+  # This satisfies depends_on while not actually running a database
+  postgres:
+    image: alpine:latest
+    command: ["sh", "-c", "echo 'Using Supabase - local postgres disabled' && tail -f /dev/null"]
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+      interval: 2s
+      timeout: 1s
+      retries: 1
+      start_period: 1s
+
+  # Disable Kafka/Zookeeper for now
+  zookeeper:
+    profiles: ["kafka"]
+    
+  kafka:
+    profiles: ["kafka"]
+
+  # Auth Service - Connect to Supabase
+  auth-service:
+    environment:
+      # Supabase PostgreSQL (Transaction Pooler)
+      DATABASE_URL: postgresql://postgres.kxgyfwhmcfdfmqrhwkhd:${SUPABASE_PASSWORD}@aws-1-eu-west-2.pooler.supabase.com:6543/postgres
+      
+      # Supabase Configuration
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      
+      # JWT from Supabase
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+
+  # User Service - Connect to Supabase
+  user-service:
+    environment:
+      DATABASE_URL: postgresql://postgres.kxgyfwhmcfdfmqrhwkhd:${SUPABASE_PASSWORD}@aws-1-eu-west-2.pooler.supabase.com:6543/postgres
+
+  # Search Service - Connect to Supabase + Upstash Redis
+  search-service:
+    environment:
+      # Supabase PostgreSQL
+      DATABASE_URL: postgresql://postgres.kxgyfwhmcfdfmqrhwkhd:${SUPABASE_PASSWORD}@aws-1-eu-west-2.pooler.supabase.com:6543/postgres
+      
+      # Upstash Redis
+      REDIS_URL: ${REDIS_URL}
+      
+      # JWT from Supabase
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}

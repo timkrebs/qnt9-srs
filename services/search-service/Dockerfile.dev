@@ -1,0 +1,46 @@
+# Development Dockerfile for Search Service
+# Optimized for local development with hot-reload
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    python3-dev \
+    curl \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt
+
+# Copy alembic configuration
+COPY alembic.ini .
+COPY alembic ./alembic
+
+# Copy application code (will be overridden by volume mount in development)
+COPY app ./app
+
+# Copy tests directory for running tests in container
+COPY tests ./tests
+
+# Create migrations directory if it doesn't exist
+RUN mkdir -p alembic/versions
+
+# Expose application and metrics ports
+EXPOSE 8000 9090
+
+# Run database migrations and start server with hot-reload
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.app:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"]

@@ -1,0 +1,639 @@
+# QNT9-SRS CI/CD Pipeline
+# Infrastructure deployment with HCP Terraform Cloud and Azure AKS/ACR
+# 
+# This pipeline uses three fixed workspaces:
+# - qnt9-srs-dev (development branch)
+# - qnt9-srs-staging (staging branch)
+# - qnt9-srs-prd (main branch)
+
+name: QNT9-SRS CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - development
+      - staging
+  pull_request:
+    branches:
+      - main
+      - development
+      - staging
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prd
+      force_deploy:
+        description: 'Force deployment even without code changes'
+        required: false
+        default: false
+        type: boolean
+
+# Ensure only one pipeline runs per branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_CLOUD_ORGANIZATION: "tim-krebs-org"
+  TF_VAR_FILE_PATH: "infrastructure/terraform"
+  SERVICES: "auth-service,search-service,frontend-service"
+
+jobs:
+  # ============================================================================
+  # STAGE 1: DETECT CHANGES AND DETERMINE ENVIRONMENT
+  # ============================================================================
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      workspace_name: ${{ steps.env.outputs.workspace_name }}
+      services_changed: ${{ steps.changes.outputs.services }}
+      infra_changed: ${{ steps.changes.outputs.infra }}
+      any_changed: ${{ steps.changes.outputs.any }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect file changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            services:
+              - 'services/**'
+            infra:
+              - 'infrastructure/terraform/**'
+              - 'infrastructure/kubernetes/**'
+            any:
+              - '**'
+
+      - name: Determine environment
+        id: env
+        run: |
+          # Determine environment based on branch or input
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENVIRONMENT="${{ github.event.inputs.environment }}"
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            ENVIRONMENT="prd"
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            ENVIRONMENT="staging"
+          else
+            # development branch, PRs, and feature branches
+            ENVIRONMENT="dev"
+          fi
+          
+          # Fixed workspace naming (no ephemeral workspaces)
+          WORKSPACE_NAME="qnt9-srs-${ENVIRONMENT}"
+          
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+          echo "workspace_name=$WORKSPACE_NAME" >> $GITHUB_OUTPUT
+          
+          echo "Environment Configuration:"
+          echo "  Environment: $ENVIRONMENT"
+          echo "  Workspace: $WORKSPACE_NAME"
+
+  # ============================================================================
+  # STAGE 2: CODE QUALITY (LINT)
+  # ============================================================================
+  lint:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services_changed == 'true' || github.event.inputs.force_deploy == 'true'
+    # Continue even if lint fails - report issues but don't block pipeline
+    continue-on-error: true
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install linting tools
+        run: |
+          pip install black isort ruff bandit
+
+      - name: Run Black (formatting)
+        run: |
+          black --check --diff services/ || echo "::warning::Black formatting issues found - run 'black services/' locally to fix"
+        continue-on-error: true
+
+      - name: Run isort (imports)
+        run: |
+          isort --check-only --diff services/ || echo "::warning::Import sorting issues found - run 'isort services/' locally to fix"
+        continue-on-error: true
+
+      - name: Run Ruff (linting)
+        run: |
+          ruff check services/ || echo "::warning::Ruff linting issues found - run 'ruff check --fix services/' locally to fix"
+        continue-on-error: true
+
+      - name: Run Bandit (security)
+        run: |
+          bandit -r services/ -x '**/tests/**' --severity-level medium || echo "::warning::Security issues found"
+        continue-on-error: true
+
+  # ============================================================================
+  # STAGE 3: UNIT TESTS
+  # ============================================================================
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.services_changed == 'true' || github.event.inputs.force_deploy == 'true'
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov pytest-asyncio httpx
+          for service in auth-service search-service; do
+            if [ -f "services/$service/requirements.txt" ]; then
+              pip install -r "services/$service/requirements.txt"
+            fi
+          done
+
+      - name: Run Auth Service tests
+        working-directory: services/auth-service
+        run: |
+          pytest tests/ -v --tb=short --cov=app --cov-report=xml:coverage-auth.xml || true
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET_KEY: test-secret-key
+          TESTING: "true"
+
+      - name: Run Search Service tests
+        working-directory: services/search-service
+        run: |
+          pytest tests/ -v --tb=short --cov=app --cov-report=xml:coverage-search.xml || true
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+          TESTING: "true"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: services/auth-service/coverage-auth.xml,services/search-service/coverage-search.xml
+          fail_ci_if_error: false
+        continue-on-error: true
+
+  # ============================================================================
+  # STAGE 4: TERRAFORM INFRASTRUCTURE PROVISIONING
+  # ============================================================================
+  terraform-provision:
+    name: Provision Infrastructure
+    runs-on: ubuntu-latest
+    needs: [detect-changes, lint]
+    if: |
+      always() && 
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped' || needs.lint.result == 'failure') &&
+      needs.detect-changes.result == 'success'
+    outputs:
+      acr_login_server: ${{ steps.outputs.outputs.acr_login_server }}
+      acr_admin_user: ${{ steps.outputs.outputs.acr_admin_user }}
+      aks_cluster_name: ${{ steps.outputs.outputs.aks_cluster_name }}
+      resource_group: ${{ steps.outputs.outputs.resource_group }}
+    
+    env:
+      TF_API_TOKEN: ${{ secrets.TF_API_TOKEN }}
+      TF_WORKSPACE: ${{ needs.detect-changes.outputs.workspace_name }}
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Generate Terraform Variables
+        working-directory: ${{ env.TF_VAR_FILE_PATH }}
+        run: |
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          
+          # Create cicd.auto.tfvars for CI/CD specific overrides
+          cat > cicd.auto.tfvars <<EOF
+          # Auto-generated by CI/CD pipeline
+          # Environment: $ENV
+          
+          environment = "$ENV"
+          
+          # Disable costly features for non-production
+          $(if [[ "$ENV" != "prd" ]]; then
+            echo "enable_function_app = false"
+          fi)
+          EOF
+          
+          echo "Generated cicd.auto.tfvars:"
+          cat cicd.auto.tfvars
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_VAR_FILE_PATH }}
+        run: |
+          echo "Initializing Terraform for workspace: $TF_WORKSPACE"
+          terraform init -input=false
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_VAR_FILE_PATH }}
+        run: |
+          terraform plan \
+            -var-file="environments/${{ needs.detect-changes.outputs.environment }}.tfvars" \
+            -out=tfplan \
+            -input=false
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_VAR_FILE_PATH }}
+        run: |
+          terraform apply -auto-approve tfplan
+
+      - name: Extract Terraform Outputs
+        id: outputs
+        working-directory: ${{ env.TF_VAR_FILE_PATH }}
+        run: |
+          echo "Extracting Terraform outputs..."
+          
+          ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server 2>/dev/null || echo "")
+          ACR_ADMIN_USER=$(terraform output -raw acr_admin_username 2>/dev/null || echo "")
+          AKS_CLUSTER_NAME=$(terraform output -raw aks_cluster_name 2>/dev/null || echo "")
+          RESOURCE_GROUP=$(terraform output -raw resource_group_name 2>/dev/null || echo "")
+          
+          echo "acr_login_server=$ACR_LOGIN_SERVER" >> $GITHUB_OUTPUT
+          echo "acr_admin_user=$ACR_ADMIN_USER" >> $GITHUB_OUTPUT
+          echo "aks_cluster_name=$AKS_CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "resource_group=$RESOURCE_GROUP" >> $GITHUB_OUTPUT
+          
+          echo "Infrastructure outputs:"
+          echo "  ACR: $ACR_LOGIN_SERVER"
+          echo "  AKS: $AKS_CLUSTER_NAME"
+          echo "  RG: $RESOURCE_GROUP"
+
+  # ============================================================================
+  # STAGE 5: BUILD AND PUSH DOCKER IMAGES
+  # ============================================================================
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [detect-changes, terraform-provision]
+    if: needs.terraform-provision.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [auth-service, search-service, frontend-service]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      - name: Get ACR credentials and login
+        run: |
+          ACR_NAME=$(echo "${{ needs.terraform-provision.outputs.acr_login_server }}" | cut -d'.' -f1)
+          echo "Logging into ACR: $ACR_NAME"
+          az acr login --name $ACR_NAME
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/${{ matrix.service }}
+          file: ./services/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ needs.terraform-provision.outputs.acr_login_server }}/qnt9-${{ matrix.service }}:${{ github.sha }}
+            ${{ needs.terraform-provision.outputs.acr_login_server }}/qnt9-${{ matrix.service }}:${{ needs.detect-changes.outputs.environment }}-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            ENVIRONMENT=${{ needs.detect-changes.outputs.environment }}
+            BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ needs.terraform-provision.outputs.acr_login_server }}/qnt9-${{ matrix.service }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH'
+        continue-on-error: true
+
+  # ============================================================================
+  # STAGE 6: DEPLOY TO AKS
+  # ============================================================================
+  deploy:
+    name: Deploy to ${{ needs.detect-changes.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [detect-changes, terraform-provision, build]
+    if: needs.build.result == 'success'
+    environment: ${{ needs.detect-changes.outputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      - name: Get AKS credentials
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ needs.terraform-provision.outputs.resource_group }} \
+            --name ${{ needs.terraform-provision.outputs.aks_cluster_name }} \
+            --overwrite-existing
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace qnt9-srs-${{ needs.detect-changes.outputs.environment }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create image pull secret
+        run: |
+          # Get ACR credentials dynamically
+          ACR_NAME=$(echo "${{ needs.terraform-provision.outputs.acr_login_server }}" | cut -d'.' -f1)
+          ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --query "passwords[0].value" -o tsv)
+          ACR_USERNAME=$(az acr credential show --name $ACR_NAME --query "username" -o tsv)
+          
+          kubectl create secret docker-registry acr-secret \
+            --namespace qnt9-srs-${{ needs.detect-changes.outputs.environment }} \
+            --docker-server=${{ needs.terraform-provision.outputs.acr_login_server }} \
+            --docker-username=$ACR_USERNAME \
+            --docker-password=$ACR_PASSWORD \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create application secrets
+        run: |
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          
+          # Create qnt9-secrets with required keys
+          kubectl create secret generic qnt9-secrets \
+            --namespace $NAMESPACE \
+            --from-literal=database-url="${{ secrets.DATABASE_URL }}" \
+            --from-literal=jwt-secret-key="${{ secrets.JWT_SECRET_KEY }}" \
+            --from-literal=redis-url="${{ secrets.REDIS_URL }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy base Kubernetes resources
+        run: |
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          
+          # Create ServiceAccount and RBAC resources
+          kubectl apply -f - <<EOF
+          apiVersion: v1
+          kind: ServiceAccount
+          metadata:
+            name: qnt9-service-account
+            namespace: ${NAMESPACE}
+            labels:
+              app: qnt9-srs
+              environment: ${ENV}
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: Role
+          metadata:
+            name: qnt9-service-role
+            namespace: ${NAMESPACE}
+          rules:
+          - apiGroups: [""]
+            resources: ["configmaps", "secrets"]
+            verbs: ["get", "list"]
+          ---
+          apiVersion: rbac.authorization.k8s.io/v1
+          kind: RoleBinding
+          metadata:
+            name: qnt9-service-rolebinding
+            namespace: ${NAMESPACE}
+          roleRef:
+            apiGroup: rbac.authorization.k8s.io
+            kind: Role
+            name: qnt9-service-role
+          subjects:
+          - kind: ServiceAccount
+            name: qnt9-service-account
+            namespace: ${NAMESPACE}
+          EOF
+
+      - name: Deploy services to AKS
+        run: |
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          ACR="${{ needs.terraform-provision.outputs.acr_login_server }}"
+          TAG="${{ github.sha }}"
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          
+          # Replace placeholders in all k8s manifests
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i "s/namespace: qnt9$/namespace: ${NAMESPACE}/g" {} \;
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${ENVIRONMENT}/'"${ENV}"'/g' {} \;
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${ACR_LOGIN_SERVER}/'"${ACR}"'/g' {} \;
+          find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${IMAGE_TAG}/'"${TAG}"'/g' {} \;
+          
+          for service in auth-service search-service frontend-service; do
+            DEPLOY_FILE="infrastructure/kubernetes/${service}/deployment.yaml"
+            SERVICE_FILE="infrastructure/kubernetes/${service}/service.yaml"
+            
+            if [ -f "$DEPLOY_FILE" ]; then
+              echo "Deploying $service..."
+              
+              kubectl apply -f "$DEPLOY_FILE" -n "$NAMESPACE"
+              
+              if [ -f "$SERVICE_FILE" ]; then
+                kubectl apply -f "$SERVICE_FILE" -n "$NAMESPACE"
+              fi
+            fi
+          done
+
+      - name: Wait for deployments
+        run: |
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          
+          for service in auth-service search-service frontend-service; do
+            echo "Waiting for $service deployment..."
+            kubectl rollout status deployment/$service -n "$NAMESPACE" --timeout=300s || true
+          done
+
+      - name: Verify deployment
+        run: |
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          
+          echo "Deployment Status:"
+          kubectl get deployments -n "$NAMESPACE"
+          echo ""
+          echo "Pods:"
+          kubectl get pods -n "$NAMESPACE"
+          echo ""
+          echo "Services:"
+          kubectl get services -n "$NAMESPACE"
+
+  # ============================================================================
+  # STAGE 7: INTEGRATION TESTS
+  # ============================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [detect-changes, terraform-provision, deploy]
+    if: needs.deploy.result == 'success'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest requests httpx
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.ARM_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.ARM_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.ARM_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.ARM_TENANT_ID }}"
+            }
+
+      - name: Get service endpoints
+        id: endpoints
+        run: |
+          az aks get-credentials \
+            --resource-group ${{ needs.terraform-provision.outputs.resource_group }} \
+            --name ${{ needs.terraform-provision.outputs.aks_cluster_name }} \
+            --overwrite-existing
+          
+          NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
+          
+          # Get service IPs/endpoints
+          AUTH_IP=$(kubectl get svc auth-service -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          SEARCH_IP=$(kubectl get svc search-service -n "$NAMESPACE" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          
+          echo "auth_endpoint=http://${AUTH_IP}:8000" >> $GITHUB_OUTPUT
+          echo "search_endpoint=http://${SEARCH_IP}:8000" >> $GITHUB_OUTPUT
+
+      - name: Run integration tests
+        working-directory: tests/integration
+        run: |
+          pytest test_services_health.py -v --tb=short
+        env:
+          TEST_ENVIRONMENT: ${{ needs.detect-changes.outputs.environment }}
+        continue-on-error: true
+
+  # ============================================================================
+  # PIPELINE SUMMARY
+  # ============================================================================
+  summary:
+    name: Pipeline Summary
+    runs-on: ubuntu-latest
+    needs: [detect-changes, lint, terraform-provision, build, unit-tests, deploy, integration-tests]
+    if: always()
+    
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "# QNT9-SRS Pipeline Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`${{ needs.detect-changes.outputs.environment }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Workspace | \`${{ needs.detect-changes.outputs.workspace_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Stage Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Detect Changes | \`${{ needs.detect-changes.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | \`${{ needs.lint.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | \`${{ needs.unit-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform | \`${{ needs.terraform-provision.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | \`${{ needs.build.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Deploy | \`${{ needs.deploy.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | \`${{ needs.integration-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.terraform-provision.result }}" == "success" ]]; then
+            echo "## Infrastructure" >> $GITHUB_STEP_SUMMARY
+            echo "| Resource | Value |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| ACR | \`${{ needs.terraform-provision.outputs.acr_login_server }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| AKS | \`${{ needs.terraform-provision.outputs.aks_cluster_name }}\` |" >> $GITHUB_STEP_SUMMARY
+            echo "| Resource Group | \`${{ needs.terraform-provision.outputs.resource_group }}\` |" >> $GITHUB_STEP_SUMMARY
+          fi

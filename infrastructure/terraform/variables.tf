@@ -1,3 +1,7 @@
+# Terraform Variables for QNT9 SRS Azure Infrastructure
+# Note: Workspace selection is done via TF_WORKSPACE env var or terraform workspace select
+# Available workspaces in TFC should be tagged with "qnt9-srs"
+
 # Core Azure Configuration
 variable "location" {
   description = "Azure region where resources will be deployed"
@@ -12,6 +16,25 @@ variable "environment" {
     condition     = contains(["dev", "staging", "prd"], var.environment)
     error_message = "Environment must be dev, staging, or prd."
   }
+}
+
+# CI/CD Ephemeral Infrastructure Configuration
+variable "ephemeral" {
+  description = "Whether this is an ephemeral deployment (created and destroyed per CI/CD run)"
+  type        = bool
+  default     = false
+}
+
+variable "run_id" {
+  description = "Unique identifier for the CI/CD run (GitHub Actions run ID or PR number)"
+  type        = string
+  default     = ""
+}
+
+variable "enable_function_app" {
+  description = "Enable Function App (can be disabled for ephemeral deployments)"
+  type        = bool
+  default     = true
 }
 
 # Business Information
@@ -67,35 +90,6 @@ variable "data_residency" {
   type        = string
 }
 
-# Database Configuration
-variable "db_name" {
-  description = "PostgreSQL database name"
-  type        = string
-}
-
-variable "db_username" {
-  description = "PostgreSQL administrator username"
-  type        = string
-}
-
-variable "db_sku_name" {
-  description = "PostgreSQL SKU name (e.g., B_Standard_B1ms)"
-  type        = string
-  default     = "B_Standard_B1ms"
-}
-
-variable "db_storage_mb" {
-  description = "PostgreSQL storage size in MB"
-  type        = number
-  default     = 32768
-}
-
-variable "db_version" {
-  description = "PostgreSQL version"
-  type        = string
-  default     = "16"
-}
-
 # AKS Configuration
 variable "aks_node_count" {
   description = "Number of nodes in the AKS cluster"
@@ -120,45 +114,16 @@ variable "aks_kubernetes_version" {
   default     = "1.31.11"
 }
 
-# HCP Vault Configuration
-variable "vault_address" {
-  description = "HCP Vault address"
-  type        = string
-  default     = ""
-  sensitive   = true
+variable "aks_ephemeral_node_count" {
+  description = "Number of nodes for ephemeral AKS clusters (cost optimization)"
+  type        = number
+  default     = 1
 }
 
-variable "vault_namespace" {
-  description = "HCP Vault namespace"
+variable "aks_ephemeral_vm_size" {
+  description = "VM size for ephemeral AKS clusters (cost optimization)"
   type        = string
-  default     = "admin"
-}
-
-variable "vault_token" {
-  description = "HCP Vault token"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "enable_vault_integration" {
-  description = "Enable HCP Vault integration for storing secrets"
-  type        = bool
-  default     = false
-}
-
-# Monitoring Configuration (Optional)
-variable "datadog_api_key" {
-  description = "Datadog API key for monitoring"
-  type        = string
-  default     = ""
-  sensitive   = true
-}
-
-variable "datadog_site" {
-  description = "Datadog site (e.g., datadoghq.com, datadoghq.eu)"
-  type        = string
-  default     = "datadoghq.com"
+  default     = "Standard_B2s"
 }
 
 # Networking (Optional for future)

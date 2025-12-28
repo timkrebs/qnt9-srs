@@ -105,10 +105,10 @@
                 </div>
                 {% endif %}
                 
-                {% if stock.fifty_two_week_low and stock.fifty_two_week_high %}
+                {% if stock.week_52_low and stock.week_52_high %}
                 <div>
                     <div class="text-sm text-gray-500 mb-1">52W range</div>
-                    <div class="font-semibold text-gray-900">{{ "%.2f"|format(stock.fifty_two_week_low) }} - {{ "%.2f"|format(stock.fifty_two_week_high) }}</div>
+                    <div class="font-semibold text-gray-900">{{ "%.2f"|format(stock.week_52_low) }} - {{ "%.2f"|format(stock.week_52_high) }}</div>
                 </div>
                 {% endif %}
                 
@@ -136,10 +136,10 @@
                 </div>
                 {% endif %}
                 
-                {% if stock.open %}
+                {% if stock.open_price %}
                 <div>
                     <div class="text-sm text-gray-500 mb-1">Open</div>
-                    <div class="font-semibold text-gray-900">{{ "%.2f"|format(stock.open) }}</div>
+                    <div class="font-semibold text-gray-900">{{ "%.2f"|format(stock.open_price) }}</div>
                 </div>
                 {% endif %}
                 
@@ -150,17 +150,37 @@
                 </div>
                 {% endif %}
                 
-                {% if stock.bid %}
+                {% if stock.volume %}
                 <div>
-                    <div class="text-sm text-gray-500 mb-1">Bid</div>
-                    <div class="font-semibold text-gray-900">{{ "%.2f"|format(stock.bid) }}</div>
+                    <div class="text-sm text-gray-500 mb-1">Volume</div>
+                    <div class="font-semibold text-gray-900">
+                        {% if stock.volume >= 1000000000 %}
+                            {{ "%.2f"|format(stock.volume / 1000000000) }}B
+                        {% elif stock.volume >= 1000000 %}
+                            {{ "%.2f"|format(stock.volume / 1000000) }}M
+                        {% elif stock.volume >= 1000 %}
+                            {{ "%.2f"|format(stock.volume / 1000) }}K
+                        {% else %}
+                            {{ "{:,}".format(stock.volume|int) }}
+                        {% endif %}
+                    </div>
                 </div>
                 {% endif %}
                 
-                {% if stock.ask %}
+                {% if stock.avg_volume %}
                 <div>
-                    <div class="text-sm text-gray-500 mb-1">Ask</div>
-                    <div class="font-semibold text-gray-900">{{ "%.2f"|format(stock.ask) }}</div>
+                    <div class="text-sm text-gray-500 mb-1">Avg Volume</div>
+                    <div class="font-semibold text-gray-900">
+                        {% if stock.avg_volume >= 1000000000 %}
+                            {{ "%.2f"|format(stock.avg_volume / 1000000000) }}B
+                        {% elif stock.avg_volume >= 1000000 %}
+                            {{ "%.2f"|format(stock.avg_volume / 1000000) }}M
+                        {% elif stock.avg_volume >= 1000 %}
+                            {{ "%.2f"|format(stock.avg_volume / 1000) }}K
+                        {% else %}
+                            {{ "{:,}".format(stock.avg_volume|int) }}
+                        {% endif %}
+                    </div>
                 </div>
                 {% endif %}
                 
@@ -181,165 +201,243 @@
         </div>
     </div>
 
-    <!-- Dividends Section (like in screenshot) -->
-    {% if stock.dividend_rate or stock.dividend_yield %}
+    <!-- Dividends Section -->
     <div class="border-t border-gray-100 p-6 md:p-8">
         <h3 class="text-xl font-bold text-gray-900 mb-4">Dividends</h3>
-        <div class="space-y-3">
-            <!-- Placeholder dividend history -->
-            <div class="flex items-center justify-between py-3 border-b border-gray-50">
-                <div class="flex items-center gap-4">
-                    <span class="text-gray-600">Oct 25</span>
-                    <div class="flex-1 bg-green-500 h-2 rounded-full" style="max-width: 400px;"></div>
+        {% if stock.dividend_rate or stock.dividend_yield %}
+            <div class="space-y-3">
+                <!-- Placeholder dividend history -->
+                <div class="flex items-center justify-between py-3 border-b border-gray-50">
+                    <div class="flex items-center gap-4">
+                        <span class="text-gray-600">Oct 25</span>
+                        <div class="flex-1 bg-green-500 h-2 rounded-full" style="max-width: 400px;"></div>
+                    </div>
+                    <span class="font-semibold">{% if stock.dividend_rate %}{{ "%.2f"|format(stock.dividend_rate / 4) }} {{ stock.currency or '€' }}{% else %}N/A{% endif %}</span>
                 </div>
-                <span class="font-semibold">{% if stock.dividend_rate %}{{ "%.2f"|format(stock.dividend_rate / 4) }} €{% endif %}</span>
-            </div>
-            <div class="flex items-center justify-between py-3 border-b border-gray-50">
-                <div class="flex items-center gap-4">
-                    <span class="text-gray-600">Jul 25</span>
-                    <div class="flex-1 bg-green-500 h-2 rounded-full" style="max-width: 400px;"></div>
+                <div class="flex items-center justify-between py-3 border-b border-gray-50">
+                    <div class="flex items-center gap-4">
+                        <span class="text-gray-600">Jul 25</span>
+                        <div class="flex-1 bg-green-500 h-2 rounded-full" style="max-width: 400px;"></div>
+                    </div>
+                    <span class="font-semibold">{% if stock.dividend_rate %}{{ "%.2f"|format(stock.dividend_rate / 4) }} {{ stock.currency or '€' }}{% else %}N/A{% endif %}</span>
                 </div>
-                <span class="font-semibold">{% if stock.dividend_rate %}{{ "%.2f"|format(stock.dividend_rate / 4) }} €{% endif %}</span>
-            </div>
-            <div class="flex items-center justify-between py-3 border-b border-gray-50">
-                <div class="flex items-center gap-4">
-                    <span class="text-gray-600">Apr 25</span>
-                    <div class="flex-1 bg-green-500 h-2 rounded-full" style="max-width: 400px;"></div>
+                <div class="flex items-center justify-between py-3 border-b border-gray-50">
+                    <div class="flex items-center gap-4">
+                        <span class="text-gray-600">Apr 25</span>
+                        <div class="flex-1 bg-green-500 h-2 rounded-full" style="max-width: 400px;"></div>
+                    </div>
+                    <span class="font-semibold">{% if stock.dividend_rate %}{{ "%.2f"|format(stock.dividend_rate / 4) }} {{ stock.currency or '€' }}{% else %}N/A{% endif %}</span>
                 </div>
-                <span class="font-semibold">{% if stock.dividend_rate %}{{ "%.2f"|format(stock.dividend_rate / 4) }} €{% endif %}</span>
             </div>
+            {% if stock.ex_dividend_date %}
+            <p class="text-sm text-gray-500 mt-4">Ex-dividend date: {{ stock.ex_dividend_date|timestamp_to_date }}</p>
+            {% endif %}
+        {% else %}
+        <div class="text-center py-8">
+            <div class="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <p class="text-gray-500 text-sm">
+                This stock does not currently pay dividends.
+            </p>
         </div>
-        {% if stock.ex_dividend_date %}
-        <p class="text-sm text-gray-500 mt-4">Ex-dividend date: {{ stock.ex_dividend_date|timestamp_to_date }}</p>
         {% endif %}
     </div>
-    {% endif %}
 
-    <!-- What analysts say Section (like in screenshot) -->
-    {% if stock.target_mean_price or stock.recommendation_key %}
+    <!-- What analysts say Section -->
     <div class="border-t border-gray-100 p-6 md:p-8">
         <h3 class="text-xl font-bold text-gray-900 mb-4">What analysts say</h3>
         
-        {% if stock.target_mean_price %}
-        <div class="mb-6">
-            <div class="text-4xl font-bold text-gray-900 mb-2">
-                {{ "%.2f"|format(stock.target_mean_price) }} {{ stock.currency or '€' }}
+        {% if stock.target_mean_price or stock.recommendation_key %}
+            {% if stock.target_mean_price %}
+            <div class="mb-6">
+                <div class="text-4xl font-bold text-gray-900 mb-2">
+                    {{ "%.2f"|format(stock.target_mean_price) }} {{ stock.currency or '€' }}
+                </div>
+                <p class="text-sm text-gray-500">
+                    Average stock price estimate. The highest estimate is 
+                    {% if stock.target_high_price %}{{ "%.2f"|format(stock.target_high_price) }} {{ stock.currency or '€' }}{% else %}N/A{% endif %} 
+                    and the lowest estimate is 
+                    {% if stock.target_low_price %}{{ "%.2f"|format(stock.target_low_price) }} {{ stock.currency or '€' }}{% else %}N/A{% endif %}.
+                    {% if stock.number_of_analyst_opinions %}This result is evaluated by {{ stock.number_of_analyst_opinions }} analysts.{% endif %}
+                </p>
             </div>
-            <p class="text-sm text-gray-500">
-                Average stock price estimate. The highest estimate is 
-                {% if stock.target_high_price %}{{ "%.2f"|format(stock.target_high_price) }} €{% else %}N/A{% endif %} 
-                and the lowest estimate is 
-                {% if stock.target_low_price %}{{ "%.2f"|format(stock.target_low_price) }} €{% else %}N/A{% endif %}.
-                {% if stock.number_of_analyst_opinions %}This result is evaluated by {{ stock.number_of_analyst_opinions }} analysts.{% endif %}
-            </p>
-        </div>
-        {% endif %}
-        
-        {% if stock.recommendation_key %}
-        <div class="flex items-center gap-4 mb-4">
-            <div class="relative w-full h-8 bg-gray-100 rounded-full overflow-hidden">
-                <!-- Recommendation bar (like screenshot) -->
-                <div class="absolute inset-0 flex">
-                    <div class="w-1/5 bg-green-500"></div>
-                    <div class="w-1/5 bg-green-400"></div>
-                    <div class="w-1/5 bg-gray-300"></div>
-                    <div class="w-1/5 bg-orange-400"></div>
-                    <div class="w-1/5 bg-red-500"></div>
+            {% endif %}
+            
+            {% if stock.recommendation_key %}
+            <div class="flex items-center gap-4 mb-4">
+                <div class="relative w-full h-8 bg-gray-100 rounded-full overflow-hidden">
+                    <!-- Recommendation bar -->
+                    <div class="absolute inset-0 flex">
+                        <div class="w-1/5 bg-green-500"></div>
+                        <div class="w-1/5 bg-green-400"></div>
+                        <div class="w-1/5 bg-gray-300"></div>
+                        <div class="w-1/5 bg-orange-400"></div>
+                        <div class="w-1/5 bg-red-500"></div>
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="flex justify-between text-sm text-gray-600">
-            <span class="font-medium {% if stock.recommendation_key == 'strong_buy' or stock.recommendation_key == 'buy' %}text-green-600{% endif %}">Buy</span>
-            <span class="font-medium">Hold</span>
-            <span class="font-medium">Sell</span>
-        </div>
-        
-        <div class="mt-4 text-center">
-            <span class="inline-block px-4 py-2 bg-gray-100 rounded-lg font-semibold text-gray-900 capitalize">
-                {{ stock.recommendation_key|replace('_', ' ') }} ({{ "%.0f"|format(stock.recommendation_mean * 20) if stock.recommendation_mean else 'N/A' }}%)
-            </span>
+            
+            <div class="flex justify-between text-sm text-gray-600">
+                <span class="font-medium {% if stock.recommendation_key == 'strong_buy' or stock.recommendation_key == 'buy' %}text-green-600{% endif %}">Buy</span>
+                <span class="font-medium">Hold</span>
+                <span class="font-medium">Sell</span>
+            </div>
+            
+            <div class="mt-4 text-center">
+                <span class="inline-block px-4 py-2 bg-gray-100 rounded-lg font-semibold text-gray-900 capitalize">
+                    {{ stock.recommendation_key|replace('_', ' ') }} ({{ "%.0f"|format(stock.recommendation_mean * 20) if stock.recommendation_mean else 'N/A' }}%)
+                </span>
+            </div>
+            {% endif %}
+        {% else %}
+        <div class="text-center py-8">
+            <div class="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+            </div>
+            <p class="text-gray-500 text-sm">
+                No analyst ratings available for this stock.
+            </p>
         </div>
         {% endif %}
     </div>
-    {% endif %}
 
     <!-- Information Section (Company Description) -->
-    {% if stock.long_business_summary or stock.isin or stock.wkn or stock.symbol %}
     <div class="border-t border-gray-100 p-6 md:p-8">
-        <h3 class="text-xl font-bold text-gray-900 mb-4">Information</h3>
+        <h3 class="text-xl font-bold text-gray-900 mb-6">Information</h3>
         
-        <!-- Tabs (like screenshot) -->
-        <div class="flex gap-4 mb-6 border-b border-gray-200">
-            <button class="pb-3 px-1 font-semibold text-gray-900 border-b-2 border-gray-900">{{ stock.country or 'USA' }}</button>
-            {% if stock.exchange %}<button class="pb-3 px-1 text-gray-500 hover:text-gray-900">{{ stock.exchange }}</button>{% endif %}
-            {% if stock.sector %}<button class="pb-3 px-1 text-gray-500 hover:text-gray-900">{{ stock.sector }}</button>{% endif %}
-            {% if stock.isin %}<button class="pb-3 px-1 text-gray-500 hover:text-gray-900">ISIN</button>{% endif %}
+        <!-- Category Badges (always shown with defaults) -->
+        <div class="flex flex-wrap gap-3 mb-8">
+            <span class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium whitespace-nowrap">
+                {{ stock.country or stock.headquarters or 'N/A' }}
+            </span>
+            <span class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium whitespace-nowrap">
+                {{ stock.exchange or 'N/A' }}
+            </span>
+            {% if stock.sector %}
+            <span class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium whitespace-nowrap">
+                {{ stock.sector }}
+            </span>
+            {% endif %}
+            {% if stock.industry %}
+            <span class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium whitespace-nowrap">
+                {{ stock.industry }}
+            </span>
+            {% endif %}
         </div>
         
-        <!-- Company Description -->
-        {% if stock.long_business_summary %}
-        <div class="prose max-w-none mb-6">
-            <p class="text-gray-700 leading-relaxed">
-                {{ stock.long_business_summary[:500] }}{% if stock.long_business_summary|length > 500 %}...{% endif %}
-            </p>
+        <!-- Company Description (optional, shown if available) -->
+        {% if stock.description %}
+        <div class="prose max-w-none mb-8">
+            <div id="description-container">
+                <p class="text-gray-700 leading-relaxed text-base" id="description-text">
+                    {{ stock.description[:600] }}{% if stock.description|length > 600 %}...{% endif %}
+                </p>
+                <p class="text-gray-700 leading-relaxed text-base hidden" id="description-full">
+                    {{ stock.description }}
+                </p>
+            </div>
             
-            {% if stock.long_business_summary|length > 500 %}
-            <button class="text-blue-600 hover:text-blue-700 font-medium mt-2">Show more ▼</button>
+            {% if stock.description|length > 600 %}
+            <button onclick="toggleDescription()" class="text-blue-600 hover:text-blue-700 font-medium mt-3 inline-flex items-center gap-2" id="show-more-btn">
+                <span id="btn-text">Show more</span>
+                <svg class="w-4 h-4 transform transition-transform" id="btn-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+            
+            <script>
+                function toggleDescription() {
+                    const shortText = document.getElementById('description-text');
+                    const fullText = document.getElementById('description-full');
+                    const btnText = document.getElementById('btn-text');
+                    const btnIcon = document.getElementById('btn-icon');
+                    
+                    if (shortText.classList.contains('hidden')) {
+                        // Show short text
+                        shortText.classList.remove('hidden');
+                        fullText.classList.add('hidden');
+                        btnText.textContent = 'Show more';
+                        btnIcon.classList.remove('rotate-180');
+                    } else {
+                        // Show full text
+                        shortText.classList.add('hidden');
+                        fullText.classList.remove('hidden');
+                        btnText.textContent = 'Show less';
+                        btnIcon.classList.add('rotate-180');
+                    }
+                }
+            </script>
             {% endif %}
+        </div>
+        {% else %}
+        <div class="mb-8">
+            <p class="text-gray-500 text-sm italic">
+                No company description available.
+            </p>
         </div>
         {% endif %}
         
-        <!-- Company Details -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {% if stock.isin %}
+        <!-- Company Details Grid (always shown with essential fields) -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Row 1: Identifiers (always shown) -->
             <div>
                 <div class="text-sm text-gray-500 mb-1">ISIN</div>
-                <div class="font-semibold text-gray-900">{{ stock.isin }}</div>
+                <div class="font-semibold text-gray-900">{{ stock.isin or 'N/A' }}</div>
             </div>
-            {% endif %}
             
-            {% if stock.wkn %}
             <div>
                 <div class="text-sm text-gray-500 mb-1">WKN</div>
-                <div class="font-semibold text-gray-900">{{ stock.wkn }}</div>
+                <div class="font-semibold text-gray-900">{{ stock.wkn or 'N/A' }}</div>
             </div>
-            {% endif %}
             
-            {% if stock.symbol %}
             <div>
-                <div class="text-sm text-gray-500 mb-1">Name</div>
-                <div class="font-semibold text-gray-900">{{ stock.symbol }}</div>
+                <div class="text-sm text-gray-500 mb-1">Symbol</div>
+                <div class="font-semibold text-gray-900">{{ stock.symbol or 'N/A' }}</div>
+            </div>
+            
+            <!-- Row 2: Company Info (optional fields) -->
+            {% if stock.employees or stock.founded or stock.headquarters %}
+            {% if stock.employees %}
+            <div>
+                <div class="text-sm text-gray-500 mb-1">Employees</div>
+                <div class="font-semibold text-gray-900">{{ "{:,}".format(stock.employees) }}</div>
             </div>
             {% endif %}
             
+            {% if stock.founded %}
+            <div>
+                <div class="text-sm text-gray-500 mb-1">Founded</div>
+                <div class="font-semibold text-gray-900">{{ stock.founded }}</div>
+            </div>
+            {% endif %}
+            
+            {% if stock.headquarters %}
+            <div>
+                <div class="text-sm text-gray-500 mb-1">Headquarters</div>
+                <div class="font-semibold text-gray-900">{{ stock.headquarters }}</div>
+            </div>
+            {% endif %}
+            {% endif %}
+            
+            <!-- Row 3: Website (full width if available) -->
             {% if stock.website %}
             <div class="md:col-span-3">
                 <div class="text-sm text-gray-500 mb-1">Website</div>
-                <a href="{{ stock.website }}" target="_blank" class="font-semibold text-blue-600 hover:text-blue-700">
+                <a href="{{ stock.website }}" target="_blank" class="font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-2">
                     {{ stock.website }}
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                    </svg>
                 </a>
-            </div>
-            {% endif %}
-            
-            {% if stock.full_time_employees %}
-            <div>
-                <div class="text-sm text-gray-500 mb-1">Employees</div>
-                <div class="font-semibold text-gray-900">{{ "{:,}".format(stock.full_time_employees) }}</div>
-            </div>
-            {% endif %}
-            
-            {% if stock.city or stock.country %}
-            <div class="md:col-span-2">
-                <div class="text-sm text-gray-500 mb-1">Headquarters</div>
-                <div class="font-semibold text-gray-900">
-                    {% if stock.city %}{{ stock.city }}{% endif %}{% if stock.state %}, {{ stock.state }}{% endif %}{% if stock.country %}, {{ stock.country }}{% endif %}
-                </div>
             </div>
             {% endif %}
         </div>
     </div>
-    {% endif %}
 
     <!-- News Section (Placeholder) -->
     <div class="border-t border-gray-100 p-6 md:p-8">

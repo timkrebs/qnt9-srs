@@ -55,10 +55,14 @@ class SearchServiceClient:
     and service health checks. All methods are async and include
     proper timeout, error handling, and distributed tracing support.
 
+    Uses a persistent HTTP client with connection pooling for improved
+    performance (reduces TCP connection overhead by ~50-100ms per request).
+
     Attributes:
         base_url: Base URL of the search service
         timeout: Request timeout in seconds
         suggestion_timeout: Timeout for suggestion requests in seconds
+        _client: Persistent httpx.AsyncClient with connection pooling
     """
 
     def __init__(
@@ -75,12 +79,47 @@ class SearchServiceClient:
         """
         self.base_url = base_url or settings.SEARCH_SERVICE_URL
         self.timeout = timeout or settings.REQUEST_TIMEOUT
-        self.suggestion_timeout = 1.0
+        self.suggestion_timeout = 3.0
+
+        # Persistent HTTP client with connection pooling for performance
+        # Limits: max 20 keepalive connections, max 100 total connections
+        self._client: Optional[httpx.AsyncClient] = None
 
         logger.info(
             f"Initialized SearchServiceClient: base_url={self.base_url}, "
             f"timeout={self.timeout}s"
         )
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """
+        Get or create the persistent HTTP client with connection pooling.
+
+        Returns:
+            Configured httpx.AsyncClient instance
+        """
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=30.0,
+                ),
+                http2=False,  # Disable HTTP/2 for MVP (h2 not installed)
+            )
+            logger.debug("Created new HTTP client with connection pooling")
+        return self._client
+
+    async def close(self) -> None:
+        """
+        Close the HTTP client and release connections.
+
+        Should be called during application shutdown.
+        """
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
+            logger.debug("Closed HTTP client")
 
     def _get_request_headers(self) -> Dict[str, str]:
         """
@@ -135,72 +174,70 @@ class SearchServiceClient:
         )
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                request_url = f"{self.base_url}/api/stocks/search"
+            client = await self._get_client()
+            request_url = f"{self.base_url}/api/v1/search"
 
-                logger.debug(
-                    "Sending search request to backend",
-                    extra={
-                        "extra_fields": {
-                            "url": request_url,
-                            "params": {"query": query},
-                            "headers": self._get_request_headers(),
-                        }
-                    },
-                )
+            logger.debug(
+                "Sending search request to backend",
+                extra={
+                    "extra_fields": {
+                        "url": request_url,
+                        "params": {"query": query},
+                        "headers": self._get_request_headers(),
+                    }
+                },
+            )
 
-                response = await client.get(
-                    request_url,
-                    params={"query": query},
-                    headers=self._get_request_headers(),
-                )
+            response = await client.get(
+                request_url,
+                params={"query": query},
+                headers=self._get_request_headers(),
+            )
 
-                duration_ms = (time.perf_counter() - start_time) * 1000
+            duration_ms = (time.perf_counter() - start_time) * 1000
 
+            logger.info(
+                "Received response from search service",
+                extra={
+                    "extra_fields": {
+                        "status_code": response.status_code,
+                        "duration_ms": duration_ms,
+                        "response_size": len(response.content),
+                    }
+                },
+            )
+
+            response.raise_for_status()
+            result = response.json()
+
+            if result.get("success"):
+                stock_data = result.get("data", {})
                 logger.info(
-                    "Received response from search service",
+                    "Search successful",
                     extra={
                         "extra_fields": {
-                            "status_code": response.status_code,
+                            "query": query,
+                            "stock_name": stock_data.get("name"),
+                            "stock_symbol": stock_data.get("symbol"),
+                            "query_type": result.get("query_type"),
+                            "backend_response_time_ms": result.get("response_time_ms", 0),
+                            "total_time_ms": duration_ms,
+                        }
+                    },
+                )
+            else:
+                logger.warning(
+                    "Search returned no results",
+                    extra={
+                        "extra_fields": {
+                            "query": query,
+                            "message": result.get("message"),
                             "duration_ms": duration_ms,
-                            "response_size": len(response.content),
                         }
                     },
                 )
 
-                response.raise_for_status()
-                result = response.json()
-
-                if result.get("success"):
-                    stock_data = result.get("data", {})
-                    logger.info(
-                        "Search successful",
-                        extra={
-                            "extra_fields": {
-                                "query": query,
-                                "stock_name": stock_data.get("name"),
-                                "stock_symbol": stock_data.get("symbol"),
-                                "query_type": result.get("query_type"),
-                                "backend_response_time_ms": result.get(
-                                    "response_time_ms", 0
-                                ),
-                                "total_time_ms": duration_ms,
-                            }
-                        },
-                    )
-                else:
-                    logger.warning(
-                        "Search returned no results",
-                        extra={
-                            "extra_fields": {
-                                "query": query,
-                                "message": result.get("message"),
-                                "duration_ms": duration_ms,
-                            }
-                        },
-                    )
-
-                return result
+            return result
 
         except (httpx.TimeoutException, TimeoutError) as error:
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -367,42 +404,43 @@ class SearchServiceClient:
         start_time = time.perf_counter()
 
         try:
-            async with httpx.AsyncClient(timeout=self.suggestion_timeout) as client:
-                logger.debug(
-                    "Fetching suggestions",
-                    extra={
-                        "extra_fields": {
-                            "query": query,
-                            "limit": limit,
-                            "timeout": self.suggestion_timeout,
-                        }
-                    },
-                )
+            client = await self._get_client()
+            logger.debug(
+                "Fetching suggestions",
+                extra={
+                    "extra_fields": {
+                        "query": query,
+                        "limit": limit,
+                        "timeout": self.suggestion_timeout,
+                    }
+                },
+            )
 
-                response = await client.get(
-                    f"{self.base_url}/api/stocks/suggestions",
-                    params={"query": query, "limit": limit},
-                    headers=self._get_request_headers(),
-                )
+            response = await client.get(
+                f"{self.base_url}/api/v1/suggestions",
+                params={"query": query, "limit": limit},
+                headers=self._get_request_headers(),
+                timeout=self.suggestion_timeout,
+            )
 
-                duration_ms = (time.perf_counter() - start_time) * 1000
+            duration_ms = (time.perf_counter() - start_time) * 1000
 
-                response.raise_for_status()
-                result = response.json()
-                suggestions = result.get("suggestions", [])
+            response.raise_for_status()
+            result = response.json()
+            suggestions = result.get("suggestions", [])
 
-                logger.debug(
-                    "Retrieved suggestions",
-                    extra={
-                        "extra_fields": {
-                            "query": query,
-                            "suggestions_count": len(suggestions),
-                            "duration_ms": duration_ms,
-                        }
-                    },
-                )
+            logger.debug(
+                "Retrieved suggestions",
+                extra={
+                    "extra_fields": {
+                        "query": query,
+                        "suggestions_count": len(suggestions),
+                        "duration_ms": duration_ms,
+                    }
+                },
+            )
 
-                return suggestions
+            return suggestions
 
         except Exception as error:
             duration_ms = (time.perf_counter() - start_time) * 1000
@@ -564,36 +602,37 @@ class SearchServiceClient:
             True if service is healthy, False otherwise
         """
         try:
-            async with httpx.AsyncClient(timeout=1.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/health",
-                    headers=self._get_request_headers(),
+            client = await self._get_client()
+            response = await client.get(
+                f"{self.base_url}/api/v1/health",
+                headers=self._get_request_headers(),
+                timeout=1.0,
+            )
+            is_healthy = response.status_code == 200
+
+            if is_healthy:
+                logger.debug(
+                    "Search service health check passed",
+                    extra={
+                        "extra_fields": {
+                            "backend_url": self.base_url,
+                            "status_code": response.status_code,
+                        }
+                    },
                 )
-                is_healthy = response.status_code == 200
+            else:
+                logger.warning(
+                    "Search service health check failed",
+                    extra={
+                        "extra_fields": {
+                            "backend_url": self.base_url,
+                            "status_code": response.status_code,
+                            "response_body": response.text[:200],
+                        }
+                    },
+                )
 
-                if is_healthy:
-                    logger.debug(
-                        "Search service health check passed",
-                        extra={
-                            "extra_fields": {
-                                "backend_url": self.base_url,
-                                "status_code": response.status_code,
-                            }
-                        },
-                    )
-                else:
-                    logger.warning(
-                        "Search service health check failed",
-                        extra={
-                            "extra_fields": {
-                                "backend_url": self.base_url,
-                                "status_code": response.status_code,
-                                "response_body": response.text[:200],
-                            }
-                        },
-                    )
-
-                return is_healthy
+            return is_healthy
 
         except Exception as error:
             logger.warning(

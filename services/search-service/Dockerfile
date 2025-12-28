@@ -10,11 +10,17 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     libffi-dev \
     python3-dev \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir --upgrade -r /app/requirements.txt
 
 COPY ./app /app/app
+COPY ./alembic /app/alembic
+COPY ./alembic.ini /app/alembic.ini
+COPY ./entrypoint.sh /app/entrypoint.sh
 
-CMD ["uvicorn", "app.app:app", "--host", "0.0.0.0", "--port", "8000"]
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
+
+ENTRYPOINT ["/app/entrypoint.sh"]

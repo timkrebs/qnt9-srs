@@ -1,357 +1,326 @@
-# Auth Service
+# QNT9 Auth Service
 
-FastAPI-based authentication service with Vault integration for secure credential management and Datadog APM & Application Security monitoring.
+Modern authentication service using **Supabase Auth** for the QNT9 Stock Recommendation System.
 
 ## Features
 
-- User authentication with JWT tokens
-- Database support (PostgreSQL/SQLite)
-- HashiCorp Vault integration for secrets management
-- Datadog APM & Application Security monitoring
-- Application Security Management (ASM)
-- Interactive Application Security Testing (IAST)
-- Software Composition Analysis (SCA)
-- Continuous Profiling
-- Data Streams Monitoring
+✨ **Supabase Integration**
+- Secure user authentication via Supabase Auth
+- Email/password authentication
+- JWT-based session management
+- Password reset functionality
 
-## Local Development
+🔐 **Security**
+- Industry-standard security practices
+- Secure password hashing (handled by Supabase)
+- JWT token-based authentication
+- CORS protection
+
+📡 **API Endpoints**
+- User registration (`/auth/signup`)
+- User login (`/auth/signin`)
+- User logout (`/auth/signout`)
+- Profile management (`/auth/me`)
+- Password updates
+- Session refresh
+
+## Architecture
+
+```
+auth-service/
+├── app/
+│   ├── __init__.py
+│   ├── app.py                 # FastAPI application
+│   ├── auth_service.py        # Supabase auth business logic
+│   ├── config.py              # Configuration management
+│   ├── logging_config.py      # Logging setup
+│   ├── models.py              # Pydantic models
+│   └── supabase_client.py     # Supabase client setup
+├── tests/
+│   └── test_auth.py
+├── .env.example
+├── requirements.txt
+├── Dockerfile
+├── Makefile
+└── README.md
+```
+
+## Setup
 
 ### Prerequisites
 
-1. **Install Datadog APM library**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+- Python 3.11+
+- Supabase account ([supabase.com](https://supabase.com))
 
-2. **Datadog Agent** (optional for local dev):
-   - For local development: **NOT REQUIRED** - the app will run fine without it
-   - Traces are instrumented but won't be sent to Datadog (no errors)
-   - For production: Datadog Agent must be running to collect traces
+### Installation
 
-### Running the Service
+1. **Create virtual environment:**
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
 
-#### Option 1: SQLite without Datadog (Simple Dev)
+2. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
 
-Use SQLite for local development:
+3. **Configure environment variables:**
+```bash
+cp .env.example .env
+# Edit .env with your Supabase credentials
+```
+
+Get your Supabase credentials from:
+- Go to your Supabase project
+- Settings → API
+- Copy `Project URL` and `service_role` key
+
+4. **Run the service:**
+```bash
+# Development mode
+uvicorn app.app:app --reload --port 8001
+
+# Or use make
+make run
+```
+
+## Supabase Setup
+
+### 1. Create Supabase Project
+
+1. Go to [supabase.com](https://supabase.com)
+2. Create a new project
+3. Wait for setup to complete
+
+### 2. Configure Authentication
+
+1. Go to **Authentication** → **Providers**
+2. Enable **Email** provider
+3. Configure email templates (optional)
+4. Set redirect URLs for your frontend
+
+### 3. Get API Keys
+
+1. Go to **Settings** → **API**
+2. Copy:
+   - Project URL → `SUPABASE_URL`
+   - `anon` `public` key → `SUPABASE_ANON_KEY`
+   - `service_role` `secret` key → `SUPABASE_SERVICE_KEY`
+
+## API Documentation
+
+### Sign Up
 
 ```bash
-# Make sure Vault env vars are NOT set
-unset VAULT_ADDR VAULT_NAMESPACE VAULT_TOKEN
+POST /auth/signup
+Content-Type: application/json
 
-# Run the app
-make fastapi-dev
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!",
+  "full_name": "John Doe"
+}
 ```
 
-The app will automatically use SQLite (`sqlite:///./test.db`) for local development.
+**Response:**
+```json
+{
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "full_name": "John Doe"
+  },
+  "session": {
+    "access_token": "jwt-token",
+    "refresh_token": "refresh-token",
+    "expires_at": 1234567890
+  }
+}
+```
 
-#### Option 2: SQLite with Datadog APM (Recommended for Local Dev)
-
-Run with Datadog APM & Application Security enabled:
+### Sign In
 
 ```bash
-# Make sure Vault env vars are NOT set
-unset VAULT_ADDR VAULT_NAMESPACE VAULT_TOKEN
+POST /auth/signin
+Content-Type: application/json
 
-# Run with Datadog APM (no agent required for local dev)
-make fastapi-dev-dd
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!"
+}
 ```
 
-**Note**: You'll see connection errors to `localhost:8126` in the logs. This is **normal and safe** - the Datadog tracer can't reach the agent, but your application runs perfectly fine. The instrumentation is active, but traces just won't be sent to Datadog. To actually send traces, you'd need to install and run the Datadog Agent locally.
-
-This will enable:
-- Distributed tracing (instrumented, not sent)
-- Application Security Management (ASM) - threat detection
-- Interactive Application Security Testing (IAST) - vulnerability detection
-- Software Composition Analysis (SCA) - dependency scanning
-- Continuous profiling
-- Data streams monitoring
-
-#### Option 3: Connect to AWS RDS
-
-To connect to the production RDS database from your local machine:
-
-1. **Make RDS publicly accessible** (if not already done):
-   ```bash
-   cd ../../infrastructure/terraform
-   terraform apply
-   ```
-
-2. **Set Vault credentials**:
-   ```bash
-   export VAULT_ADDR="https://qnt9-srs-vault-cluster-public-vault-9a23dacc.10ab1e04.z1.hashicorp.cloud:8200"
-   export VAULT_NAMESPACE="admin"
-   export VAULT_TOKEN="your-vault-token-here"
-   ```
-
-3. **Run the app**:
-   ```bash
-   make fastapi-dev-dd  # With Datadog
-   # or
-   make fastapi-dev     # Without Datadog
-   ```
-
-The app will read database credentials from Vault at `kv/database/qnt9-srs`.
-
-### Option 4: Set Database URL Directly
-
-You can also override with an environment variable:
+### Get Current User
 
 ```bash
-export DATABASE_URL="postgresql://user:pass@host:5432/dbname"
-make fastapi-dev
+GET /auth/me
+Authorization: Bearer <access-token>
 ```
 
-## How the Database Connection Works
-
-The app tries to connect in this order:
-
-1. **Vault KV** - If `VAULT_ADDR` and `VAULT_TOKEN` are set, reads credentials from `kv/database/qnt9-srs`
-2. **DATABASE_URL** - Falls back to the `DATABASE_URL` environment variable
-3. **SQLite** - Falls back to `sqlite:///./test.db` for local development
-
-## API Endpoints
-
-### Authentication
-- `POST /register` - Register a new user
-- `POST /token` - Login and get access token
-
-### User Profile Management
-- `GET /users/me` - Get current user info (requires authentication)
-- `PUT /users/me` - Update current user's profile
-- `POST /users/me/password` - Change password
-- `DELETE /users/me` - Delete own account
-
-### User Management (Admin)
-- `GET /users` - List all users (with pagination)
-- `GET /users/search?q=term` - Search users
-- `GET /users/count` - Get total user count
-- `GET /users/{user_id}` - Get user by ID
-- `PUT /users/{user_id}` - Update user profile
-- `POST /users/{user_id}/password-reset` - Reset user password
-- `PATCH /users/{user_id}/status` - Enable/disable user account
-- `DELETE /users/{user_id}` - Delete user
-
-### General
-- `GET /` - Welcome message
-- `GET /protected` - Protected route example
-
-## Datadog APM & Application Security
-
-### Environment Variables
-
-The following Datadog environment variables are configured:
-
-| Variable | Value | Description |
-|----------|-------|-------------|
-| `DD_SERVICE` | `auth-service` | Service name in Datadog |
-| `DD_ENV` | `dev`/`prod` | Environment (dev for local, prod for Docker) |
-| `DD_LOGS_INJECTION` | `true` | Correlate traces with logs |
-| `DD_PROFILING_ENABLED` | `true` | Enable continuous profiling |
-| `DD_DATA_STREAMS_ENABLED` | `true` | Enable data streams monitoring |
-| `DD_TRACE_REMOVE_INTEGRATION_SERVICE_NAMES_ENABLED` | `true` | Clean service naming |
-| `DD_APPSEC_ENABLED` | `true` | Enable Application Security (threat detection) |
-| `DD_IAST_ENABLED` | `true` | Enable IAST (vulnerability detection) |
-| `DD_APPSEC_SCA_ENABLED` | `true` | Enable SCA (dependency scanning) |
-| `DD_GIT_REPOSITORY_URL` | `github.com/timkrebs/qnt9-srs` | Git repository for source code integration |
-
-### Datadog Features Enabled
-
-1. **APM (Application Performance Monitoring)**
-   - Distributed tracing across services
-   - Request/response tracking
-   - Performance bottleneck identification
-
-2. **Application Security Management (ASM)**
-   - Real-time threat detection and blocking
-   - OWASP Top 10 protection
-   - Attack attempt monitoring
-
-3. **IAST (Interactive Application Security Testing)**
-   - Runtime vulnerability detection
-   - Code-level security issue identification
-   - No separate security scans needed
-
-4. **SCA (Software Composition Analysis)**
-   - Dependency vulnerability scanning
-   - Open source risk assessment
-   - License compliance tracking
-
-5. **Continuous Profiling**
-   - CPU usage analysis
-   - Memory allocation tracking
-   - Performance optimization insights
-
-6. **Data Streams Monitoring**
-   - End-to-end latency tracking
-   - Message queue monitoring
-
-### Viewing Datadog Data
-
-After running the service with Datadog enabled:
-
-1. **APM Traces**: https://app.datadoghq.com/apm/traces
-2. **Security Signals**: https://app.datadoghq.com/security
-3. **Profiling**: https://app.datadoghq.com/profiling
-4. **Service Catalog**: Search for `auth-service`
-
-## API Endpoints
-
-- `GET /` - Welcome message
-- `POST /register` - Register a new user
-- `POST /token` - Login and get access token
-- `GET /users/me` - Get current user info (requires authentication)
-
-## Testing
-
-Visit the auto-generated API docs:
-- http://127.0.0.1:8000/docs (Swagger UI)
-- http://127.0.0.1:8000/redoc (ReDoc)
-
-### Testing with Datadog APM
-
-When running with `make fastapi-dev-dd`, all API requests will be:
-- Traced in Datadog APM
-- Analyzed for security threats
-- Scanned for vulnerabilities
-- Profiled for performance
-
-Generate some traffic to see data in Datadog:
-```bash
-# Register a user
-curl -X POST "http://127.0.0.1:8000/register" \
-  -H "Content-Type: application/json" \
-  -d '{"username":"testuser","email":"test@example.com","password":"secret123","full_name":"Test User"}'
-
-# Login
-curl -X POST "http://127.0.0.1:8000/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=testuser&password=secret123"
-
-# Get user info (use token from login)
-curl -X GET "http://127.0.0.1:8000/users/me" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
-```
-
-## Docker Deployment
-
-### Build and Run
-
-## Docker Deployment
-
-### Build and Run
+### Update Profile
 
 ```bash
-# Build the Docker image
-make docker-build
+PATCH /auth/me
+Authorization: Bearer <access-token>
+Content-Type: application/json
 
-# Run the container (without Datadog Agent connection)
-make docker-run
-
-# Run with local Datadog Agent connection
-make docker-run-dd
+{
+  "full_name": "John Updated",
+  "email": "new@example.com"
+}
 ```
 
-The Docker image includes Datadog APM & Application Security pre-configured with production settings.
+### Sign Out
 
-### Kubernetes/EKS Deployment
-
-When deployed to EKS, the app will:
-1. Read credentials from Vault using a Kubernetes service account
-2. Connect to RDS (which is in the same VPC)
-3. Send traces to the Datadog Agent running as a DaemonSet
-4. No public internet access required for database or Datadog Agent
-
-**Important**: Ensure the Datadog Agent is deployed to your Kubernetes cluster as a DaemonSet before deploying this service.
-
-### Environment Variables for Production
-
-In production (Kubernetes), set these additional environment variables:
-
-```yaml
-env:
-  - name: DD_AGENT_HOST
-    valueFrom:
-      fieldRef:
-        fieldPath: status.hostIP
-  - name: DD_TRACE_AGENT_PORT
-    value: "8126"
-  - name: DD_GIT_COMMIT_SHA
-    value: "$(git rev-parse HEAD)"
-  - name: DD_GIT_BRANCH
-    value: "main"
+```bash
+POST /auth/signout
+Authorization: Bearer <access-token>
 ```
+
+### Refresh Session
+
+```bash
+POST /auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "your-refresh-token"
+}
+```
+
+### Password Reset
+
+```bash
+POST /auth/reset-password
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+## Development
+
+### Run Tests
+
+```bash
+make test
+```
+
+### Run with Coverage
+
+```bash
+make test-cov
+```
+
+### Format Code
+
+```bash
+make format
+```
+
+### Lint Code
+
+```bash
+make lint
+```
+
+## Integration with Frontend
+
+### Example: Login Flow
+
+```javascript
+// 1. Sign in user
+const response = await fetch('http://localhost:8001/auth/signin', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: 'user@example.com',
+    password: 'password123'
+  })
+});
+
+const data = await response.json();
+// Store tokens securely
+localStorage.setItem('access_token', data.session.access_token);
+localStorage.setItem('refresh_token', data.session.refresh_token);
+
+// 2. Use access token for authenticated requests
+const userResponse = await fetch('http://localhost:8001/auth/me', {
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+  }
+});
+
+// 3. Refresh token when expired
+const refreshResponse = await fetch('http://localhost:8001/auth/refresh', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    refresh_token: localStorage.getItem('refresh_token')
+  })
+});
+```
+
+## Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SUPABASE_URL` | Your Supabase project URL |  |
+| `SUPABASE_SERVICE_KEY` | Service role key from Supabase |  |
+| `SUPABASE_ANON_KEY` | Anonymous key from Supabase |  |
+| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) |  |
+| `DEBUG` | Enable debug mode |  |
+| `CORS_ORIGINS` | Allowed CORS origins |  |
+
+## Security Best Practices
+
+1. **Never commit `.env` files** - Use `.env.example` as template
+2. **Use HTTPS in production** - Always use secure connections
+3. **Rotate keys regularly** - Change Supabase keys periodically
+4. **Implement rate limiting** - Protect against brute force attacks
+5. **Validate all inputs** - Use Pydantic models for validation
+6. **Log security events** - Monitor authentication attempts
+
+## Deployment
+
+### Docker
+
+```bash
+docker build -t qnt9-auth-service .
+docker run -p 8001:8001 --env-file .env qnt9-auth-service
+```
+
+### Production Considerations
+
+- Use environment variables for all sensitive data
+- Enable HTTPS/TLS
+- Configure proper CORS origins
+- Set up monitoring and alerts
+- Implement rate limiting
+- Use a reverse proxy (nginx/Traefik)
 
 ## Troubleshooting
 
-### Datadog APM Not Sending Traces
+### Common Issues
 
-1. **Check if Datadog Agent is running**:
-   ```bash
-   # For local development
-   curl http://localhost:8126/info
-   ```
+**Issue:** `Supabase not configured` error
+- **Solution:** Check that `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set in `.env`
 
-2. **Check environment variables**:
-   ```bash
-   echo $DD_SERVICE
-   echo $DD_AGENT_HOST
-   ```
+**Issue:** `Invalid or expired token`
+- **Solution:** Use the refresh token to get a new access token
 
-3. **Enable debug logging**:
-   ```bash
-   DD_TRACE_DEBUG=true make fastapi-dev-dd
-   ```
+**Issue:** CORS errors from frontend
+- **Solution:** Add your frontend URL to `CORS_ORIGINS` in `.env`
 
-### Datadog APM Not Sending Traces
+## License
 
-**Error**: `ConnectionRefusedError: [Errno 61] Connection refused` to `localhost:8126`
+This project is part of the QNT9 Stock Recommendation System.
 
-**Solution**: This is **normal for local development** without a Datadog Agent installed.
+## Support
 
-- **Your application is running fine** - this error doesn't affect functionality
-- **Instrumentation is active** - code is being traced, just not sent anywhere
-- **Security features are working** - ASM, IAST, and SCA are operational
-
-**Options**:
-1. **Ignore it** (recommended for local dev) - the errors are harmless
-2. **Install Datadog Agent locally**:
-   ```bash
-   # macOS
-   brew install datadog-agent
-   datadog-agent run
-   ```
-3. **Disable trace sending** - run without ddtrace:
-   ```bash
-   make fastapi-dev  # No Datadog at all
-   ```
-
-The traces will automatically be sent when deployed to Kubernetes where the Datadog Agent DaemonSet is running.
-
-### Connection Issues
-
-If the service can't connect to Vault or the database:
-- Check environment variables are set correctly
-- Verify network connectivity
-- Check Vault token hasn't expired
-- Ensure database is accessible from your network
-
-## Development Workflow
-
-1. **Start with SQLite + Datadog** for local development:
-   ```bash
-   make fastapi-dev-dd
-   ```
-
-2. **Make changes** to the code
-
-3. **Test** using the API docs at http://127.0.0.1:8000/docs
-
-4. **Monitor** traces and security findings in Datadog
-
-5. **Build and test Docker image**:
-   ```bash
-   make docker-build
-   make docker-run-dd
-   ```
-
-6. **Deploy to Kubernetes** with Vault and RDS integration
+For issues and questions:
+- Create an issue in the repository
+- Check existing documentation
+- Review Supabase documentation: [supabase.com/docs](https://supabase.com/docs)

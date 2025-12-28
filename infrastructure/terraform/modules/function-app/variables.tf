@@ -24,12 +24,6 @@ variable "storage_account_key" {
   sensitive   = true
 }
 
-variable "app_insights_key" {
-  description = "Application Insights instrumentation key"
-  type        = string
-  sensitive   = true
-}
-
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)
