@@ -105,7 +105,7 @@ class SearchServiceClient:
                     max_connections=100,
                     keepalive_expiry=30.0,
                 ),
-                http2=True,  # Enable HTTP/2 for multiplexing
+                http2=False,  # Disable HTTP/2 for MVP (h2 not installed)
             )
             logger.debug("Created new HTTP client with connection pooling")
         return self._client
