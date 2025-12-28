@@ -107,6 +107,94 @@
                     return this.session ? `Bearer ${this.session.access_token}` : '';
                 }
             });
+            
+            Alpine.store('watchlist', {
+                items: [],
+                loading: false,
+                
+                async init() {
+                    if (Alpine.store('auth').isAuthenticated) {
+                        await this.loadWatchlist();
+                    }
+                },
+                
+                async loadWatchlist() {
+                    if (!Alpine.store('auth').isAuthenticated) return;
+                    
+                    this.loading = true;
+                    try {
+                        const response = await fetch('/api/watchlist', {
+                            headers: {
+                                'Authorization': Alpine.store('auth').getAuthHeader()
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.items = data.watchlist || [];
+                        }
+                    } catch (error) {
+                        console.error('Failed to load watchlist:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                isInWatchlist(symbol) {
+                    return this.items.some(item => 
+                        item.symbol.toUpperCase() === symbol.toUpperCase()
+                    );
+                },
+                
+                async addToWatchlist(symbol) {
+                    if (!Alpine.store('auth').isAuthenticated) {
+                        window.location.href = '/login';
+                        return { success: false, error: 'Please log in to add stocks to watchlist' };
+                    }
+                    
+                    try {
+                        const response = await fetch('/api/watchlist', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': Alpine.store('auth').getAuthHeader()
+                            },
+                            body: JSON.stringify({ symbol: symbol.toUpperCase() })
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (response.ok) {
+                            await this.loadWatchlist();
+                            return { success: true, message: `${symbol} added to watchlist` };
+                        } else {
+                            return { success: false, error: data.detail || 'Failed to add to watchlist' };
+                        }
+                    } catch (error) {
+                        return { success: false, error: 'Network error. Please try again.' };
+                    }
+                },
+                
+                async removeFromWatchlist(symbol) {
+                    try {
+                        const response = await fetch(`/api/watchlist/${symbol}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': Alpine.store('auth').getAuthHeader()
+                            }
+                        });
+                        
+                        if (response.ok) {
+                            await this.loadWatchlist();
+                            return { success: true, message: `${symbol} removed from watchlist` };
+                        } else {
+                            return { success: false, error: 'Failed to remove from watchlist' };
+                        }
+                    } catch (error) {
+                        return { success: false, error: 'Network error. Please try again.' };
+                    }
+                }
+            });
         });
     </script>
     
@@ -137,7 +225,29 @@
         }
     </style>
 </head>
-<body class="bg-accent min-h-screen" x-data x-init="$store.auth.init()">
+<body class="bg-accent min-h-screen" x-data="{ toast: { show: false, message: '', type: 'success' } }" x-init="$store.auth.init(); $store.watchlist.init()">
+    
+    <!-- Toast Notification -->
+    <div x-show="toast.show" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-2"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100 transform translate-y-0"
+         x-transition:leave-end="opacity-0 transform translate-y-2"
+         class="fixed top-4 right-4 z-50 max-w-md">
+        <div :class="toast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'" 
+             class="px-6 py-4 rounded-xl border shadow-lg flex items-center space-x-3">
+            <svg x-show="toast.type === 'success'" class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+            <svg x-show="toast.type === 'error'" class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+            </svg>
+            <p class="font-medium text-sm" x-text="toast.message"></p>
+        </div>
+    </div>
+    
     <!-- Navigation -->
     <nav class="bg-white border-b border-gray-100">
         <div class="container mx-auto px-6 lg:px-8">
