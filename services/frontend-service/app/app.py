@@ -732,7 +732,7 @@ async def get_watchlist_proxy(request: Request):
     auth_header = request.headers.get("Authorization")
     client = await get_auth_http_client()
     response = await client.get(
-        f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+        f"{settings.WATCHLIST_SERVICE_URL}/api/watchlist",
         headers={"Authorization": auth_header} if auth_header else {},
     )
     return JSONResponse(status_code=response.status_code, content=response.json())
@@ -745,7 +745,7 @@ async def add_to_watchlist_proxy(request: Request):
     body = await request.json()
     client = await get_auth_http_client()
     response = await client.post(
-        f"{settings.WATCHLIST_SERVICE_URL}/watchlists",
+        f"{settings.WATCHLIST_SERVICE_URL}/api/watchlist",
         headers={"Authorization": auth_header} if auth_header else {},
         json=body,
     )
@@ -758,7 +758,7 @@ async def remove_from_watchlist_proxy(symbol: str, request: Request):
     auth_header = request.headers.get("Authorization")
     client = await get_auth_http_client()
     response = await client.delete(
-        f"{settings.WATCHLIST_SERVICE_URL}/watchlists/{symbol}",
+        f"{settings.WATCHLIST_SERVICE_URL}/api/watchlist/{symbol}",
         headers={"Authorization": auth_header} if auth_header else {},
     )
     return JSONResponse(status_code=response.status_code, content=response.json())

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: watchlist-service
+  namespace: qnt9-srs
+  labels:
+    app: watchlist-service
+    tier: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: watchlist-service
+  ports:
+  - name: http
+    port: 8012
+    targetPort: 8012
+    protocol: TCP
+  sessionAffinity: None

@@ -124,12 +124,12 @@ RATE_LIMIT_PAID=100
 
 | Feature | Anonymous | Free (Logged) | Paid |
 |---------|-----------|---------------|------|
-| Basic Search | ✓ | ✓ | ✓ |
+| Basic Search | Yes | Yes | Yes |
 | Rate Limit | 10/min | 30/min | 100/min |
-| Search History | ✗ | ✓ | ✓ |
-| Batch Search | ✗ | ✓ (max 5) | ✓ (max 10) |
-| Favorites | ✗ | ✓ (max 5) | ✓ (max 20) |
-| ML Predictions Link | ✗ | ✗ | ✓ |
+| Search History | No | Yes | Yes |
+| Batch Search | No | Yes (max 5) | Yes (max 10) |
+| Favorites | No | Yes (max 5) | Yes (max 20) |
+| ML Predictions Link | No | No | Yes |
 
 ## API Examples
 

@@ -4,19 +4,19 @@ Modern authentication service using **Supabase Auth** for the QNT9 Stock Recomme
 
 ## Features
 
-✨ **Supabase Integration**
+**Supabase Integration**
 - Secure user authentication via Supabase Auth
 - Email/password authentication
 - JWT-based session management
 - Password reset functionality
 
-🔐 **Security**
+**Security**
 - Industry-standard security practices
 - Secure password hashing (handled by Supabase)
 - JWT token-based authentication
 - CORS protection
 
-📡 **API Endpoints**
+**API Endpoints**
 - User registration (`/auth/signup`)
 - User login (`/auth/signin`)
 - User logout (`/auth/signout`)

@@ -152,40 +152,40 @@
 │  Key: stock:symbol:AAPL              │
 │  TTL: 300s (5min)                    │
 └──────┬───────────────────────────────┘
-       │
-       ├─ HIT? ──→ Return (50ms) ✓
-       │
-       └─ MISS ──→ Continue
-                   │
-                   ▼
-       ┌──────────────────────────────────────┐
-       │  Layer 2: PostgreSQL Cache           │
-       │                                      │
-       │  SELECT * FROM stock_cache           │
-       │  WHERE symbol = 'AAPL'               │
-       │  AND expires_at > NOW()              │
-       └──────┬───────────────────────────────┘
-              │
-              ├─ HIT? ──→ Save to Redis ──→ Return (100ms) ✓
-              │
-              └─ MISS ──→ Continue
-                          │
-                          ▼
-              ┌──────────────────────────────────────┐
-              │  Layer 3: Yahoo Finance API          │
-              │                                      │
-              │  1. Check Circuit Breaker            │
-              │  2. Check Rate Limit                 │
-              │  3. Fetch with Retry                 │
-              └──────┬───────────────────────────────┘
-                     │
-                     ├─ SUCCESS ──→ Save to PostgreSQL
-                     │              Save to Redis
-                     │              Return (2000ms) ✓
-                     │
-                     └─ FAILURE ──→ Circuit Breaker?
+       |
+       |- HIT? --> Return (50ms) [OK]
+       |
+       |- MISS --> Continue
+                   |
+                   v
+       +--------------------------------------+
+       |  Layer 2: PostgreSQL Cache           |
+       |                                      |
+       |  SELECT * FROM stock_cache           |
+       |  WHERE symbol = 'AAPL'               |
+       |  AND expires_at > NOW()              |
+       +------+-------------------------------+
+              |
+              |- HIT? --> Save to Redis --> Return (100ms) [OK]
+              |
+              |- MISS --> Continue
+                          |
+                          v
+              +--------------------------------------+
+              |  Layer 3: Yahoo Finance API          |
+              |                                      |
+              |  1. Check Circuit Breaker            |
+              |  2. Check Rate Limit                 |
+              |  3. Fetch with Retry                 |
+              +------+-------------------------------+
+                     |
+                     |- SUCCESS --> Save to PostgreSQL
+                     |              Save to Redis
+                     |              Return (2000ms) [OK]
+                     |
+                     |- FAILURE --> Circuit Breaker?
                                     Retry?
-                                    404 Error ✗
+                                    404 Error [ERROR]
 ```
 
 ## Dependency Injection Flow
