@@ -23,7 +23,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH=/home/appuser/.local/bin:$PATH \
     HOST=0.0.0.0 \
-    PORT=8001
+    PORT=8080
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser
@@ -44,7 +44,7 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 # Expose port
-EXPOSE 8001
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
