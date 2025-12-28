@@ -439,6 +439,127 @@ async def search_stock(
 
 
 @app.get(
+    "/api/historical/{symbol}",
+    response_class=JSONResponse,
+    tags=["Stock Data"],
+    summary="Get historical stock data",
+    description="Get historical OHLCV data for stock charting",
+)
+async def get_historical_data(
+    symbol: str,
+    period: str = Query(default="1d", description="Time period (1d, 5d, 1mo, 3mo, 1y)"),
+    interval: str = Query(default="5m", description="Data interval (1m, 5m, 15m, 1h, 1d)"),
+    request: Request = None,
+) -> JSONResponse:
+    """
+    Get historical stock data for charting.
+    
+    This endpoint fetches real historical OHLCV data from the search service
+    for use in interactive stock charts.
+    
+    Args:
+        symbol: Stock ticker symbol
+        period: Time period for data
+        interval: Data granularity
+        request: FastAPI request object
+        
+    Returns:
+        JSONResponse with historical data or error message
+    """
+    logger.info(
+        "Historical data request",
+        extra={
+            "extra_fields": {
+                "symbol": symbol,
+                "period": period,
+                "interval": interval,
+                "client_host": request.client.host if request.client else None,
+            }
+        },
+    )
+
+    try:
+        # Fetch historical data from search service
+        historical_data = await search_client.get_historical_data(
+            symbol=symbol, period=period, interval=interval
+        )
+
+        if historical_data and historical_data.get("success"):
+            logger.info(
+                "Historical data retrieved successfully",
+                extra={
+                    "extra_fields": {
+                        "symbol": symbol,
+                        "period": period,
+                        "interval": interval,
+                        "data_points": historical_data.get("count", 0),
+                        "cached": historical_data.get("cached", False),
+                        "response_time_ms": historical_data.get("response_time_ms", 0),
+                    }
+                },
+            )
+
+            return JSONResponse(
+                content={
+                    "success": True,
+                    "symbol": symbol,
+                    "period": period,
+                    "interval": interval,
+                    "data": historical_data.get("data", []),
+                    "count": historical_data.get("count", 0),
+                    "cached": historical_data.get("cached", False),
+                }
+            )
+        else:
+            logger.warning(
+                "Historical data not found",
+                extra={
+                    "extra_fields": {
+                        "symbol": symbol,
+                        "period": period,
+                        "interval": interval,
+                    }
+                },
+            )
+
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "error": "data_not_found",
+                    "message": f"No historical data found for symbol {symbol}",
+                    "symbol": symbol,
+                    "period": period,
+                    "interval": interval,
+                },
+            )
+
+    except Exception as e:
+        logger.error(
+            "Historical data request failed",
+            extra={
+                "extra_fields": {
+                    "symbol": symbol,
+                    "period": period,
+                    "interval": interval,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                }
+            },
+        )
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "internal_error",
+                "message": "Failed to retrieve historical data",
+                "symbol": symbol,
+            },
+        )
+
+
+@app.get(
     "/api/suggestions",
     response_class=HTMLResponse,
     tags=["Search"],

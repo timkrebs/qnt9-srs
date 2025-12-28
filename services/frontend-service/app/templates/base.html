@@ -21,6 +21,12 @@
         .loading-placeholder { min-height: 100vh; background: #f5f5f7; }
     </style>
     
+    <!-- Chart.js for professional charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-crosshair@2.0.0/dist/chartjs-plugin-crosshair.min.js"></script>
+    
     <!-- Custom CSS (loaded early) -->
     <link rel="stylesheet" href="/static/css/styles.css">
     
@@ -223,6 +229,11 @@
     <script src="/static/js/logger.js" defer></script>
     <script src="/static/js/htmx-logger.js" defer></script>
     
+<<<<<<< HEAD
+    <!-- Custom JS (if needed) -->
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/stock-chart.js"></script>
+=======
     <!-- Custom JS (loaded async) -->
     <script src="/static/js/main.js" defer></script>
     
@@ -246,6 +257,7 @@
             }
         }
     </script>
+>>>>>>> origin/development
     
     {% block extra_js %}{% endblock %}
 </body>

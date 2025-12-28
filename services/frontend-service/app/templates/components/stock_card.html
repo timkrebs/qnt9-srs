@@ -44,14 +44,53 @@
             {% endif %}
         </div>
 
-        <!-- Chart Placeholder (like in screenshot) -->
-        <div class="bg-gradient-to-br from-green-50 to-white border border-gray-100 rounded-2xl p-6 mb-8 h-64 flex items-center justify-center">
-            <div class="text-center text-gray-400">
-                <svg class="w-16 h-16 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
-                </svg>
-                <p class="font-medium">Chart Placeholder</p>
-                <p class="text-sm mt-1">Historical price data visualization</p>
+        <!-- Professional Interactive Chart -->
+        <div class="bg-white border border-gray-100 rounded-2xl p-4 md:p-6 mb-8">
+            <!-- Chart Controls -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <h4 class="text-lg font-semibold text-gray-900">Price Chart</h4>
+                    <div class="flex items-center gap-1 flex-wrap">
+                        <button class="chart-period-btn px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition active" data-period="1D">1D</button>
+                        <button class="chart-period-btn px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition" data-period="5D">5D</button>
+                        <button class="chart-period-btn px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition" data-period="1M">1M</button>
+                        <button class="chart-period-btn px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition" data-period="3M">3M</button>
+                        <button class="chart-period-btn px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition" data-period="1Y">1Y</button>
+                        <button class="chart-period-btn px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition" data-period="5Y">5Y</button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="chart-type-btn" class="px-2 md:px-3 py-1 text-xs md:text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition flex items-center gap-1">
+                        <svg class="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        <span class="hidden sm:inline">Candlestick</span>
+                        <span class="sm:hidden">OHLC</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Chart Canvas -->
+            <div class="relative h-64 sm:h-80 md:h-96">
+                <canvas id="stock-chart-{{ stock.symbol|replace('.', '-') if stock.symbol else 'default' }}" class="w-full h-full"></canvas>
+                <div id="chart-loading" class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-90 hidden">
+                    <div class="flex items-center gap-2 text-gray-600">
+                        <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Loading chart data...
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chart Info -->
+            <div class="flex items-center justify-center sm:justify-end mt-4 pt-4 border-t border-gray-100">
+                <div class="text-xs sm:text-sm text-gray-500 text-center sm:text-right">
+                    <span class="block sm:inline">Real-time data</span>
+                    <span class="hidden sm:inline"> • </span>
+                    <span class="block sm:inline">Last updated: <span id="chart-last-update">N/A</span></span>
+                </div>
             </div>
         </div>
 
@@ -485,3 +524,189 @@
     <p class="text-gray-600">The requested stock information could not be found.</p>
 </div>
 {% endif %}
+
+<!-- Chart JavaScript -->
+<script>
+(function() {
+    'use strict';
+    
+    // Chart configuration and data
+    const stockSymbol = '{{ stock.symbol if stock.symbol else "DEMO" }}';
+    const currentPrice = parseFloat('{{ stock.current_price if stock.current_price else 100 }}');
+    const chartId = 'stock-chart-{{ stock.symbol|replace(".", "-") if stock.symbol else "default" }}';
+    
+    let stockChart = null;
+    
+    // Event listeners
+    function setupEventListeners() {
+        // Period buttons
+        document.querySelectorAll('.chart-period-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                // Update active state
+                document.querySelectorAll('.chart-period-btn').forEach(b => {
+                    b.classList.remove('active', 'bg-gray-900', 'text-white');
+                    b.classList.add('text-gray-600');
+                });
+                this.classList.add('active', 'bg-gray-900', 'text-white');
+                this.classList.remove('text-gray-600');
+                
+                // Update chart
+                if (stockChart) {
+                    stockChart.updateChart(this.dataset.period);
+                }
+            });
+        });
+        
+        // Chart type toggle
+        const chartTypeBtn = document.getElementById('chart-type-btn');
+        if (chartTypeBtn) {
+            chartTypeBtn.addEventListener('click', function() {
+                if (stockChart) {
+                    const newType = stockChart.toggleChartType();
+                    this.innerHTML = newType === 'line' ? 
+                        '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>Line' :
+                        '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>Candlestick';
+                }
+            });
+        }
+    }
+    
+    // Initialize when DOM is ready
+    async function initializeChart() {
+        // Check if all required dependencies are loaded
+        if (window.StockChart && window.Chart) {
+            try {
+                console.log('Initializing chart for', stockSymbol);
+                stockChart = new window.StockChart(chartId, stockSymbol, currentPrice);
+                await stockChart.init(); // Wait for async initialization
+                setupEventListeners();
+                console.log('Chart initialized successfully');
+            } catch (error) {
+                console.error('Error initializing chart:', error);
+                // Show error message in chart area
+                const canvas = document.getElementById(chartId);
+                if (canvas) {
+                    const parent = canvas.parentElement;
+                    parent.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500"><p>Chart initialization failed. Please refresh the page.</p></div>';
+                }
+            }
+        } else {
+            // Retry if dependencies not loaded yet
+            console.log('Waiting for Chart.js and StockChart to load...');
+            setTimeout(initializeChart, 200);
+        }
+    }
+    
+    // Wait for all scripts to load
+    function waitForScripts() {
+        if (document.readyState === 'complete') {
+            setTimeout(initializeChart, 300);
+        } else {
+            window.addEventListener('load', function() {
+                setTimeout(initializeChart, 300);
+            });
+        }
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', waitForScripts);
+    } else {
+        waitForScripts();
+    }
+    
+    // Handle window resize for responsive behavior
+    let resizeTimeout;
+    window.addEventListener('resize', function() {
+        if (stockChart) {
+            // Debounce resize events
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(function() {
+                stockChart.resize();
+            }, 100);
+        }
+    });
+    
+    // Handle orientation change on mobile devices
+    window.addEventListener('orientationchange', function() {
+        if (stockChart) {
+            setTimeout(function() {
+                stockChart.resize();
+            }, 300);
+        }
+    });
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (stockChart) {
+            stockChart.destroy();
+        }
+    });
+})();
+</script>
+
+<!-- Chart Styles -->
+<style>
+.chart-period-btn.active {
+    background-color: #1f2937 !important;
+    color: white !important;
+}
+
+.chart-period-btn:hover {
+    background-color: #f3f4f6;
+}
+
+.chart-period-btn.active:hover {
+    background-color: #374151 !important;
+}
+
+/* Responsive chart optimizations */
+@media (max-width: 640px) {
+    /* Ensure chart container is properly sized on mobile */
+    .relative.h-64 {
+        min-height: 16rem;
+    }
+    
+    /* Optimize button spacing on mobile */
+    .chart-period-btn {
+        min-width: 2rem;
+        text-align: center;
+    }
+    
+    /* Ensure proper touch targets */
+    button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Optimize chart canvas for mobile */
+    canvas {
+        touch-action: pan-x pan-y;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Extra small screens */
+    .relative.h-64 {
+        min-height: 14rem;
+    }
+    
+    .chart-period-btn {
+        font-size: 0.75rem;
+        padding: 0.25rem 0.5rem;
+    }
+}
+
+/* Ensure chart is always responsive */
+canvas {
+    max-width: 100%;
+    height: auto !important;
+}
+
+/* Prevent horizontal scrolling on small screens */
+.flex.items-center.gap-1.flex-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+</style>
