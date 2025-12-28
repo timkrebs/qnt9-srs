@@ -84,6 +84,24 @@ class YahooFinanceClient(IStockAPIClient):
         "DE0008404005": "ALV.DE",
     }
 
+    # WKN to Yahoo symbol mappings for German stocks
+    WKN_MAPPINGS = {
+        "865985": "AAPL",          # Apple
+        "870747": "MSFT",          # Microsoft
+        "A14Y6F": "GOOGL",         # Alphabet/Google
+        "906866": "AMZN",          # Amazon
+        "A1CX3T": "TSLA",          # Tesla
+        "A1JWVX": "META",          # Meta/Facebook
+        "918422": "NVDA",          # NVIDIA
+        "519000": "BMW.DE",        # BMW
+        "766403": "VOW3.DE",       # Volkswagen
+        "710000": "MBG.DE",        # Mercedes-Benz
+        "716460": "SAP.DE",        # SAP
+        "723610": "SIE.DE",        # Siemens
+        "514000": "DBK.DE",        # Deutsche Bank
+        "840400": "ALV.DE",        # Allianz
+    }
+
     def __init__(
         self,
         timeout_seconds: float = 10.0,
@@ -264,8 +282,8 @@ class YahooFinanceClient(IStockAPIClient):
         Strategy (optimized for speed):
         1. If symbol is provided, use it directly
         2. If ISIN is provided, check hardcoded mappings first (fast)
-        3. If ISIN not in mappings, try Yahoo Search API (slower)
-        4. If WKN is provided, try Yahoo Search API
+        3. If WKN is provided, check hardcoded mappings first (fast)
+        4. If ISIN/WKN not in mappings, try Yahoo Search API (slower)
         5. Use first valid result without additional verification (to avoid timeouts)
 
         Args:
@@ -282,6 +300,12 @@ class YahooFinanceClient(IStockAPIClient):
         if identifier.isin and identifier.isin in self.ISIN_MAPPINGS:
             symbol = self.ISIN_MAPPINGS[identifier.isin]
             logger.info(f"Resolved ISIN {identifier.isin} to {symbol} via hardcoded mapping")
+            return symbol
+
+        # Check WKN hardcoded mappings (fast path)
+        if identifier.wkn and identifier.wkn in self.WKN_MAPPINGS:
+            symbol = self.WKN_MAPPINGS[identifier.wkn]
+            logger.info(f"Resolved WKN {identifier.wkn} to {symbol} via hardcoded mapping")
             return symbol
 
         # Try to resolve ISIN/WKN via Yahoo Search API

@@ -60,6 +60,14 @@ class StockIdentifier:
         if not any([self.isin, self.wkn, self.symbol, self.name]):
             raise ValueError("At least one identifier must be provided")
 
+    # Common ticker symbols (to disambiguate from company names)
+    KNOWN_TICKER_SYMBOLS = {
+        "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "TSLA", "META", "NVDA",
+        "BRK", "JPM", "V", "JNJ", "WMT", "PG", "MA", "HD", "DIS", "PYPL",
+        "NFLX", "ADBE", "CRM", "INTC", "CSCO", "PFE", "ABT", "TMO", "NKE",
+        "COST", "AVGO", "CMCSA", "PEP", "ORCL", "T", "VZ", "MRK", "QCOM",
+    }
+
     @classmethod
     def detect_type(cls, query: str) -> IdentifierType:
         """
@@ -68,8 +76,8 @@ class StockIdentifier:
         Detection order (most specific to least specific):
         1. ISIN: Exactly 12 chars, starts with 2 letters
         2. WKN: Exactly 6 chars with at least one digit
-        3. SYMBOL: 1-10 alphanumeric chars without spaces (e.g., AAPL, MSFT, BRK.B)
-        4. NAME: Contains spaces or longer alphabetic strings
+        3. SYMBOL: Known ticker symbols or 1-4 char codes
+        4. NAME: Everything else, including words like "Apple", "Amazon"
 
         Args:
             query: The search query (will be normalized)
@@ -97,10 +105,25 @@ class StockIdentifier:
         if " " in query:
             return IdentifierType.NAME
 
-        # SYMBOL: Short codes (1-10 chars) matching symbol pattern
-        # This includes pure alpha symbols like AAPL, MSFT, GOOGL
-        if len(query_upper) <= 10 and cls.SYMBOL_PATTERN.match(query_upper):
+        # SYMBOL: Check if it's a known ticker symbol first
+        if query_upper in cls.KNOWN_TICKER_SYMBOLS:
             return IdentifierType.SYMBOL
+
+        # SYMBOL: Very short codes (1-4 chars) are likely symbols
+        # This covers most stock tickers while excluding company names
+        if len(query_upper) <= 4 and cls.SYMBOL_PATTERN.match(query_upper):
+            return IdentifierType.SYMBOL
+
+        # If 5+ chars and purely alphabetic, likely a company name
+        # Examples: "Apple", "Amazon", "Tesla", "Google"
+        if len(query_upper) >= 5 and query_upper.isalpha():
+            return IdentifierType.NAME
+
+        # SYMBOL: 5 chars with special characters (e.g., "BRK.B")
+        if len(query_upper) == 5 and cls.SYMBOL_PATTERN.match(query_upper):
+            if not query_upper.isalpha():  # Has dots, hyphens, etc.
+                return IdentifierType.SYMBOL
+            return IdentifierType.NAME  # Pure 5-letter word is likely a name
 
         # NAME: Alphabetic strings with hyphens or ampersands (e.g., "T-Mobile", "AT&T")
         if query.replace("-", "").replace("&", "").isalpha():
