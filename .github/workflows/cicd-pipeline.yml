@@ -614,12 +614,87 @@ jobs:
         continue-on-error: true
 
   # ============================================================================
+  # STAGE 8: TERRAFORM DESTROY (Ephemeral Environments Only)
+  # ============================================================================
+  terraform-destroy:
+    name: Destroy Infrastructure (Dev/Staging Only)
+    runs-on: ubuntu-latest
+    needs: [detect-changes, terraform-provision, integration-tests]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.environment != 'prd' &&
+      needs.integration-tests.result == 'success'
+    
+    environment:
+      name: ${{ needs.detect-changes.outputs.environment }}-destroy
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Init
+        working-directory: infrastructure/terraform
+        run: |
+          terraform init \
+            -backend-config="organization=qnt9-srs" \
+            -backend-config="workspaces.name=${{ needs.detect-changes.outputs.workspace_name }}"
+
+      - name: Terraform Destroy
+        working-directory: infrastructure/terraform
+        run: |
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          
+          # Create auto.tfvars for destroy
+          cat > auto.tfvars <<EOF
+          environment = "${ENV}"
+          resource_group_name = "qnt9-srs-${ENV}-rg"
+          location = "westeurope"
+          aks_node_count = 2
+          aks_vm_size = "Standard_B2s"
+          enable_function_app = false
+          acr_sku = "Basic"
+          
+          postgres_user = "${{ secrets.POSTGRES_USER }}"
+          postgres_password = "${{ secrets.POSTGRES_PASSWORD }}"
+          postgres_db = "${{ secrets.POSTGRES_DB }}"
+          
+          jwt_secret = "${{ secrets.JWT_SECRET }}"
+          jwt_algorithm = "HS256"
+          jwt_expire_minutes = 30
+          
+          redis_host = "redis"
+          redis_port = 6379
+          EOF
+          
+          # Destroy infrastructure
+          if [[ "${ENV}" == "dev" ]]; then
+            echo "Auto-approving destroy for dev environment"
+            terraform destroy -auto-approve
+          else
+            echo "Destroying staging environment"
+            terraform destroy -auto-approve
+          fi
+
+      - name: Cleanup Summary
+        run: |
+          ENV="${{ needs.detect-changes.outputs.environment }}"
+          echo "Infrastructure destroyed for ${ENV} environment after successful integration tests"
+          echo "Terraform workspace state preserved in Terraform Cloud"
+          echo "Azure resources cleaned up to minimize costs"
+
+  # ============================================================================
   # PIPELINE SUMMARY
   # ============================================================================
   summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, lint, terraform-provision, build, unit-tests, deploy, integration-tests]
+    needs: [detect-changes, lint, terraform-provision, build, unit-tests, deploy, integration-tests, terraform-destroy]
     if: always()
     
     steps:
@@ -641,10 +716,17 @@ jobs:
           echo "| Detect Changes | \`${{ needs.detect-changes.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Lint | \`${{ needs.lint.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Unit Tests | \`${{ needs.unit-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Terraform | \`${{ needs.terraform-provision.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Terraform Provision | \`${{ needs.terraform-provision.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Build | \`${{ needs.build.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Deploy | \`${{ needs.deploy.result }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Integration Tests | \`${{ needs.integration-tests.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.detect-changes.outputs.environment }}" != "prd" ]]; then
+            echo "| Terraform Destroy | \`${{ needs.terraform-destroy.result }}\` |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Terraform Destroy | N/A (Production) |" >> $GITHUB_STEP_SUMMARY
+          fi
+          
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [[ "${{ needs.terraform-provision.result }}" == "success" ]]; then
