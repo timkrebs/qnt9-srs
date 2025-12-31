@@ -14,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import get_db_pool, close_db_pool, get_db_connection
 from app.auth import get_current_user, User
+from app.metrics import metrics_endpoint, track_request_metrics
+from app.metrics_middleware import PrometheusMiddleware
 from app.models import (
     WatchlistItem,
     WatchlistCreate,
@@ -22,6 +24,7 @@ from app.models import (
     MessageResponse,
     ErrorResponse,
 )
+from app.tracing import configure_opentelemetry, instrument_fastapi
 
 # Configure structured logging
 structlog.configure(
@@ -40,6 +43,13 @@ structlog.configure(
 )
 
 logger = structlog.get_logger(__name__)
+
+# Configure OpenTelemetry tracing
+configure_opentelemetry(
+    service_name="watchlist-service",
+    service_version="1.0.0",
+    enable_tracing=not settings.DEBUG,
+)
 
 
 @asynccontextmanager
@@ -75,6 +85,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Prometheus metrics middleware
+app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app, excluded_urls="/health,/metrics")
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return await metrics_endpoint()
 
 
 @app.get("/health", tags=["Health"])

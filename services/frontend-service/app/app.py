@@ -20,6 +20,9 @@ from .api_client import search_client
 from .config import settings
 from .consul import ConsulClient, get_service_id
 from .logging_config import get_logger, setup_logging
+from .metrics import metrics_endpoint, track_request_metrics
+from .metrics_middleware import PrometheusMiddleware
+from .tracing import configure_opentelemetry, instrument_fastapi
 from .middleware import (
     PerformanceMonitoringMiddleware,
     RequestLoggingMiddleware,
@@ -34,6 +37,13 @@ setup_logging(
     use_json=use_json_logging,
 )
 logger = get_logger(__name__)
+
+# Configure OpenTelemetry tracing
+configure_opentelemetry(
+    service_name="frontend-service",
+    service_version="1.0.0",
+    enable_tracing=not settings.DEBUG,
+)
 
 # Initialize Consul client
 consul_client = ConsulClient(
@@ -142,6 +152,10 @@ app = FastAPI(
 app.add_middleware(StaticFileCacheMiddleware)
 app.add_middleware(PerformanceMonitoringMiddleware, slow_request_threshold_ms=1000.0)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app, excluded_urls="/health,/metrics,/static")
 
 # Setup templates and static files
 BASE_PATH = Path(__file__).resolve().parent
@@ -329,6 +343,12 @@ async def health_check() -> Dict[str, Any]:
             "search_service": "healthy" if search_service_healthy else "unhealthy",
         },
     }
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return await metrics_endpoint()
 
 
 @app.get(

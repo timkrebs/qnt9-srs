@@ -16,10 +16,20 @@ from app.cache import (
 )
 from app.config import settings
 from app.db.connection import db_manager, get_db_connection
+from app.metrics import metrics_endpoint, track_request_metrics
+from app.metrics_middleware import PrometheusMiddleware
 from app.models import HealthResponse, MessageResponse, SubscriptionUpdate, UserProfile
+from app.tracing import configure_opentelemetry, instrument_fastapi
 from fastapi import Depends, FastAPI, HTTPException, status
 
 logger = structlog.get_logger()
+
+# Configure OpenTelemetry tracing
+configure_opentelemetry(
+    service_name="user-service",
+    service_version="1.0.0",
+    enable_tracing=True,
+)
 
 
 @asynccontextmanager
@@ -42,6 +52,18 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Add Prometheus metrics middleware
+app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app, excluded_urls="/health,/metrics")
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return await metrics_endpoint()
 
 
 @app.get("/health", response_model=HealthResponse)

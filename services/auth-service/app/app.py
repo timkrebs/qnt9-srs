@@ -15,6 +15,8 @@ from .auth_service import AuthError, auth_service
 from .config import settings
 from .database import db_manager
 from .logging_config import get_logger, setup_logging
+from .metrics import metrics_endpoint, track_request_metrics
+from .metrics_middleware import PrometheusMiddleware
 from .models import (
     AuthResponse,
     MessageResponse,
@@ -31,10 +33,18 @@ from .models import (
 )
 from .rate_limiter import check_auth_rate_limit, check_password_reset_rate_limit
 from .security import decode_access_token
+from .tracing import configure_opentelemetry, instrument_fastapi
 
 # Setup logging
 setup_logging(log_level=settings.LOG_LEVEL, service_name="auth-service")
 logger = get_logger(__name__)
+
+# Configure OpenTelemetry tracing
+configure_opentelemetry(
+    service_name="auth-service",
+    service_version="3.0.0",
+    enable_tracing=not settings.DEBUG,
+)
 
 
 @asynccontextmanager
@@ -80,6 +90,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add Prometheus metrics middleware
+app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app, excluded_urls="/health,/metrics")
+
+
+# Metrics endpoint
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return await metrics_endpoint()
 
 
 # Helper Functions

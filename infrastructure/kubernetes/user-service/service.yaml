@@ -12,8 +12,8 @@ spec:
     app: user-service
   ports:
     - name: http
-      port: 8020
-      targetPort: 8020
+      port: 8011
+      targetPort: 8011
       protocol: TCP
 ---
 # User Service Horizontal Pod Autoscaler

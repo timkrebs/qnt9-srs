@@ -22,6 +22,13 @@ httpx>=0.28.1
 # Database
 asyncpg>=0.29.0
 
+# Monitoring and Observability
+prometheus-client>=0.19.0
+opentelemetry-api>=1.21.0
+opentelemetry-sdk>=1.21.0
+opentelemetry-instrumentation-fastapi>=0.42b0
+opentelemetry-exporter-otlp>=1.21.0
+
 # Testing
 pytest>=8.4.0
 pytest-asyncio>=0.25.0

@@ -1,0 +1,362 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: grafana-agent
+  namespace: qnt9-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: grafana-agent
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/proxy
+  - nodes/metrics
+  - services
+  - endpoints
+  - pods
+  - events
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  - secrets
+  verbs: ["get"]
+- apiGroups: ["networking.k8s.io"]
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs:
+  - /metrics
+  - /metrics/cadvisor
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: grafana-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: grafana-agent
+subjects:
+- kind: ServiceAccount
+  name: grafana-agent
+  namespace: qnt9-monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-agent-config
+  namespace: qnt9-monitoring
+data:
+  agent.yaml: |
+    server:
+      log_level: info
+      
+    metrics:
+      wal_directory: /tmp/grafana-agent-wal
+      global:
+        scrape_interval: 15s
+        external_labels:
+          cluster: qnt9-aks
+          environment: ${ENVIRONMENT}
+      configs:
+      - name: integrations
+        remote_write:
+        - url: ${PROMETHEUS_REMOTE_WRITE_ENDPOINT}
+          basic_auth:
+            username: ${PROMETHEUS_USERNAME}
+            password: ${PROMETHEUS_PASSWORD}
+        
+        scrape_configs:
+        # Scrape QNT9 application services
+        - job_name: 'kubernetes-pods'
+          kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+              - qnt9
+          relabel_configs:
+          # Only scrape pods with prometheus.io/scrape annotation
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          # Use prometheus.io/path annotation for metrics path
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          # Use prometheus.io/port annotation for port
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          # Add pod metadata as labels
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_label_version]
+            target_label: version
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+        
+        # Scrape kube-state-metrics
+        - job_name: 'kube-state-metrics'
+          static_configs:
+          - targets: ['kube-state-metrics.qnt9-monitoring.svc.cluster.local:8080']
+        
+        # Scrape kubelet metrics
+        - job_name: 'kubernetes-nodes'
+          kubernetes_sd_configs:
+          - role: node
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+        
+        # Scrape cAdvisor metrics
+        - job_name: 'kubernetes-cadvisor'
+          kubernetes_sd_configs:
+          - role: node
+          scheme: https
+          tls_config:
+            ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+          relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+    
+    logs:
+      configs:
+      - name: default
+        clients:
+        - url: ${LOKI_ENDPOINT}
+          basic_auth:
+            username: ${LOKI_USERNAME}
+            password: ${LOKI_PASSWORD}
+          external_labels:
+            cluster: qnt9-aks
+            environment: ${ENVIRONMENT}
+        
+        positions:
+          filename: /tmp/positions.yaml
+        
+        scrape_configs:
+        # Scrape logs from QNT9 namespace pods
+        - job_name: kubernetes-pods
+          kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+              - qnt9
+          
+          pipeline_stages:
+          # Parse JSON logs from structured logging
+          - json:
+              expressions:
+                level: level
+                logger: logger
+                message: message
+                timestamp: timestamp
+          # Extract labels
+          - labels:
+              level:
+              logger:
+          # Add timestamp
+          - timestamp:
+              source: timestamp
+              format: RFC3339Nano
+          
+          relabel_configs:
+          # Add pod metadata as labels
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - source_labels: [__meta_kubernetes_pod_label_version]
+            target_label: version
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+    
+    traces:
+      configs:
+      - name: default
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+              http:
+        remote_write:
+        - endpoint: ${TEMPO_ENDPOINT}
+          basic_auth:
+            username: ${TEMPO_USERNAME}
+            password: ${TEMPO_PASSWORD}
+          insecure: false
+        batch:
+          timeout: 5s
+          send_batch_size: 100
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: grafana-agent
+  namespace: qnt9-monitoring
+  labels:
+    app: grafana-agent
+spec:
+  selector:
+    matchLabels:
+      app: grafana-agent
+  template:
+    metadata:
+      labels:
+        app: grafana-agent
+    spec:
+      serviceAccountName: grafana-agent
+      hostNetwork: true
+      hostPID: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: grafana-agent
+        image: grafana/agent:v0.38.1
+        imagePullPolicy: IfNotPresent
+        args:
+        - -config.file=/etc/agent/agent.yaml
+        - -enable-features=integrations-next
+        - -server.http.address=0.0.0.0:80
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: ENVIRONMENT
+          value: "production"
+        - name: PROMETHEUS_REMOTE_WRITE_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: prometheus-remote-write-endpoint
+        - name: PROMETHEUS_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: prometheus-username
+        - name: PROMETHEUS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: prometheus-password
+        - name: LOKI_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: loki-endpoint
+        - name: LOKI_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: loki-username
+        - name: LOKI_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: loki-password
+        - name: TEMPO_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: tempo-endpoint
+        - name: TEMPO_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: tempo-username
+        - name: TEMPO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-cloud-secrets
+              key: tempo-password
+        ports:
+        - containerPort: 80
+          name: http-metrics
+        - containerPort: 4317
+          name: otlp-grpc
+        - containerPort: 4318
+          name: otlp-http
+        volumeMounts:
+        - name: config
+          mountPath: /etc/agent
+        - name: varlog
+          mountPath: /var/log
+          readOnly: true
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          privileged: true
+          runAsUser: 0
+      volumes:
+      - name: config
+        configMap:
+          name: grafana-agent-config
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-agent
+  namespace: qnt9-monitoring
+  labels:
+    app: grafana-agent
+spec:
+  selector:
+    app: grafana-agent
+  ports:
+  - name: http-metrics
+    port: 80
+    targetPort: 80
+    protocol: TCP
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+    protocol: TCP
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+    protocol: TCP
+  type: ClusterIP

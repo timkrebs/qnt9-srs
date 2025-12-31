@@ -19,6 +19,9 @@ from sqlalchemy.orm import Session
 from .api_clients import StockAPIClient
 from .cache import CacheManager
 from .database import get_db, init_db
+from .metrics import metrics_endpoint, track_request_metrics
+from .metrics_middleware import PrometheusMiddleware
+from .tracing import configure_opentelemetry, instrument_fastapi
 from .validators import (
     MAX_NAME_SEARCH_RESULTS,
     ErrorResponse,
@@ -54,6 +57,13 @@ MAX_RESPONSE_TIME_MS = 2000
 
 # Cache TTL
 CACHE_TTL_MINUTES = 5
+
+# Configure OpenTelemetry tracing
+configure_opentelemetry(
+    service_name="search-service",
+    service_version="1.0.0",
+    enable_tracing=True,
+)
 
 
 @asynccontextmanager
@@ -112,8 +122,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add Prometheus metrics middleware
+app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app, excluded_urls="/health,/metrics,/")
+
 # Initialize API client (singleton)
 stock_api_client = StockAPIClient()
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return await metrics_endpoint()
 
 
 @app.get("/", tags=["Health"])

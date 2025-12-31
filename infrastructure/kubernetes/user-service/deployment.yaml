@@ -26,7 +26,7 @@ spec:
         version: v1
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8020"
+        prometheus.io/port: "8011"
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: qnt9-service-account
@@ -37,7 +37,7 @@ spec:
           image: ${ACR_LOGIN_SERVER}/qnt9-user-service:${IMAGE_TAG}
           imagePullPolicy: Always
           ports:
-            - containerPort: 8020
+            - containerPort: 8011
               protocol: TCP
           env:
             - name: ENVIRONMENT
@@ -61,7 +61,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 8020
+              port: 8011
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -69,7 +69,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: 8020
+              port: 8011
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
