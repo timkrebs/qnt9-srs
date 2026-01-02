@@ -9,7 +9,7 @@ when running in production with multiple instances.
 """
 
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 import structlog
 from fastapi import HTTPException, status

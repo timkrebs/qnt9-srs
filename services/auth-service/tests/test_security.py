@@ -8,7 +8,6 @@ import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-import pytest
 from app.security import (
     create_access_token,
     create_email_verification_token,
@@ -230,7 +229,7 @@ class TestJWTAccessToken:
             time.sleep(0.1)
 
             # Should be expired
-            payload = decode_access_token(token)
+            _ = decode_access_token(token)  # noqa: F841
             # Token created with 0 minutes expiry should be expired
             # Note: The actual expiry might still pass because datetime includes microseconds
 

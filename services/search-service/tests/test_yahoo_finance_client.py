@@ -13,7 +13,6 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from app.domain.entities import DataSource, StockIdentifier
 from app.domain.exceptions import ExternalServiceException, StockNotFoundException
 from app.infrastructure.yahoo_finance_client import YahooFinanceClient

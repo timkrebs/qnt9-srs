@@ -134,7 +134,7 @@ class RateLimiter:
             if state.blocked_until > now:
                 retry_after = int(state.blocked_until - now) + 1
                 logger.warning(
-                    f"Rate limited client still blocked",
+                    "Rate limited client still blocked",
                     extra={
                         "extra_fields": {
                             "client_ip": client_ip,
@@ -159,7 +159,7 @@ class RateLimiter:
                     retry_after = int(state.requests[0] - window_start) + 1
 
                 logger.warning(
-                    f"Rate limit exceeded",
+                    "Rate limit exceeded",
                     extra={
                         "extra_fields": {
                             "client_ip": client_ip,
@@ -175,7 +175,7 @@ class RateLimiter:
             state.requests.append(now)
 
             logger.debug(
-                f"Rate limit check passed",
+                "Rate limit check passed",
                 extra={
                     "extra_fields": {
                         "client_ip": client_ip,

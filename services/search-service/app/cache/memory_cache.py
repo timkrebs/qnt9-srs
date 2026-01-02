@@ -9,9 +9,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
-from cachetools import LRUCache  # type: ignore[import-untyped]
-
 from app.domain.entities import Stock
+from cachetools import LRUCache  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 

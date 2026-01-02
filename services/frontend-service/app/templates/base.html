@@ -132,6 +132,11 @@
                         if (response.ok) {
                             const data = await response.json();
                             this.items = data.watchlist || [];
+                            console.log('Watchlist loaded:', this.items.length, 'items');
+                        } else {
+                            console.error('Failed to load watchlist:', response.status, response.statusText);
+                            const errorData = await response.json().catch(() => ({}));
+                            console.error('Error details:', errorData);
                         }
                     } catch (error) {
                         console.error('Failed to load watchlist:', error);
@@ -152,6 +157,8 @@
                         return { success: false, error: 'Please log in to add stocks to watchlist' };
                     }
                     
+                    console.log('Adding to watchlist:', symbol);
+                    
                     try {
                         const response = await fetch('/api/watchlist', {
                             method: 'POST',
@@ -163,15 +170,29 @@
                         });
                         
                         const data = await response.json();
+                        console.log('Add watchlist response:', response.status, data);
                         
                         if (response.ok) {
+                            console.log('Stock added successfully, reloading watchlist...');
                             await this.loadWatchlist();
-                            return { success: true, message: `${symbol} added to watchlist` };
+                            return { 
+                                success: true, 
+                                message: `${symbol} added to watchlist successfully` 
+                            };
                         } else {
-                            return { success: false, error: data.detail || 'Failed to add to watchlist' };
+                            const errorMessage = data.detail || data.message || 'Failed to add to watchlist';
+                            console.error('Failed to add to watchlist:', errorMessage);
+                            return { 
+                                success: false, 
+                                error: errorMessage 
+                            };
                         }
                     } catch (error) {
-                        return { success: false, error: 'Network error. Please try again.' };
+                        console.error('Network error adding to watchlist:', error);
+                        return { 
+                            success: false, 
+                            error: `Network error: ${error.message}. Please try again.` 
+                        };
                     }
                 },
                 

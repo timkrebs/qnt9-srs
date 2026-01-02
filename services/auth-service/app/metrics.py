@@ -4,75 +4,51 @@ Prometheus metrics for Auth Service.
 Tracks authentication operations, token generation, and request performance.
 """
 
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+
 from fastapi import Response
-import time
-from functools import wraps
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 
 # Request metrics
 http_requests_total = Counter(
-    "auth_http_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status"]
+    "auth_http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]
 )
 
 http_request_duration_seconds = Histogram(
     "auth_http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "endpoint"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0)
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0),
 )
 
 # Authentication metrics
-auth_signup_total = Counter(
-    "auth_signup_total",
-    "Total user signups",
-    ["status"]
-)
+auth_signup_total = Counter("auth_signup_total", "Total user signups", ["status"])
 
-auth_signin_total = Counter(
-    "auth_signin_total",
-    "Total user sign-ins",
-    ["status"]
-)
+auth_signin_total = Counter("auth_signin_total", "Total user sign-ins", ["status"])
 
 auth_token_refresh_total = Counter(
-    "auth_token_refresh_total",
-    "Total token refresh requests",
-    ["status"]
+    "auth_token_refresh_total", "Total token refresh requests", ["status"]
 )
 
 auth_password_reset_total = Counter(
-    "auth_password_reset_total",
-    "Total password reset requests",
-    ["status"]
+    "auth_password_reset_total", "Total password reset requests", ["status"]
 )
 
 # Rate limiting metrics
-auth_rate_limit_hits = Counter(
-    "auth_rate_limit_hits_total",
-    "Total rate limit hits",
-    ["endpoint"]
-)
+auth_rate_limit_hits = Counter("auth_rate_limit_hits_total", "Total rate limit hits", ["endpoint"])
 
 # Active users gauge
-auth_active_sessions = Gauge(
-    "auth_active_sessions",
-    "Number of active user sessions"
-)
+auth_active_sessions = Gauge("auth_active_sessions", "Number of active user sessions")
 
 # Database metrics
 auth_db_operations_total = Counter(
-    "auth_db_operations_total",
-    "Total database operations",
-    ["operation", "status"]
+    "auth_db_operations_total", "Total database operations", ["operation", "status"]
 )
 
 auth_db_operation_duration_seconds = Histogram(
     "auth_db_operation_duration_seconds",
     "Database operation duration in seconds",
     ["operation"],
-    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0)
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
 )
 
 
@@ -121,7 +97,7 @@ def track_db_operation(operation: str, success: bool, duration: float):
 async def metrics_endpoint():
     """
     Prometheus metrics endpoint.
-    
+
     Returns:
         Response with Prometheus metrics in text format
     """

@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """
     Watchlist service configuration.
-    
+
     All settings can be overridden via environment variables.
     """
 
@@ -25,9 +25,7 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = Field(default="HS256")
 
     # Database
-    DATABASE_URL: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/qnt9"
-    )
+    DATABASE_URL: str = Field(default="postgresql://postgres:postgres@localhost:5432/qnt9")
 
     # Tier Limits
     FREE_TIER_WATCHLIST_LIMIT: int = Field(default=3, ge=1)

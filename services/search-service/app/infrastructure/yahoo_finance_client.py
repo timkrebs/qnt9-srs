@@ -86,20 +86,20 @@ class YahooFinanceClient(IStockAPIClient):
 
     # WKN to Yahoo symbol mappings for German stocks
     WKN_MAPPINGS = {
-        "865985": "AAPL",          # Apple
-        "870747": "MSFT",          # Microsoft
-        "A14Y6F": "GOOGL",         # Alphabet/Google
-        "906866": "AMZN",          # Amazon
-        "A1CX3T": "TSLA",          # Tesla
-        "A1JWVX": "META",          # Meta/Facebook
-        "918422": "NVDA",          # NVIDIA
-        "519000": "BMW.DE",        # BMW
-        "766403": "VOW3.DE",       # Volkswagen
-        "710000": "MBG.DE",        # Mercedes-Benz
-        "716460": "SAP.DE",        # SAP
-        "723610": "SIE.DE",        # Siemens
-        "514000": "DBK.DE",        # Deutsche Bank
-        "840400": "ALV.DE",        # Allianz
+        "865985": "AAPL",  # Apple
+        "870747": "MSFT",  # Microsoft
+        "A14Y6F": "GOOGL",  # Alphabet/Google
+        "906866": "AMZN",  # Amazon
+        "A1CX3T": "TSLA",  # Tesla
+        "A1JWVX": "META",  # Meta/Facebook
+        "918422": "NVDA",  # NVIDIA
+        "519000": "BMW.DE",  # BMW
+        "766403": "VOW3.DE",  # Volkswagen
+        "710000": "MBG.DE",  # Mercedes-Benz
+        "716460": "SAP.DE",  # SAP
+        "723610": "SIE.DE",  # Siemens
+        "514000": "DBK.DE",  # Deutsche Bank
+        "840400": "ALV.DE",  # Allianz
     }
 
     def __init__(
@@ -266,10 +266,12 @@ class YahooFinanceClient(IStockAPIClient):
             return []
 
     def get_health_status(self) -> dict:
-        """Get client health status."""
+        """Get client health status with circuit breaker details."""
+        cb_status = self.circuit_breaker.get_status()
         return {
             "service": "yahoo_finance",
-            "circuit_breaker": self.circuit_breaker.get_status(),
+            "healthy": cb_status["state"] != "open",
+            "circuit_breaker": cb_status,
             "rate_limiter": self.rate_limiter.get_current_usage(),
             "timeout_seconds": self.timeout,
             "max_retries": self.max_retries,
@@ -372,12 +374,20 @@ class YahooFinanceClient(IStockAPIClient):
         logger.warning(f"No symbol mapping found for {identifier}")
         return None
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
+        reraise=False,
+    )
     def _resolve_isin_via_openfigi(self, isin: str) -> Optional[str]:
         """
         Resolve ISIN to ticker symbol using OpenFIGI API.
 
         OpenFIGI is a free service by Bloomberg that maps ISINs to ticker symbols.
         https://www.openfigi.com/api
+
+        Implements retry logic with exponential backoff for network errors.
 
         Args:
             isin: International Securities Identification Number

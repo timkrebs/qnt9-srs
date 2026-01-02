@@ -5,13 +5,14 @@ Tests all authentication endpoints with proper mocking of database operations.
 """
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
+
 from app.app import app
 from app.auth_service import AuthError, AuthService
-from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -87,6 +88,38 @@ def auth_service():
     return AuthService()
 
 
+@pytest.fixture
+def mock_supabase():
+    """Mock auth_service sign_up for testing."""
+    with patch("app.auth_service.auth_service.sign_up") as mock_sign_up:
+        # Mock successful sign_up
+        async def return_user(email, password, full_name=None):
+            return {
+                "user": {
+                    "id": TEST_USER_ID,
+                    "email": email,
+                    "email_confirmed_at": None,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "user_metadata": {},
+                    "app_metadata": {},
+                    "tier": "free",
+                    "full_name": full_name,
+                },
+                "session": {
+                    "access_token": TEST_ACCESS_TOKEN,
+                    "refresh_token": TEST_REFRESH_TOKEN,
+                    "expires_in": 3600,
+                    "expires_at": int(
+                        (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp()
+                    ),
+                    "token_type": "bearer",
+                },
+            }
+
+        mock_sign_up.side_effect = return_user
+        yield mock_sign_up
+
+
 class TestHealthEndpoints:
     """Test health and root endpoints."""
 
@@ -113,21 +146,8 @@ class TestSignUp:
     """Test user signup functionality."""
 
     @pytest.mark.asyncio
-    async def test_signup_success(self, mock_db_manager, mock_security):
+    async def test_signup_success(self, mock_supabase):
         """Test successful user registration."""
-        # Mock no existing user
-        mock_db_manager.fetchrow.side_effect = [
-            None,  # No existing user
-            {  # Created user
-                "id": UUID(TEST_USER_ID),
-                "email": TEST_EMAIL,
-                "full_name": TEST_FULL_NAME,
-                "tier": "free",
-                "created_at": datetime.now(timezone.utc),
-                "email_verified": False,
-            },
-        ]
-
         response = client.post(
             "/auth/signup",
             json={

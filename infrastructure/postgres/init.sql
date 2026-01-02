@@ -83,10 +83,11 @@ CREATE TABLE IF NOT EXISTS watchlists (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     symbol VARCHAR(20) NOT NULL,
-    name VARCHAR(255),
-    isin VARCHAR(12),
+    alert_enabled BOOLEAN DEFAULT FALSE,
+    alert_price_above DECIMAL(10, 2),
+    alert_price_below DECIMAL(10, 2),
+    notes TEXT CHECK (LENGTH(notes) <= 500),
     added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    notes TEXT,
     UNIQUE(user_id, symbol)
 );
 

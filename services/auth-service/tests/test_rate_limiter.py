@@ -5,7 +5,7 @@ Tests rate limiting functionality including configuration, blocking, and cleanup
 """
 
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException, Request

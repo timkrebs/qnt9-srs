@@ -14,9 +14,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from .auth_service import AuthError, auth_service
 from .config import settings
 from .database import db_manager
+from .dependencies import get_current_user_from_token
 from .logging_config import get_logger, setup_logging
 from .metrics import metrics_endpoint, track_request_metrics
 from .metrics_middleware import PrometheusMiddleware
+from .middleware import check_auth_rate_limit, check_password_reset_rate_limit
 from .models import (
     AuthResponse,
     MessageResponse,
@@ -31,8 +33,8 @@ from .models import (
     UserTierUpdate,
     UserUpdate,
 )
-from .rate_limiter import check_auth_rate_limit, check_password_reset_rate_limit
-from .security import decode_access_token
+from .routers.v1 import auth_router, users_router
+from .shutdown_handler import setup_graceful_shutdown
 from .tracing import configure_opentelemetry, instrument_fastapi
 
 # Setup logging
@@ -64,10 +66,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await db_manager.connect()
     logger.info("PostgreSQL connection pool initialized")
 
+    # Setup graceful shutdown handlers
+    shutdown_handler = setup_graceful_shutdown(
+        service_name="auth-service", cleanup_callbacks=[db_manager.disconnect]
+    )
+    app.state.shutdown_handler = shutdown_handler
+    app.state.is_shutting_down = False
+
+    logger.info("Graceful shutdown handlers configured")
+
     yield
 
     # Shutdown
     logger.info("Shutting down Auth Service...")
+    app.state.is_shutting_down = True
     await db_manager.disconnect()
     logger.info("Database connection pool closed")
 
@@ -82,13 +94,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Add CORS middleware
+# Add CORS middleware with restricted permissions
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
+    expose_headers=["Content-Length", "X-Request-ID"],
+    max_age=600,
 )
 
 # Add Prometheus metrics middleware
@@ -96,6 +116,32 @@ app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app, excluded_urls="/health,/metrics")
+
+
+# Include API v1 routers
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(users_router, prefix="/api/v1")
+
+
+# Middleware to handle shutdown state
+@app.middleware("http")
+async def shutdown_middleware(request: Request, call_next):
+    """
+    Reject new requests during graceful shutdown.
+
+    Returns 503 Service Unavailable if service is shutting down.
+    """
+    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+        # Allow health checks during shutdown for monitoring
+        if request.url.path in ["/health", "/metrics"]:
+            return await call_next(request)
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is shutting down",
+        )
+
+    return await call_next(request)
 
 
 # Metrics endpoint
@@ -139,33 +185,8 @@ def get_token_from_header(authorization: str = Header(None)) -> str:
         )
 
 
-async def get_current_user_from_token(authorization: str = Header(None)) -> dict:
-    """
-    Dependency that extracts and validates the current user from JWT token.
-
-    Args:
-        authorization: Bearer token in Authorization header
-
-    Returns:
-        Dictionary with user_id and email from token
-
-    Raises:
-        HTTPException: If token is invalid or expired
-    """
-    token = get_token_from_header(authorization)
-
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    return {
-        "user_id": payload["sub"],
-        "email": payload["email"],
-        "tier": payload.get("tier", "free"),
-    }
+# get_current_user_from_token is imported from dependencies module
+# The duplicate definition has been removed to fix F811 ruff error
 
 
 # Health & Info Endpoints
@@ -211,7 +232,7 @@ async def health_check() -> dict:
     summary="Register new user",
     dependencies=[Depends(check_auth_rate_limit)],
 )
-async def sign_up(user_data: UserSignUp):
+async def sign_up(user_data: UserSignUp, request: Request):
     """
     Register a new user with email and password.
 
@@ -219,6 +240,7 @@ async def sign_up(user_data: UserSignUp):
 
     Args:
         user_data: User registration data (email, password, full_name)
+        request: FastAPI request object
 
     Returns:
         User data and session tokens
@@ -226,12 +248,28 @@ async def sign_up(user_data: UserSignUp):
     Raises:
         HTTPException: If registration fails
     """
+    _ip_address = request.client.host if request.client else None
+    _user_agent = request.headers.get("user-agent")
+
     try:
         result = await auth_service.sign_up(
             email=user_data.email,
             password=user_data.password,
             full_name=user_data.full_name,
         )
+
+        # Log successful signup
+        # TODO: Re-enable audit logging in later stage
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.USER_SIGNUP,
+        # #     user_id=result["user"]["id"],
+        # #     email=user_data.email,
+        # #     ip_address=ip_address,
+        # #     user_agent=user_agent,
+        # #     success=True,
+        # #     details={"tier": result["user"]["tier"]},
+        # # )
 
         return AuthResponse(
             user=UserResponse(**result["user"]),
@@ -240,6 +278,27 @@ async def sign_up(user_data: UserSignUp):
 
     except AuthError as e:
         logger.error(f"Sign up failed: {e.message}")
+
+        # Log failed signup# TODO: Re-enable audit logging in later stage
+
+        # await audit_service.log_auth_event(
+
+        # action=AuditAction.USER_SIGNUP,
+
+        # user_id=None,
+
+        # email=user_data.email,
+
+        # ip_address=ip_address,
+
+        # user_agent=user_agent,
+
+        # success=False,
+
+        # details={"error": e.message},
+
+        # )
+
         if e.code == "email_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -292,6 +351,19 @@ async def sign_in(credentials: UserSignIn, request: Request):
             user_agent=user_agent,
         )
 
+        # Log successful signin
+        # TODO: Re-enable audit logging in later stage
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.USER_SIGNIN,
+        # #     user_id=result["user"]["id"],
+        # #     email=result["user"]["email"],
+        # #     ip_address=client_ip,
+        # #     user_agent=user_agent,
+        # #     success=True,
+        # #     details={"session_id": result["session"]["id"]},
+        # # )
+
         return AuthResponse(
             user=UserResponse(**result["user"]),
             session=SessionResponse(**result["session"]),
@@ -299,6 +371,19 @@ async def sign_in(credentials: UserSignIn, request: Request):
 
     except AuthError as e:
         logger.error(f"Sign in failed: {e.message}")
+
+        # Log failed signin
+        # TODO: Re-enable audit logging in later stage
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.USER_SIGNIN_FAILED,
+        # #     email=credentials.email,
+        # #     ip_address=client_ip,
+        # #     user_agent=user_agent,
+        # #     success=False,
+        # #     details={"error": e.message, "code": e.code},
+        # # )
+
         if e.code == "invalid_credentials":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -327,7 +412,7 @@ async def sign_in(credentials: UserSignIn, request: Request):
     tags=["Authentication"],
     summary="Sign out user",
 )
-async def sign_out(token_data: RefreshToken):
+async def sign_out(token_data: RefreshToken, request: Request):
     """
     Sign out the current user.
 
@@ -335,6 +420,7 @@ async def sign_out(token_data: RefreshToken):
 
     Args:
         token_data: Refresh token to invalidate
+        request: FastAPI request object for IP/user-agent capture
 
     Returns:
         Success message
@@ -343,7 +429,22 @@ async def sign_out(token_data: RefreshToken):
         HTTPException: If sign out fails
     """
     try:
+        # Capture client info for audit
+        _ip_address = request.client.host if request.client else None
+        _user_agent = request.headers.get("user-agent")
+
         await auth_service.sign_out(token_data.refresh_token)
+
+        # Log successful signout (no user_id available from token)
+        # TODO: Re-enable audit logging in later stage
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.USER_SIGNOUT,
+        # #     ip_address=ip_address,
+        # #     user_agent=user_agent,
+        # #     success=True,
+        # #     details={"token_provided": True},
+        # # )
 
         return MessageResponse(
             message="Signed out successfully",
@@ -352,6 +453,20 @@ async def sign_out(token_data: RefreshToken):
 
     except AuthError as e:
         logger.error(f"Sign out failed: {e.message}")
+
+        # Log failed signout
+        # TODO: Re-enable audit logging in later stage
+        # # _ip_address = request.client.host if request.client else None
+        # # _user_agent = request.headers.get("user-agent")
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.USER_SIGNOUT,
+        # #     ip_address=ip_address,
+        # #     user_agent=user_agent,
+        # #     success=False,
+        # #     details={"error": e.message},
+        # # )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Sign out failed: {e.message}",
@@ -370,7 +485,7 @@ async def sign_out(token_data: RefreshToken):
     tags=["Authentication"],
     summary="Refresh session",
 )
-async def refresh_session(token_data: RefreshToken):
+async def refresh_session(token_data: RefreshToken, request: Request):
     """
     Refresh an expired session.
 
@@ -378,6 +493,7 @@ async def refresh_session(token_data: RefreshToken):
 
     Args:
         token_data: Refresh token
+        request: FastAPI request object for IP/user-agent capture
 
     Returns:
         New session tokens
@@ -386,12 +502,41 @@ async def refresh_session(token_data: RefreshToken):
         HTTPException: If refresh fails
     """
     try:
+        # Capture client info for audit
+        _ip_address = request.client.host if request.client else None
+        _user_agent = request.headers.get("user-agent")
+
         result = await auth_service.refresh_session(token_data.refresh_token)
+
+        # Log successful token refresh
+        # TODO: Re-enable audit logging in later stage
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.TOKEN_REFRESH,
+        # #     ip_address=ip_address,
+        # #     user_agent=user_agent,
+        # #     success=True,
+        # #     details={"new_session_id": result["id"]},
+        # # )
 
         return SessionResponse(**result)
 
     except AuthError as e:
         logger.error(f"Session refresh failed: {e.message}")
+
+        # Log failed token refresh
+        # TODO: Re-enable audit logging in later stage
+        # # _ip_address = request.client.host if request.client else None
+        # # _user_agent = request.headers.get("user-agent")
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.TOKEN_REFRESH,
+        # #     ip_address=ip_address,
+        # #     user_agent=user_agent,
+        # #     success=False,
+        # #     details={"error": e.message, "code": e.code},
+        # # )
+
         if e.code in ("invalid_token", "token_revoked", "token_expired"):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -462,6 +607,7 @@ async def get_current_user(current_user: dict = Depends(get_current_user_from_to
 )
 async def update_current_user(
     user_update: UserUpdate,
+    request: Request,
     current_user: dict = Depends(get_current_user_from_token),
 ):
     """
@@ -471,6 +617,7 @@ async def update_current_user(
 
     Args:
         user_update: Updated user data (email, full_name)
+        request: FastAPI request object for IP/user-agent capture
         current_user: Injected user data from token
 
     Returns:
@@ -480,16 +627,60 @@ async def update_current_user(
         HTTPException: If update fails
     """
     try:
+        # Capture client info for audit
+        _ip_address = request.client.host if request.client else None
+        _user_agent = request.headers.get("user-agent")
+
+        # Track changes for audit
+        changes = {}
+        if user_update.email and user_update.email != current_user.get("email"):
+            changes["email"] = {"old": current_user.get("email"), "new": user_update.email}
+        if user_update.full_name and user_update.full_name != current_user.get("full_name"):
+            changes["full_name"] = {
+                "old": current_user.get("full_name"),
+                "new": user_update.full_name,
+            }
+
         result = await auth_service.update_user(
             user_id=current_user["user_id"],
             email=user_update.email,
             full_name=user_update.full_name,
         )
 
+        # Log user profile update
+        # TODO: Re-enable audit logging in later stage
+        # if changes:
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #         action=AuditAction.USER_UPDATE,
+        # #         user_id=current_user["user_id"],
+        # #         email=current_user.get("email"),
+        #         ip_address=ip_address,
+        #         user_agent=user_agent,
+        #         success=True,
+        #         details={"changes": changes},
+        #     )
+
         return UserResponse(**result)
 
     except AuthError as e:
         logger.error(f"User update failed: {e.message}")
+
+        # Log failed user update
+        # TODO: Re-enable audit logging in later stage
+        # # _ip_address = request.client.host if request.client else None
+        # # _user_agent = request.headers.get("user-agent")
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.USER_UPDATE,
+        # #     user_id=current_user["user_id"],
+        # #     email=current_user.get("email"),
+        #     ip_address=ip_address,
+        #     user_agent=user_agent,
+        #     success=False,
+        #     details={"error": e.message},
+        # )
+
         if e.code == "email_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -515,6 +706,7 @@ async def update_current_user(
 )
 async def update_password(
     password_update: PasswordUpdate,
+    request: Request,
     current_user: dict = Depends(get_current_user_from_token),
 ):
     """
@@ -524,6 +716,7 @@ async def update_password(
 
     Args:
         password_update: New password
+        request: FastAPI request object for IP/user-agent capture
         current_user: Injected user data from token
 
     Returns:
@@ -533,10 +726,27 @@ async def update_password(
         HTTPException: If password update fails
     """
     try:
+        # Capture client info for audit
+        _ip_address = request.client.host if request.client else None
+        _user_agent = request.headers.get("user-agent")
+
         await auth_service.update_user(
             user_id=current_user["user_id"],
             password=password_update.password,
         )
+
+        # Log successful password change
+        # TODO: Re-enable audit logging in later stage
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.PASSWORD_CHANGE,
+        # #     user_id=current_user["user_id"],
+        # #     email=current_user.get("email"),
+        #     ip_address=ip_address,
+        #     user_agent=user_agent,
+        #     success=True,
+        #     details={"initiated_by": "user"},
+        # )
 
         return MessageResponse(
             message="Password updated successfully",
@@ -545,6 +755,22 @@ async def update_password(
 
     except AuthError as e:
         logger.error(f"Password update failed: {e.message}")
+
+        # Log failed password change
+        # TODO: Re-enable audit logging in later stage
+        # # _ip_address = request.client.host if request.client else None
+        # # _user_agent = request.headers.get("user-agent")
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.PASSWORD_CHANGE,
+        # #     user_id=current_user["user_id"],
+        # #     email=current_user.get("email"),
+        #     ip_address=ip_address,
+        #     user_agent=user_agent,
+        #     success=False,
+        #     details={"error": e.message},
+        # )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Password update failed: {e.message}",
@@ -564,7 +790,7 @@ async def update_password(
     summary="Request password reset",
     dependencies=[Depends(check_password_reset_rate_limit)],
 )
-async def request_password_reset(reset_request: PasswordResetRequest):
+async def request_password_reset(reset_request: PasswordResetRequest, request: Request):
     """
     Request a password reset email.
 
@@ -572,6 +798,7 @@ async def request_password_reset(reset_request: PasswordResetRequest):
 
     Args:
         reset_request: Email address for password reset
+        request: FastAPI request object for IP/user-agent capture
 
     Returns:
         Success message (always returns success for security)
@@ -580,7 +807,23 @@ async def request_password_reset(reset_request: PasswordResetRequest):
         HTTPException: If request fails
     """
     try:
+        # Capture client info for audit
+        _ip_address = request.client.host if request.client else None
+        _user_agent = request.headers.get("user-agent")
+
         await auth_service.reset_password_request(reset_request.email)
+
+        # Log password reset request
+        # TODO: Re-enable audit logging in later stage
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.PASSWORD_RESET_REQUEST,
+        # #     email=reset_request.email,
+        # #     ip_address=ip_address,
+        # #     user_agent=user_agent,
+        # #     success=True,
+        # #     details={"email_sent": True},
+        # # )
 
         return MessageResponse(
             message="If the email exists, a password reset link has been sent.",
@@ -589,6 +832,21 @@ async def request_password_reset(reset_request: PasswordResetRequest):
 
     except Exception as e:
         logger.exception(f"Unexpected error requesting password reset: {e}")
+
+        # Log failed password reset request
+        # TODO: Re-enable audit logging in later stage
+        # # _ip_address = request.client.host if request.client else None
+        # # _user_agent = request.headers.get("user-agent")
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.PASSWORD_RESET_REQUEST,
+        # #     email=reset_request.email,
+        # #     ip_address=ip_address,
+        # #     user_agent=user_agent,
+        # #     success=False,
+        # #     details={"error": str(e)},
+        # )
+
         # Don't reveal errors for security
         return MessageResponse(
             message="If the email exists, a password reset link has been sent.",
@@ -649,6 +907,7 @@ async def get_user_tier(current_user: dict = Depends(get_current_user_from_token
 )
 async def update_user_tier(
     tier_update: UserTierUpdate,
+    request: Request,
     current_user: dict = Depends(get_current_user_from_token),
 ):
     """
@@ -658,6 +917,7 @@ async def update_user_tier(
 
     Args:
         tier_update: New tier information
+        request: FastAPI request object for IP/user-agent capture
         current_user: Injected user data from token
 
     Returns:
@@ -667,10 +927,33 @@ async def update_user_tier(
         HTTPException: If token is invalid or tier update fails
     """
     try:
+        # Capture client info for audit
+        _ip_address = request.client.host if request.client else None
+        _user_agent = request.headers.get("user-agent")
+
+        # Get old tier for audit
+        _old_tier = current_user.get("tier", "unknown")
+
         updated_tier = await auth_service.update_user_tier(
             current_user["user_id"],
             tier_update.tier,
         )
+
+        # Log tier update
+        # TODO: Re-enable audit logging in later stage
+        # await audit_service.log_data_change(
+        #     action=AuditAction.TIER_UPDATE,
+        #     user_id=current_user["user_id"],
+        #     email=current_user.get("email"),
+        #     ip_address=ip_address,
+        #     user_agent=user_agent,
+        #     old_value=old_tier,
+        #     new_value=tier_update.tier,
+        #     details={
+        #         "subscription_start": str(updated_tier.get("subscription_start")),
+        #         "subscription_end": str(updated_tier.get("subscription_end")),
+        #     },
+        # )
 
         return UserTierResponse(
             id=updated_tier["id"],
@@ -681,6 +964,22 @@ async def update_user_tier(
         )
     except AuthError as e:
         logger.error(f"Error updating user tier: {e.message}")
+
+        # Log failed tier update
+        # TODO: Re-enable audit logging in later stage
+        # # _ip_address = request.client.host if request.client else None
+        # # _user_agent = request.headers.get("user-agent")
+        ## TODO: Re-enable audit logging in later stage
+        # await audit_service.log_auth_event(
+        # #     action=AuditAction.TIER_UPDATE,
+        # #     user_id=current_user["user_id"],
+        # #     email=current_user.get("email"),
+        #     ip_address=ip_address,
+        #     user_agent=user_agent,
+        #     success=False,
+        #     details={"error": e.message, "attempted_tier": tier_update.tier},
+        # )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to update tier: {e.message}",

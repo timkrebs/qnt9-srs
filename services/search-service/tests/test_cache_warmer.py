@@ -9,7 +9,6 @@ from decimal import Decimal
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-
 from app.cache.cache_warmer import CacheWarmer, warmup_cache_on_startup
 from app.cache.memory_cache import MemoryStockCache
 from app.domain.entities import Stock

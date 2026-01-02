@@ -536,7 +536,9 @@ class SearchServiceClient:
                                 "symbol": symbol,
                                 "period": period,
                                 "interval": interval,
-                                "error_message": error_data.get("detail", {}).get("message", "Bad request"),
+                                "error_message": error_data.get("detail", {}).get(
+                                    "message", "Bad request"
+                                ),
                                 "duration_ms": duration_ms,
                             }
                         },

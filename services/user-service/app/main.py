@@ -10,17 +10,16 @@ from datetime import datetime
 
 import asyncpg
 import structlog
-from app.cache import (
-    cache_key_user_profile,
-    user_profile_cache,
-)
+from app.cache import cache_key_user_profile, user_profile_cache
 from app.config import settings
 from app.db.connection import db_manager, get_db_connection
 from app.metrics import metrics_endpoint, track_request_metrics
 from app.metrics_middleware import PrometheusMiddleware
 from app.models import HealthResponse, MessageResponse, SubscriptionUpdate, UserProfile
+from app.shutdown_handler import setup_graceful_shutdown
 from app.tracing import configure_opentelemetry, instrument_fastapi
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 
 logger = structlog.get_logger()
 
@@ -39,9 +38,19 @@ async def lifespan(app: FastAPI):
     await db_manager.connect()
     logger.info("User Service started")
 
+    # Setup graceful shutdown handlers
+    shutdown_handler = setup_graceful_shutdown(
+        service_name="user-service", cleanup_callbacks=[db_manager.disconnect]
+    )
+    app.state.shutdown_handler = shutdown_handler
+    app.state.is_shutting_down = False
+
+    logger.info("Graceful shutdown handlers configured")
+
     yield
 
     logger.info("Shutting down User Service")
+    app.state.is_shutting_down = True
     await db_manager.disconnect()
     logger.info("User Service shutdown complete")
 
@@ -53,11 +62,47 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Configure CORS
+cors_origins = [
+    "http://localhost:8080",
+    "http://localhost:3000",
+    "http://frontend-service:8080",
+    "http://webapp-service:3000",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Add Prometheus metrics middleware
 app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app, excluded_urls="/health,/metrics")
+
+
+# Middleware to handle shutdown state
+@app.middleware("http")
+async def shutdown_middleware(request: Request, call_next):
+    """
+    Reject new requests during graceful shutdown.
+
+    Returns 503 Service Unavailable if service is shutting down.
+    """
+    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+        # Allow health checks during shutdown for monitoring
+        if request.url.path in ["/health", "/metrics"]:
+            return await call_next(request)
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is shutting down",
+        )
+
+    return await call_next(request)
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -104,7 +149,7 @@ async def get_user_profile(user_id: str, conn: asyncpg.Connection = Depends(get_
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
         profile_data = dict(row)
-        
+
         # Cache the result (60 second TTL)
         user_profile_cache.set(cache_key, profile_data)
         logger.debug("Cached user profile", user_id=user_id)

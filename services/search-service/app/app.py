@@ -11,16 +11,17 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from .api_clients import StockAPIClient
 from .cache import CacheManager
 from .database import get_db, init_db
+from .infrastructure.yahoo_finance_client import YahooFinanceClient as StockAPIClient
 from .metrics import metrics_endpoint, track_request_metrics
 from .metrics_middleware import PrometheusMiddleware
+from .shutdown_handler import setup_graceful_shutdown
 from .tracing import configure_opentelemetry, instrument_fastapi
 from .validators import (
     MAX_NAME_SEARCH_RESULTS,
@@ -96,10 +97,18 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database: {e}")
         raise
 
+    # Setup graceful shutdown handlers
+    shutdown_handler = setup_graceful_shutdown(service_name="search-service", cleanup_callbacks=[])
+    app.state.shutdown_handler = shutdown_handler
+    app.state.is_shutting_down = False
+
+    logger.info("Graceful shutdown handlers configured")
+
     yield
 
     # Shutdown
     logger.info("Shutting down Search Service...")
+    app.state.is_shutting_down = True
 
 
 # Initialize FastAPI app
@@ -127,6 +136,28 @@ app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app, excluded_urls="/health,/metrics,/")
+
+
+# Middleware to handle shutdown state
+@app.middleware("http")
+async def shutdown_middleware(request: Request, call_next):
+    """
+    Reject new requests during graceful shutdown.
+
+    Returns 503 Service Unavailable if service is shutting down.
+    """
+    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+        # Allow health checks during shutdown for monitoring
+        if request.url.path in ["/health", "/metrics", "/"]:
+            return await call_next(request)
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is shutting down",
+        )
+
+    return await call_next(request)
+
 
 # Initialize API client (singleton)
 stock_api_client = StockAPIClient()
@@ -223,12 +254,7 @@ def _is_potential_company_name(query: str) -> bool:
 
     # WKN format (exactly 6 alphanumeric, all uppercase, with at least one digit)
     # is not a company name
-    if (
-        len(query) == 6
-        and query.isalnum()
-        and query.isupper()
-        and any(c.isdigit() for c in query)
-    ):
+    if len(query) == 6 and query.isalnum() and query.isupper() and any(c.isdigit() for c in query):
         return False
 
     # Default to False for edge cases
@@ -374,9 +400,7 @@ async def search_stock(
                 symbol = best_result["symbol"]
                 response_query_type = "name"  # For response only
 
-                logger.info(
-                    f"Name search found symbol: {symbol}, fetching complete data..."
-                )
+                logger.info(f"Name search found symbol: {symbol}, fetching complete data...")
 
                 # Fetch complete stock data for the symbol (not just search result)
                 stock_data = stock_api_client.search_stock(symbol, query_type="symbol")
@@ -386,14 +410,10 @@ async def search_stock(
                     cache_manager.save_to_cache(stock_data, symbol)
                     cache_manager.record_search(original_query, found=True)
 
-                    return _build_success_response(
-                        stock_data, response_query_type, start_time
-                    )
+                    return _build_success_response(stock_data, response_query_type, start_time)
                 else:
                     # Fallback to basic search result if full data fetch fails
-                    logger.warning(
-                        f"Could not fetch full data for {symbol}, using search result"
-                    )
+                    logger.warning(f"Could not fetch full data for {symbol}, using search result")
                     stock_data = {
                         "symbol": best_result["symbol"],
                         "name": best_result["name"],
@@ -417,18 +437,14 @@ async def search_stock(
         # Try cache first
         cached_data = cache_manager.get_cached_stock(query)
         if cached_data:
-            return _build_cached_response(
-                cached_data, query_type, start_time, cache_manager, query
-            )
+            return _build_cached_response(cached_data, query_type, start_time, cache_manager, query)
 
         # Cache miss - fetch from external API
         logger.info(f"Cache miss - fetching from external API for {query}")
         stock_data = stock_api_client.search_stock(query, query_type)
 
         if not stock_data:
-            return _build_not_found_response(
-                query, query_type, start_time, cache_manager
-            )
+            return _build_not_found_response(query, query_type, start_time, cache_manager)
 
         # Save to cache and build response
         cache_manager.save_to_cache(stock_data, query)
@@ -796,14 +812,10 @@ async def search_stock_by_name(
 
         # Fallback to external API if no cache results
         if not results:
-            results = _search_external_api_and_cache(
-                normalized_query, limit, cache_manager
-            )
+            results = _search_external_api_and_cache(normalized_query, limit, cache_manager)
 
         # Build and return response
-        return _build_name_search_response(
-            results, normalized_query, start_time, cache_manager
-        )
+        return _build_name_search_response(results, normalized_query, start_time, cache_manager)
 
     except ValueError as e:
         logger.warning(f"Validation error for name search '{query}': {e}")
@@ -947,9 +959,7 @@ async def get_stock_report(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Error fetching stock report for {identifier}: {e}", exc_info=True
-        )
+        logger.error(f"Error fetching stock report for {identifier}: {e}", exc_info=True)
         response_time_ms = int((time.time() - start_time) * 1000)
 
         raise HTTPException(
@@ -1007,9 +1017,7 @@ def _validate_report_data(report_data: Dict[str, Any]) -> None:
         raise ValueError(f"Missing required report fields: {', '.join(missing_fields)}")
 
 
-def _build_report_response(
-    report_data: Dict[str, Any], start_time: float
-) -> StockReportResponse:
+def _build_report_response(report_data: Dict[str, Any], start_time: float) -> StockReportResponse:
     """
     Build stock report response from fetched data.
 
@@ -1163,9 +1171,7 @@ def _build_cached_report_response(
     )
 
 
-def _get_stale_cached_report(
-    symbol: str, cache_manager: CacheManager
-) -> Optional[Dict[str, Any]]:
+def _get_stale_cached_report(symbol: str, cache_manager: CacheManager) -> Optional[Dict[str, Any]]:
     """
     Get stale (expired) cached report data as fallback.
 
@@ -1191,8 +1197,7 @@ def _get_stale_cached_report(
             logger.info(f"Using stale cache data for {symbol}")
             cache_age = int(
                 (
-                    datetime.now(timezone.utc).replace(tzinfo=None)
-                    - cache_entry.created_at
+                    datetime.now(timezone.utc).replace(tzinfo=None) - cache_entry.created_at
                 ).total_seconds()
             )
             return cache_manager._build_report_dict(cache_entry, cache_age)
@@ -1219,7 +1224,9 @@ def _build_stale_cache_response(
     """
     response = _build_cached_report_response(stale_data, start_time)
     cache_timestamp = stale_data.get("cache_timestamp", "unknown")
-    response.message = f"Showing cached data from {cache_timestamp}. Fresh data temporarily unavailable."
+    response.message = (
+        f"Showing cached data from {cache_timestamp}. Fresh data temporarily unavailable."
+    )
 
     return response
 
@@ -1317,8 +1324,7 @@ def _build_name_search_response(
 
     # Log search analytics
     logger.info(
-        f"Name search for '{query}' returned {len(results)} results "
-        f"in {response_time}ms"
+        f"Name search for '{query}' returned {len(results)} results " f"in {response_time}ms"
     )
 
     # Record search in history
@@ -1442,7 +1448,7 @@ async def get_historical_data(
         # Check cache for historical data (short TTL for real-time data)
         cache_key = f"hist_{symbol}_{period}_{interval}"
         cached_data = _get_cached_historical_data(cache_key, cache_manager)
-        
+
         if cached_data:
             response_time_ms = int((time.time() - start_time) * 1000)
             return {
@@ -1522,8 +1528,22 @@ def _validate_period_interval_combination(period: str, interval: str) -> None:
         HTTPException: If combination is invalid
     """
     valid_periods = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"}
-    valid_intervals = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "5d", "1wk", "1mo", "3mo"}
-    
+    valid_intervals = {
+        "1m",
+        "2m",
+        "5m",
+        "15m",
+        "30m",
+        "60m",
+        "90m",
+        "1h",
+        "1d",
+        "5d",
+        "1wk",
+        "1mo",
+        "3mo",
+    }
+
     if period not in valid_periods:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1532,7 +1552,7 @@ def _validate_period_interval_combination(period: str, interval: str) -> None:
                 "message": f"Invalid period '{period}'. Valid periods: {', '.join(sorted(valid_periods))}",
             },
         )
-    
+
     if interval not in valid_intervals:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1545,7 +1565,7 @@ def _validate_period_interval_combination(period: str, interval: str) -> None:
     # Validate specific combinations (Yahoo Finance restrictions)
     intraday_intervals = {"1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h"}
     short_periods = {"1d", "5d"}
-    
+
     if interval in intraday_intervals and period not in short_periods:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

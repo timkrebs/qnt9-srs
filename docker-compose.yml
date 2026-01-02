@@ -1,5 +1,5 @@
 services:
-  # ==================== DATABASE ====================
+  # ==================== DATABASE & CACHE ====================
   
   # PostgreSQL Database for user data and authentication
   postgres:
@@ -20,6 +20,24 @@ services:
       test: ["CMD-SHELL", "pg_isready -U qnt9 -d qnt9_db"]
       interval: 10s
       timeout: 5s
+      retries: 5
+    restart: unless-stopped
+  
+  # Redis for distributed caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: qnt9-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - qnt9-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
       retries: 5
     restart: unless-stopped
 
@@ -81,6 +99,7 @@ services:
       DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
       DATABASE_POOL_SIZE: 20
       DATABASE_POOL_MIN_SIZE: 5
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       STRIPE_API_KEY: ${STRIPE_API_KEY:-sk_test_stub}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
     ports:
@@ -126,13 +145,64 @@ services:
       
       # CORS Configuration
       CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
+      
+      # Redis Configuration
+      REDIS_URL: redis://redis:6379/0
+      REDIS_MAX_CONNECTIONS: 50
+      CACHE_PREFIX: "qnt9:auth:cache:"
+      CACHE_DEFAULT_TTL: 300
+      RATE_LIMIT_PREFIX: "qnt9:auth:ratelimit:"
+      RATE_LIMIT_WINDOW_SECONDS: 60
+      RATE_LIMIT_MAX_REQUESTS: 60
+      
+      # Supabase Configuration
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
     ports:
       - "8010:8010"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - qnt9-network
+    restart: unless-stopped
+
+  # Watchlist Service (User Watchlist Management)
+  watchlist-service:
+    build:
+      context: ./services/watchlist-service
+      dockerfile: Dockerfile
+    container_name: qnt9-watchlist-service
+    environment:
+      SERVICE_NAME: watchlist-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8012
+      LOG_LEVEL: DEBUG
+      DEBUG: "true"
+      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
+      JWT_ALGORITHM: HS256
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      FREE_TIER_WATCHLIST_LIMIT: 3
+      PAID_TIER_WATCHLIST_LIMIT: 999
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
+    ports:
+      - "8012:8012"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -191,7 +261,7 @@ services:
       - ./services/search-service/alembic:/app/alembic:ro
       - ./services/search-service/alembic.ini:/app/alembic.ini:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5.0)"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -202,7 +272,7 @@ services:
 
   # ==================== FRONTEND ====================
   
-  # Frontend Service (Web UI)
+  # Frontend Service (Web UI - Legacy Python/HTMX)
   frontend-service:
     build:
       context: ./services/frontend-service
@@ -213,7 +283,7 @@ services:
       SEARCH_SERVICE_URL: http://search-service:8000
       AUTH_SERVICE_URL: http://auth-service:8010
       USER_SERVICE_URL: http://user-service:8011
-      WATCHLIST_SERVICE_URL: http://user-service:8011
+      WATCHLIST_SERVICE_URL: http://watchlist-service:8012
       
       # Service Configuration
       SERVICE_NAME: frontend-service
@@ -235,6 +305,8 @@ services:
         condition: service_healthy
       user-service:
         condition: service_healthy
+      watchlist-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -251,4 +323,6 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local

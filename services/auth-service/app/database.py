@@ -1,13 +1,16 @@
 """
 Database connection management for Auth Service.
 
-Provides async PostgreSQL connection pooling using asyncpg.
+Provides async PostgreSQL connection pooling using asyncpg with transaction support.
+Also manages Supabase client for authentication.
 """
 
 from typing import AsyncGenerator, Optional
 
 import asyncpg
 from asyncpg import Pool
+from supabase import Client as SupabaseClient
+from supabase import create_client
 
 from .config import settings
 from .logging_config import get_logger
@@ -146,9 +149,119 @@ class DatabaseManager:
         async with self.pool.acquire() as conn:
             return await conn.fetchval(query, *args)
 
+    def transaction(self):
+        """
+        Get a transaction context manager.
+
+        Usage:
+            async with db_manager.transaction() as conn:
+                await conn.execute("INSERT ...")
+                await conn.execute("INSERT ...")
+
+        Returns:
+            Async context manager that provides a connection with transaction
+        """
+        if not self.pool:
+            raise RuntimeError("Database pool not initialized. Call connect() first.")
+        return TransactionContext(self.pool)
+
+
+class TransactionContext:
+    """
+    Context manager for database transactions.
+
+    Ensures atomic operations - all succeed or all rollback.
+    """
+
+    def __init__(self, pool: Pool):
+        self.pool = pool
+        self.conn: Optional[asyncpg.Connection] = None
+        self.transaction: Optional[asyncpg.transaction.Transaction] = None
+
+    async def __aenter__(self) -> asyncpg.Connection:
+        """Acquire connection and start transaction."""
+        self.conn = await self.pool.acquire()
+        self.transaction = self.conn.transaction()
+        await self.transaction.start()
+        return self.conn
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Commit transaction on success, rollback on error, then release connection."""
+        try:
+            if exc_type is not None:
+                await self.transaction.rollback()
+                logger.warning(f"Transaction rolled back due to error: {exc_val}")
+            else:
+                await self.transaction.commit()
+                logger.debug("Transaction committed successfully")
+        finally:
+            await self.pool.release(self.conn)
+
 
 # Global database manager instance
 db_manager = DatabaseManager()
+
+
+class SupabaseManager:
+    """
+    Manages Supabase client for authentication operations.
+
+    Provides singleton access to Supabase client with admin privileges.
+    """
+
+    def __init__(self) -> None:
+        """Initialize Supabase manager."""
+        self._client: Optional[SupabaseClient] = None
+
+    def get_client(self) -> SupabaseClient:
+        """
+        Get or create Supabase client.
+
+        Returns:
+            SupabaseClient: Supabase client instance with service role key
+
+        Raises:
+            RuntimeError: If Supabase configuration is missing
+        """
+        if self._client is None:
+            logger.info("Initializing Supabase client...")
+            try:
+                self._client = create_client(
+                    supabase_url=settings.SUPABASE_URL,
+                    supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY,
+                )
+                logger.info(
+                    "Supabase client initialized",
+                    extra={
+                        "extra_fields": {
+                            "supabase_url": settings.SUPABASE_URL,
+                        }
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize Supabase client: {e}")
+                raise RuntimeError(f"Supabase client initialization failed: {e}")
+
+        return self._client
+
+    def reset_client(self) -> None:
+        """Reset Supabase client (useful for testing)."""
+        self._client = None
+        logger.info("Supabase client reset")
+
+
+# Global Supabase manager instance
+supabase_manager = SupabaseManager()
+
+
+def get_supabase_client() -> SupabaseClient:
+    """
+    FastAPI dependency for Supabase client access.
+
+    Returns:
+        SupabaseClient: Authenticated Supabase client
+    """
+    return supabase_manager.get_client()
 
 
 async def get_db() -> AsyncGenerator[DatabaseManager, None]:

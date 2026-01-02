@@ -1,7 +1,7 @@
 """
 Security utilities for authentication.
 
-Provides password hashing, JWT token generation and validation.
+Provides Supabase JWT validation and legacy password hashing for migration.
 """
 
 import secrets
@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import bcrypt
 import jwt
-from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from jwt.exceptions import ExpiredSignatureError, InvalidTokenError, PyJWTError
 
 from .config import settings
 from .logging_config import get_logger
@@ -18,7 +18,94 @@ from .logging_config import get_logger
 logger = get_logger(__name__)
 
 
-# ==================== PASSWORD HASHING ====================
+# ==================== SUPABASE JWT VALIDATION ====================
+
+
+def validate_supabase_jwt(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Validate a Supabase JWT access token.
+
+    Supabase tokens are signed with the project's JWT secret and contain
+    standard claims plus Supabase-specific fields like 'aal', 'session_id', etc.
+
+    Args:
+        token: JWT token string from Supabase Auth
+
+    Returns:
+        Decoded payload if valid, None otherwise
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated",
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_aud": True,
+                "require": ["sub", "exp", "iat", "iss"],
+            },
+        )
+
+        # Verify issuer matches Supabase project
+        expected_issuer = f"{settings.SUPABASE_URL}/auth/v1"
+        if payload.get("iss") != expected_issuer:
+            logger.warning(
+                f"Invalid token issuer: {payload.get('iss')} (expected {expected_issuer})"
+            )
+            return None
+
+        # Verify role is authenticated (not anon or service_role)
+        if payload.get("role") != "authenticated":
+            logger.warning(f"Invalid role in token: {payload.get('role')}")
+            return None
+
+        logger.debug(f"Successfully validated Supabase JWT for user {payload.get('sub')}")
+        return payload
+
+    except ExpiredSignatureError:
+        logger.debug("Supabase token expired")
+        return None
+    except InvalidTokenError as e:
+        logger.warning(f"Invalid Supabase token: {e}")
+        return None
+    except PyJWTError as e:
+        logger.error(f"JWT validation error: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error validating Supabase JWT: {e}")
+        return None
+
+
+def extract_user_from_supabase_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Extract user information from a Supabase JWT.
+
+    Args:
+        token: JWT token string
+
+    Returns:
+        Dict with user info (id, email, etc.) or None if invalid
+    """
+    payload = validate_supabase_jwt(token)
+    if not payload:
+        return None
+
+    return {
+        "id": payload.get("sub"),
+        "email": payload.get("email"),
+        "phone": payload.get("phone", ""),
+        "role": payload.get("role"),
+        "aal": payload.get("aal"),
+        "session_id": payload.get("session_id"),
+        "app_metadata": payload.get("app_metadata", {}),
+        "user_metadata": payload.get("user_metadata", {}),
+        "is_anonymous": payload.get("is_anonymous", False),
+    }
+
+
+# ==================== LEGACY PASSWORD HASHING (for migration) ====================
 
 
 def hash_password(password: str) -> str:
@@ -90,6 +177,9 @@ def hash_token(token: str) -> str:
 # ==================== JWT TOKENS ====================
 
 
+# ==================== LEGACY JWT TOKENS (deprecated - for migration only) ====================
+
+
 def create_access_token(
     user_id: str,
     email: str,
@@ -98,6 +188,9 @@ def create_access_token(
 ) -> str:
     """
     Create a JWT access token.
+
+    DEPRECATED: This is legacy code for migration only.
+    New code should use Supabase Auth API which returns tokens automatically.
 
     Args:
         user_id: User's UUID
@@ -108,6 +201,8 @@ def create_access_token(
     Returns:
         Encoded JWT access token
     """
+    logger.warning("Using legacy create_access_token - should migrate to Supabase Auth")
+
     now = datetime.now(timezone.utc)
     expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
 
@@ -125,7 +220,7 @@ def create_access_token(
 
     token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
-    logger.debug(f"Created access token for user {user_id}, expires at {expire}")
+    logger.debug(f"Created legacy access token for user {user_id}, expires at {expire}")
     return token
 
 
@@ -133,23 +228,30 @@ def create_refresh_token(user_id: str) -> Tuple[str, str, datetime]:
     """
     Create a refresh token.
 
+    DEPRECATED: This is legacy code for migration only.
+    Supabase manages refresh tokens internally.
+
     Args:
         user_id: User's UUID
 
     Returns:
         Tuple of (raw_token, hashed_token, expires_at)
     """
-    raw_token = generate_token(48)
+    logger.warning("Using legacy create_refresh_token - should migrate to Supabase Auth")
+
+    raw_token = generate_token(32)
     hashed = hash_token(raw_token)
     expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
 
-    logger.debug(f"Created refresh token for user {user_id}, expires at {expires_at}")
     return raw_token, hashed, expires_at
 
 
 def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     """
-    Decode and validate a JWT access token.
+    Decode and validate a legacy JWT access token.
+
+    DEPRECATED: Use validate_supabase_jwt() for Supabase tokens.
+    This is legacy code for migration period only.
 
     Args:
         token: JWT token string
@@ -157,6 +259,8 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     Returns:
         Decoded payload if valid, None otherwise
     """
+    logger.warning("Using legacy decode_access_token - should use validate_supabase_jwt")
+
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
 
@@ -168,10 +272,10 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         return payload
 
     except ExpiredSignatureError:
-        logger.debug("Access token expired")
+        logger.debug("Legacy access token expired")
         return None
     except InvalidTokenError as e:
-        logger.warning(f"Invalid access token: {e}")
+        logger.warning(f"Invalid legacy access token: {e}")
         return None
 
 
@@ -198,7 +302,8 @@ def create_email_verification_token() -> Tuple[str, str, datetime]:
     """
     raw_token = generate_token(32)
     hashed = hash_token(raw_token)
-    expires_at = datetime.now(timezone.utc) + timedelta(days=7)  # 7 days validity
+    expires_hours = settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
 
     return raw_token, hashed, expires_at
 

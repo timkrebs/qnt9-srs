@@ -10,9 +10,14 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-
 from app.cache.memory_cache import MemoryStockCache, get_memory_cache
-from app.domain.entities import DataSource, Stock, StockIdentifier, StockMetadata, StockPrice
+from app.domain.entities import (
+    DataSource,
+    Stock,
+    StockIdentifier,
+    StockMetadata,
+    StockPrice,
+)
 
 
 @pytest.fixture

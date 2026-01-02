@@ -18,8 +18,13 @@ from decimal import Decimal
 from typing import Optional
 
 import pytest
-
-from app.domain.entities import DataSource, Stock, StockIdentifier, StockMetadata, StockPrice
+from app.domain.entities import (
+    DataSource,
+    Stock,
+    StockIdentifier,
+    StockMetadata,
+    StockPrice,
+)
 from app.search.relevance_scorer import RelevanceScorer, SearchMatch
 
 # ============================================================================

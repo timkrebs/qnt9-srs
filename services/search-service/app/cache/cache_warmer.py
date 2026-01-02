@@ -6,13 +6,18 @@ Loads the most popular stocks into memory for ultra-fast access.
 
 import logging
 
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-
 from app.cache.memory_cache import MemoryStockCache
 from app.database import get_db
-from app.domain.entities import DataSource, Stock, StockIdentifier, StockMetadata, StockPrice
+from app.domain.entities import (
+    DataSource,
+    Stock,
+    StockIdentifier,
+    StockMetadata,
+    StockPrice,
+)
 from app.models import StockCache, StockSearchIndex
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 

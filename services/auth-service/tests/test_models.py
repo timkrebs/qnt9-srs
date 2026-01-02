@@ -239,9 +239,10 @@ class TestUserResponse:
             created_at=now,
             subscription_end=now,
         )
-        assert data.email_confirmed_at == now
-        assert data.created_at == now
-        assert data.subscription_end == now
+        # Datetime objects should be converted to ISO format strings
+        assert data.email_confirmed_at == now.isoformat()
+        assert data.created_at == now.isoformat()
+        assert data.subscription_end == now.isoformat()
 
 
 class TestSessionResponse:

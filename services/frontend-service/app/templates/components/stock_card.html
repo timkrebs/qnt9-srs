@@ -742,6 +742,7 @@ canvas {
                 this.loading = false;
                 
                 if (result.success) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
                     this.checkWatchlistStatus();
                     this.showToast(result.message, 'success');
                 } else {

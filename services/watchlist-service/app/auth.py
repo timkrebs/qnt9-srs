@@ -1,12 +1,12 @@
 """Authentication and authorization."""
 
+from typing import Optional
+
 import jwt
 import structlog
-from typing import Optional
+from app.config import settings
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from app.config import settings
 
 logger = structlog.get_logger(__name__)
 security = HTTPBearer()
@@ -27,10 +27,10 @@ class User:
 def decode_jwt_token(token: str) -> Optional[dict]:
     """
     Decode and validate JWT token.
-    
+
     Args:
         token: JWT token string
-        
+
     Returns:
         Decoded token payload or None if invalid
     """
@@ -54,13 +54,13 @@ async def get_current_user(
 ) -> User:
     """
     Get current authenticated user from JWT token.
-    
+
     Args:
         credentials: HTTP Bearer token from Authorization header
-        
+
     Returns:
         User object
-        
+
     Raises:
         HTTPException: 401 if token is invalid or missing
     """
@@ -84,13 +84,33 @@ async def get_current_user(
     email = payload.get("email")
     tier = payload.get("tier", "free")
 
+    logger.debug(
+        "JWT token decoded",
+        has_sub=bool(payload.get("sub")),
+        has_user_id=bool(payload.get("user_id")),
+        user_id_extracted=user_id,
+        email=email,
+        tier=tier,
+    )
+
     if not user_id or not email:
+        logger.error(
+            "Invalid token payload - missing required fields",
+            has_user_id=bool(user_id),
+            has_email=bool(email),
+            payload_keys=list(payload.keys()),
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
+            detail="Invalid token payload - missing user ID or email",
         )
 
     user = User(id=user_id, email=email, tier=tier)
-    logger.debug("User authenticated", user_id=user.id, tier=user.tier)
-    
+    logger.info(
+        "User authenticated successfully",
+        user_id=user.id,
+        user_email=user.email,
+        tier=user.tier,
+    )
+
     return user

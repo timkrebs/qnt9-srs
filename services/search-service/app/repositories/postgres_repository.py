@@ -25,7 +25,11 @@ from ..domain.entities import (
 )
 from ..domain.exceptions import CacheException
 from ..models import SearchHistory, StockCache
-from .stock_repository import ISearchHistoryRepository, IStockRepository, ISymbolMappingRepository
+from .stock_repository import (
+    ISearchHistoryRepository,
+    IStockRepository,
+    ISymbolMappingRepository,
+)
 
 logger = logging.getLogger(__name__)
 

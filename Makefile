@@ -91,6 +91,9 @@ terraform-plan:
 # ============================================================================
 
 up: ## Start all services in detached mode
+	@echo "Building and starting all services..."
+	@echo ""
+	docker-compose build --no-cache
 	docker-compose up -d
 	@echo ""
 	@echo "All services started successfully!"

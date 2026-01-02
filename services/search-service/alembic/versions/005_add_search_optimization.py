@@ -14,9 +14,8 @@ This migration adds comprehensive search optimization infrastructure:
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "005_add_search_optimization"

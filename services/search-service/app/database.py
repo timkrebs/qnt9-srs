@@ -78,12 +78,12 @@ def get_connect_args(db_url: str) -> dict:
     """
     if "sqlite" in db_url:
         return {"check_same_thread": False}
-    
+
     # For PostgreSQL with pgbouncer (Supabase Transaction Pooler)
     # Disable prepared statements as they are not supported
     if "postgresql" in db_url and "pooler.supabase.com" in db_url:
         return {"prepare_threshold": None}
-    
+
     return {}
 
 

@@ -22,12 +22,13 @@ from .consul import ConsulClient, get_service_id
 from .logging_config import get_logger, setup_logging
 from .metrics import metrics_endpoint, track_request_metrics
 from .metrics_middleware import PrometheusMiddleware
-from .tracing import configure_opentelemetry, instrument_fastapi
 from .middleware import (
     PerformanceMonitoringMiddleware,
     RequestLoggingMiddleware,
     StaticFileCacheMiddleware,
 )
+from .shutdown_handler import setup_graceful_shutdown
+from .tracing import configure_opentelemetry, instrument_fastapi
 
 # Setup logging with structured format
 use_json_logging = settings.LOG_LEVEL == "DEBUG"
@@ -121,12 +122,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Frontend Service startup complete")
     logger.info("=" * 80)
 
+    # Setup graceful shutdown handlers
+    async def cleanup():
+        """Cleanup function for graceful shutdown."""
+        await search_client.close()
+        if _auth_http_client is not None:
+            await _auth_http_client.aclose()
+        consul_client.deregister_service(service_id)
+
+    shutdown_handler = setup_graceful_shutdown(
+        service_name="frontend-service", cleanup_callbacks=[cleanup]
+    )
+    app.state.shutdown_handler = shutdown_handler
+    app.state.is_shutting_down = False
+
+    logger.info("Graceful shutdown handlers configured")
+
     yield
 
     # Shutdown
     logger.info("=" * 80)
     logger.info("Shutting down Frontend Service")
     logger.info("=" * 80)
+
+    app.state.is_shutting_down = True
 
     # Close HTTP client connections
     await search_client.close()
@@ -156,6 +175,30 @@ app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app, excluded_urls="/health,/metrics,/static")
+
+
+# Middleware to handle shutdown state
+@app.middleware("http")
+async def shutdown_middleware(request: Request, call_next):
+    """
+    Reject new requests during graceful shutdown.
+
+    Returns 503 Service Unavailable if service is shutting down.
+    """
+    from fastapi import HTTPException, status
+
+    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+        # Allow health checks during shutdown for monitoring
+        if request.url.path in ["/health", "/metrics"]:
+            return await call_next(request)
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is shutting down",
+        )
+
+    return await call_next(request)
+
 
 # Setup templates and static files
 BASE_PATH = Path(__file__).resolve().parent
@@ -473,16 +516,16 @@ async def get_historical_data(
 ) -> JSONResponse:
     """
     Get historical stock data for charting.
-    
+
     This endpoint fetches real historical OHLCV data from the search service
     for use in interactive stock charts.
-    
+
     Args:
         symbol: Stock ticker symbol
         period: Time period for data
         interval: Data granularity
         request: FastAPI request object
-        
+
     Returns:
         JSONResponse with historical data or error message
     """

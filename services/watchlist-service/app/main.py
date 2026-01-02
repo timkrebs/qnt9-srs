@@ -6,25 +6,26 @@ Manages user watchlists with tier-based limits:
 - Paid/Enterprise: Unlimited stocks
 """
 
-import structlog
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
 
+import structlog
+from app.auth import User, get_current_user
 from app.config import settings
-from app.database import get_db_pool, close_db_pool, get_db_connection
-from app.auth import get_current_user, User
+from app.database import close_db_pool, get_db_connection, get_db_pool
 from app.metrics import metrics_endpoint, track_request_metrics
 from app.metrics_middleware import PrometheusMiddleware
 from app.models import (
-    WatchlistItem,
-    WatchlistCreate,
-    WatchlistUpdate,
-    WatchlistResponse,
-    MessageResponse,
     ErrorResponse,
+    MessageResponse,
+    WatchlistCreate,
+    WatchlistItem,
+    WatchlistResponse,
+    WatchlistUpdate,
 )
+from app.shutdown_handler import setup_graceful_shutdown
 from app.tracing import configure_opentelemetry, instrument_fastapi
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 
 # Configure structured logging
 structlog.configure(
@@ -59,11 +60,21 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Watchlist Service", version="1.0.0")
     await get_db_pool()
     logger.info("Watchlist Service started")
-    
+
+    # Setup graceful shutdown handlers
+    shutdown_handler = setup_graceful_shutdown(
+        service_name="watchlist-service", cleanup_callbacks=[close_db_pool]
+    )
+    app.state.shutdown_handler = shutdown_handler
+    app.state.is_shutting_down = False
+
+    logger.info("Graceful shutdown handlers configured")
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down Watchlist Service")
+    app.state.is_shutting_down = True
     await close_db_pool()
     logger.info("Watchlist Service stopped")
 
@@ -77,13 +88,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# CORS middleware with restricted permissions
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
+    expose_headers=["Content-Length", "X-Request-ID"],
+    max_age=600,
 )
 
 # Add Prometheus metrics middleware
@@ -91,6 +110,27 @@ app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app, excluded_urls="/health,/metrics")
+
+
+# Middleware to handle shutdown state
+@app.middleware("http")
+async def shutdown_middleware(request: Request, call_next):
+    """
+    Reject new requests during graceful shutdown.
+
+    Returns 503 Service Unavailable if service is shutting down.
+    """
+    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+        # Allow health checks during shutdown for monitoring
+        if request.url.path in ["/health", "/metrics"]:
+            return await call_next(request)
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service is shutting down",
+        )
+
+    return await call_next(request)
 
 
 @app.get("/metrics", include_in_schema=False)
@@ -122,10 +162,26 @@ async def health_check():
 async def get_watchlist(user: User = Depends(get_current_user)):
     """
     Get current user's watchlist.
-    
+
     Returns all stocks in the user's watchlist with their details.
     """
+    logger.info(
+        "Fetching watchlist",
+        user_id=user.id,
+        user_email=user.email,
+        user_tier=user.tier,
+    )
+
     async with get_db_connection() as conn:
+        # Log connection info for debugging
+        db_user = await conn.fetchval("SELECT current_user")
+        db_name = await conn.fetchval("SELECT current_database()")
+        logger.debug(
+            "Database connection established",
+            db_user=db_user,
+            db_name=db_name,
+        )
+
         rows = await conn.fetch(
             """
             SELECT id, user_id, symbol, alert_enabled, alert_price_above,
@@ -137,14 +193,24 @@ async def get_watchlist(user: User = Depends(get_current_user)):
             user.id,
         )
 
+        logger.info(
+            "Watchlist query executed",
+            user_id=user.id,
+            rows_returned=len(rows),
+        )
+
         watchlist = [
             WatchlistItem(
                 id=str(row["id"]),
                 user_id=str(row["user_id"]),
                 symbol=row["symbol"],
                 alert_enabled=row["alert_enabled"],
-                alert_price_above=float(row["alert_price_above"]) if row["alert_price_above"] else None,
-                alert_price_below=float(row["alert_price_below"]) if row["alert_price_below"] else None,
+                alert_price_above=float(row["alert_price_above"])
+                if row["alert_price_above"]
+                else None,
+                alert_price_below=float(row["alert_price_below"])
+                if row["alert_price_below"]
+                else None,
                 notes=row["notes"],
                 added_at=row["added_at"],
             )
@@ -194,11 +260,11 @@ async def add_to_watchlist(
 ):
     """
     Add a stock to the user's watchlist.
-    
+
     Tier limits:
     - Free tier: Maximum 3 stocks
     - Paid/Enterprise: Unlimited stocks
-    
+
     Returns the created watchlist item.
     """
     async with get_db_connection() as conn:
@@ -244,6 +310,13 @@ async def add_to_watchlist(
             )
 
         # Insert new item
+        logger.info(
+            "Inserting watchlist item",
+            user_id=user.id,
+            symbol=item.symbol.upper(),
+            alert_enabled=item.alert_enabled,
+        )
+
         row = await conn.fetchrow(
             """
             INSERT INTO watchlists (user_id, symbol, alert_enabled, alert_price_above, alert_price_below, notes)
@@ -256,6 +329,24 @@ async def add_to_watchlist(
             item.alert_price_above,
             item.alert_price_below,
             item.notes,
+        )
+
+        if not row:
+            logger.error(
+                "Watchlist insert failed - no row returned",
+                user_id=user.id,
+                symbol=item.symbol.upper(),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to add stock to watchlist",
+            )
+
+        logger.info(
+            "Watchlist item inserted successfully",
+            user_id=user.id,
+            symbol=item.symbol.upper(),
+            watchlist_id=str(row["id"]),
         )
 
         watchlist_item = WatchlistItem(
@@ -298,7 +389,7 @@ async def remove_from_watchlist(
 ):
     """
     Remove a stock from the user's watchlist.
-    
+
     Returns success message if stock was removed.
     """
     async with get_db_connection() as conn:
@@ -345,7 +436,7 @@ async def update_watchlist_item(
 ):
     """
     Update watchlist item (notes, alerts).
-    
+
     Only updates fields that are provided in the request.
     """
     async with get_db_connection() as conn:

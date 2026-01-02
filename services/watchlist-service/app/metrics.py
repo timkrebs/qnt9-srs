@@ -4,74 +4,64 @@ Prometheus metrics for Watchlist Service.
 Tracks watchlist operations, tier limits, and performance.
 """
 
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from fastapi import Response
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 # Request metrics
 http_requests_total = Counter(
-    "watchlist_http_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status"]
+    "watchlist_http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]
 )
 
 http_request_duration_seconds = Histogram(
     "watchlist_http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "endpoint"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0)
+    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0),
 )
 
 # Watchlist metrics
 watchlist_add_total = Counter(
-    "watchlist_add_total",
-    "Total watchlist add operations",
-    ["status", "tier"]
+    "watchlist_add_total", "Total watchlist add operations", ["status", "tier"]
 )
 
 watchlist_remove_total = Counter(
-    "watchlist_remove_total",
-    "Total watchlist remove operations",
-    ["status"]
+    "watchlist_remove_total", "Total watchlist remove operations", ["status"]
 )
 
 watchlist_get_total = Counter(
-    "watchlist_get_total",
-    "Total watchlist retrieve operations",
-    ["status"]
+    "watchlist_get_total", "Total watchlist retrieve operations", ["status"]
 )
 
 watchlist_items_per_user = Histogram(
     "watchlist_items_per_user",
     "Distribution of watchlist items per user",
     ["tier"],
-    buckets=(1, 2, 3, 5, 10, 25, 50, 100, 250, 500, 1000)
+    buckets=(1, 2, 3, 5, 10, 25, 50, 100, 250, 500, 1000),
 )
 
 # Tier limit metrics
 watchlist_tier_limit_exceeded = Counter(
-    "watchlist_tier_limit_exceeded_total",
-    "Total tier limit exceeded errors",
-    ["tier"]
+    "watchlist_tier_limit_exceeded_total", "Total tier limit exceeded errors", ["tier"]
 )
 
-watchlist_active_users = Gauge(
-    "watchlist_active_users",
-    "Active users with watchlists",
-    ["tier"]
-)
+watchlist_active_users = Gauge("watchlist_active_users", "Active users with watchlists", ["tier"])
 
 # Database metrics
 watchlist_db_operations_total = Counter(
-    "watchlist_db_operations_total",
-    "Total database operations",
-    ["operation", "status"]
+    "watchlist_db_operations_total", "Total database operations", ["operation", "status"]
 )
 
 watchlist_db_operation_duration_seconds = Histogram(
     "watchlist_db_operation_duration_seconds",
     "Database operation duration in seconds",
     ["operation"],
-    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0)
+    buckets=(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
 )
 
 
@@ -124,7 +114,7 @@ def track_db_operation(operation: str, success: bool, duration: float):
 async def metrics_endpoint():
     """
     Prometheus metrics endpoint.
-    
+
     Returns:
         Response with Prometheus metrics in text format
     """

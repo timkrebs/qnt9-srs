@@ -14,7 +14,6 @@ from .database import db_manager
 from .logging_config import get_logger
 from .security import (
     create_access_token,
-    create_email_verification_token,
     create_password_reset_token,
     create_refresh_token,
     hash_password,
@@ -77,40 +76,44 @@ class AuthService:
             # Hash password
             password_hash = hash_password(password)
 
-            # Create user
-            user_row = await db_manager.fetchrow(
-                """
-                INSERT INTO users (email, password_hash, full_name, tier, created_at)
-                VALUES ($1, $2, $3, 'free', NOW())
-                RETURNING id, email, full_name, tier, created_at, email_verified
-                """,
-                email.lower(),
-                password_hash,
-                full_name,
-            )
+            # Use transaction to ensure atomic user creation
+            async with db_manager.transaction() as conn:
+                # Create user
+                user_row = await conn.fetchrow(
+                    """
+                    INSERT INTO users (email, password_hash, full_name, tier, created_at)
+                    VALUES ($1, $2, $3, 'free', NOW())
+                    RETURNING id, email, full_name, tier, created_at, email_verified
+                    """,
+                    email.lower(),
+                    password_hash,
+                    full_name,
+                )
 
-            user_id = str(user_row["id"])
-            logger.info(f"User created successfully: {email} (id: {user_id})")
+                user_id = str(user_row["id"])
+                logger.info(f"User created successfully: {email} (id: {user_id})")
 
-            # Create tokens
-            access_token = create_access_token(
-                user_id=user_id,
-                email=user_row["email"],
-                tier=user_row["tier"],
-            )
+                # Create tokens
+                access_token = create_access_token(
+                    user_id=user_id,
+                    email=user_row["email"],
+                    tier=user_row["tier"],
+                )
 
-            raw_refresh, hashed_refresh, refresh_expires = create_refresh_token(user_id)
+                raw_refresh, hashed_refresh, refresh_expires = create_refresh_token(user_id)
 
-            # Store refresh token
-            await db_manager.execute(
-                """
-                INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-                VALUES ($1, $2, $3)
-                """,
-                user_row["id"],
-                hashed_refresh,
-                refresh_expires,
-            )
+                # Store refresh token in same transaction
+                await conn.execute(
+                    """
+                    INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+                    VALUES ($1, $2, $3)
+                    """,
+                    user_row["id"],
+                    hashed_refresh,
+                    refresh_expires,
+                )
+
+                logger.info(f"Refresh token created for user: {user_id}")
 
             return {
                 "user": {
@@ -252,7 +255,7 @@ class AuthService:
             logger.exception(f"Unexpected error during sign in: {e}")
             raise AuthError(f"Sign in failed: {str(e)}", "signin_error")
 
-    async def sign_out(self, refresh_token: str) -> bool:
+    async def sign_out(self, refresh_token: str) -> Dict[str, Any]:
         """
         Sign out a user by revoking their refresh token.
 
@@ -260,15 +263,29 @@ class AuthService:
             refresh_token: The refresh token to revoke
 
         Returns:
-            True if sign out successful
+            Dict with success and user info for audit logging
         """
         try:
             logger.info("User sign out attempt")
 
             token_hash = hash_token(refresh_token)
 
+            # Get user info before revoking for audit log
+            token_row = await db_manager.fetchrow(
+                """
+                SELECT rt.user_id, u.email
+                FROM refresh_tokens rt
+                JOIN users u ON u.id = rt.user_id
+                WHERE rt.token_hash = $1 AND rt.revoked = FALSE
+                """,
+                token_hash,
+            )
+
+            if not token_row:
+                raise AuthError("Invalid or already revoked token", "invalid_token")
+
             # Revoke the refresh token
-            result = await db_manager.execute(
+            await db_manager.execute(
                 """
                 UPDATE refresh_tokens
                 SET revoked = TRUE, revoked_at = NOW()
@@ -278,7 +295,11 @@ class AuthService:
             )
 
             logger.info("User signed out successfully")
-            return True
+            return {
+                "success": True,
+                "user_id": str(token_row["user_id"]),
+                "email": token_row["email"],
+            }
 
         except Exception as e:
             logger.exception(f"Unexpected error during sign out: {e}")
@@ -365,6 +386,8 @@ class AuthService:
                         + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
                     ).timestamp()
                 ),
+                "user_id": str(user_id),
+                "email": token_row["email"],
             }
 
         except AuthError:

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -27,8 +28,12 @@ class WatchlistCreate(BaseModel):
     symbol: str = Field(..., max_length=10, min_length=1, description="Stock ticker symbol")
     notes: Optional[str] = Field(None, max_length=500, description="Optional notes")
     alert_enabled: bool = Field(default=False, description="Enable price alerts")
-    alert_price_above: Optional[float] = Field(None, ge=0, description="Alert when price goes above")
-    alert_price_below: Optional[float] = Field(None, ge=0, description="Alert when price goes below")
+    alert_price_above: Optional[float] = Field(
+        None, ge=0, description="Alert when price goes above"
+    )
+    alert_price_below: Optional[float] = Field(
+        None, ge=0, description="Alert when price goes below"
+    )
 
 
 class WatchlistUpdate(BaseModel):

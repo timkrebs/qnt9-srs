@@ -16,12 +16,11 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
-
 from app.app import app
 from app.core.auth import User
 from app.search.relevance_scorer import SearchMatch
+from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 # ============================================================================
 # Test Fixtures
