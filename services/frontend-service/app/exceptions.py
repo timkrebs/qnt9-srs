@@ -82,7 +82,9 @@ class SearchTimeoutException(FrontendServiceException):
         """
         self.query = query
         self.timeout_seconds = timeout_seconds
-        message = f"Search request timed out after {timeout_seconds}s for query: {query}"
+        message = (
+            f"Search request timed out after {timeout_seconds}s for query: {query}"
+        )
         super().__init__(message, details)
 
 

@@ -9,12 +9,13 @@ import os
 from typing import Optional
 
 import jwt
-from fastapi import HTTPException, Header, status
+from fastapi import Header, HTTPException, status
 from pydantic import BaseModel
 
 
 class SupabaseUser(BaseModel):
     """Supabase user information from JWT token."""
+
     id: str
     email: str
     role: str = "authenticated"
@@ -24,7 +25,7 @@ class SupabaseUser(BaseModel):
 def get_supabase_jwt_secret() -> str:
     """
     Get Supabase JWT secret from environment.
-    
+
     This should be the JWT_SECRET from your Supabase project settings.
     Not the anon key or service role key, but the actual JWT secret.
     """
@@ -37,33 +38,33 @@ def get_supabase_jwt_secret() -> str:
 def decode_supabase_token(token: str) -> SupabaseUser:
     """
     Decode and validate a Supabase JWT token.
-    
+
     Args:
         token: The JWT token string from Authorization header
-        
+
     Returns:
         SupabaseUser object with user information
-        
+
     Raises:
         HTTPException: If token is invalid or expired
     """
     try:
         secret = get_supabase_jwt_secret()
-        
+
         payload = jwt.decode(
             token,
             secret,
             algorithms=["HS256"],
             audience="authenticated",  # Supabase default audience
         )
-        
+
         return SupabaseUser(
             id=payload.get("sub"),
             email=payload.get("email"),
             role=payload.get("role", "authenticated"),
             aud=payload.get("aud", "authenticated"),
         )
-        
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -84,23 +85,21 @@ def decode_supabase_token(token: str) -> SupabaseUser:
         )
 
 
-async def get_current_user(
-    authorization: Optional[str] = Header(None)
-) -> SupabaseUser:
+async def get_current_user(authorization: Optional[str] = Header(None)) -> SupabaseUser:
     """
     FastAPI dependency to get current authenticated user from Supabase JWT.
-    
+
     Usage:
         @app.get("/protected")
         async def protected_route(user: SupabaseUser = Depends(get_current_user)):
             return {"user_id": user.id, "email": user.email}
-    
+
     Args:
         authorization: Authorization header containing "Bearer <token>"
-        
+
     Returns:
         SupabaseUser object with user information
-        
+
     Raises:
         HTTPException: If authorization header is missing or token is invalid
     """
@@ -110,13 +109,13 @@ async def get_current_user(
             detail="Authorization header required",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authorization header format. Expected 'Bearer <token>'",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = authorization.split(" ")[1]
     return decode_supabase_token(token)

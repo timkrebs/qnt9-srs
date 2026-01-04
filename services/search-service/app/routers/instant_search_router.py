@@ -33,7 +33,9 @@ class InstantSearchResult(BaseModel):
     price: Optional[float] = Field(None, description="Current price")
     change_percent: Optional[float] = Field(None, description="Price change percentage")
     relevance_score: float = Field(..., description="Relevance score (0-100)")
-    match_type: str = Field(..., description="Match type: exact, prefix, fuzzy, contains")
+    match_type: str = Field(
+        ..., description="Match type: exact, prefix, fuzzy, contains"
+    )
 
 
 class InstantSearchResponse(BaseModel):
@@ -127,7 +129,9 @@ async def instant_search(
                 exchange=stock.metadata.exchange,
                 price=float(stock.price.current) if stock.price.current else None,
                 change_percent=(
-                    float(stock.price.change_percent) if stock.price.change_percent else None
+                    float(stock.price.change_percent)
+                    if stock.price.change_percent
+                    else None
                 ),
                 relevance_score=round(match.score, 2),
                 match_type=match.match_type,
@@ -145,7 +149,10 @@ async def instant_search(
         )
 
         response = InstantSearchResponse(
-            query=q, results=results, count=len(results), latency_ms=round(latency_ms, 2)
+            query=q,
+            results=results,
+            count=len(results),
+            latency_ms=round(latency_ms, 2),
         )
 
         # Add aggressive caching headers (60s)

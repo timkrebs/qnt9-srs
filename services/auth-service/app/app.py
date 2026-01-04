@@ -11,7 +11,6 @@ from typing import AsyncGenerator
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
-from .auth_service import AuthError, auth_service
 from .config import settings
 from .database import db_manager
 from .dependencies import get_current_user_from_token
@@ -19,22 +18,13 @@ from .logging_config import get_logger, setup_logging
 from .metrics import metrics_endpoint, track_request_metrics
 from .metrics_middleware import PrometheusMiddleware
 from .middleware import check_auth_rate_limit, check_password_reset_rate_limit
-from .models import (
-    AuthResponse,
-    MessageResponse,
-    PasswordResetRequest,
-    PasswordUpdate,
-    RefreshToken,
-    SessionResponse,
-    UserResponse,
-    UserSignIn,
-    UserSignUp,
-    UserTierResponse,
-    UserTierUpdate,
-    UserUpdate,
-)
+from .models import (AuthResponse, MessageResponse, PasswordResetRequest,
+                     PasswordUpdate, RefreshToken, SessionResponse,
+                     UserResponse, UserSignIn, UserSignUp, UserTierResponse,
+                     UserTierUpdate, UserUpdate)
 from .routers.v1 import auth_router, users_router
 from .shutdown_handler import setup_graceful_shutdown
+from .supabase_auth_service import AuthError, auth_service
 from .tracing import configure_opentelemetry, instrument_fastapi
 
 # Setup logging
@@ -131,7 +121,10 @@ async def shutdown_middleware(request: Request, call_next):
 
     Returns 503 Service Unavailable if service is shutting down.
     """
-    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+    if (
+        hasattr(request.app.state, "is_shutting_down")
+        and request.app.state.is_shutting_down
+    ):
         # Allow health checks during shutdown for monitoring
         if request.url.path in ["/health", "/metrics"]:
             return await call_next(request)
@@ -634,8 +627,13 @@ async def update_current_user(
         # Track changes for audit
         changes = {}
         if user_update.email and user_update.email != current_user.get("email"):
-            changes["email"] = {"old": current_user.get("email"), "new": user_update.email}
-        if user_update.full_name and user_update.full_name != current_user.get("full_name"):
+            changes["email"] = {
+                "old": current_user.get("email"),
+                "new": user_update.email,
+            }
+        if user_update.full_name and user_update.full_name != current_user.get(
+            "full_name"
+        ):
             changes["full_name"] = {
                 "old": current_user.get("full_name"),
                 "new": user_update.full_name,

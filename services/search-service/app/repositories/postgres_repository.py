@@ -15,21 +15,12 @@ from cachetools import TTLCache  # type: ignore[import-untyped]
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ..domain.entities import (
-    DataSource,
-    IdentifierType,
-    Stock,
-    StockIdentifier,
-    StockMetadata,
-    StockPrice,
-)
+from ..domain.entities import (DataSource, IdentifierType, Stock,
+                               StockIdentifier, StockMetadata, StockPrice)
 from ..domain.exceptions import CacheException
 from ..models import SearchHistory, StockCache
-from .stock_repository import (
-    ISearchHistoryRepository,
-    IStockRepository,
-    ISymbolMappingRepository,
-)
+from .stock_repository import (ISearchHistoryRepository, IStockRepository,
+                               ISymbolMappingRepository)
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +191,9 @@ class PostgresStockRepository(IStockRepository):
                 )
             elif stock.identifier.wkn:
                 existing = (
-                    self.db.query(StockCache).filter(StockCache.wkn == stock.identifier.wkn).first()
+                    self.db.query(StockCache)
+                    .filter(StockCache.wkn == stock.identifier.wkn)
+                    .first()
                 )
             elif stock.identifier.symbol:
                 existing = (
@@ -220,9 +213,7 @@ class PostgresStockRepository(IStockRepository):
             self.db.commit()
 
             # Phase 5: Invalidate query cache for this stock
-            cache_key = (
-                f"stock:{stock.identifier.isin or stock.identifier.wkn or stock.identifier.symbol}"
-            )
+            cache_key = f"stock:{stock.identifier.isin or stock.identifier.wkn or stock.identifier.symbol}"
             self.query_cache.invalidate(cache_key)
 
             return stock
@@ -235,7 +226,11 @@ class PostgresStockRepository(IStockRepository):
     async def delete_expired(self, before: datetime) -> int:
         """Delete expired cache entries."""
         try:
-            deleted = self.db.query(StockCache).filter(StockCache.expires_at < before).delete()
+            deleted = (
+                self.db.query(StockCache)
+                .filter(StockCache.expires_at < before)
+                .delete()
+            )
             self.db.commit()
             return deleted
         except Exception as e:
@@ -298,7 +293,9 @@ class PostgresStockRepository(IStockRepository):
             exchange=cache_entry.exchange,
             sector=cache_entry.sector,
             industry=cache_entry.industry,
-            market_cap=Decimal(str(cache_entry.market_cap)) if cache_entry.market_cap else None,
+            market_cap=(
+                Decimal(str(cache_entry.market_cap)) if cache_entry.market_cap else None
+            ),
         )
 
         return Stock(
@@ -310,7 +307,9 @@ class PostgresStockRepository(IStockRepository):
             cache_age_seconds=cache_age,
         )
 
-    def _create_cache_entry(self, stock: Stock, now: datetime, expires_at: datetime) -> StockCache:
+    def _create_cache_entry(
+        self, stock: Stock, now: datetime, expires_at: datetime
+    ) -> StockCache:
         """Create new cache entry from stock entity."""
         return StockCache(
             isin=stock.identifier.isin,
@@ -320,7 +319,9 @@ class PostgresStockRepository(IStockRepository):
             current_price=float(stock.price.current),
             currency=stock.price.currency,
             exchange=stock.metadata.exchange,
-            market_cap=float(stock.metadata.market_cap) if stock.metadata.market_cap else None,
+            market_cap=(
+                float(stock.metadata.market_cap) if stock.metadata.market_cap else None
+            ),
             sector=stock.metadata.sector,
             industry=stock.metadata.industry,
             data_source=stock.data_source.value,
@@ -331,14 +332,18 @@ class PostgresStockRepository(IStockRepository):
             cache_hits=0,
         )
 
-    def _update_cache_entry(self, entry: StockCache, stock: Stock, expires_at: datetime) -> None:
+    def _update_cache_entry(
+        self, entry: StockCache, stock: Stock, expires_at: datetime
+    ) -> None:
         """Update existing cache entry."""
         entry.current_price = float(stock.price.current)
         entry.currency = stock.price.currency
         entry.exchange = stock.metadata.exchange
         entry.sector = stock.metadata.sector
         entry.industry = stock.metadata.industry
-        entry.market_cap = float(stock.metadata.market_cap) if stock.metadata.market_cap else None
+        entry.market_cap = (
+            float(stock.metadata.market_cap) if stock.metadata.market_cap else None
+        )
         entry.data_source = stock.data_source.value
         entry.raw_data = json.dumps(stock.to_dict())
         entry.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -478,7 +483,9 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
         """Get most popular searches."""
         try:
             results = (
-                self.db.query(SearchHistory.query, func.count(SearchHistory.id).label("count"))
+                self.db.query(
+                    SearchHistory.query, func.count(SearchHistory.id).label("count")
+                )
                 .group_by(SearchHistory.query)
                 .order_by(func.count(SearchHistory.id).desc())
                 .limit(limit)
@@ -489,7 +496,9 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
             logger.error(f"Error getting popular searches: {e}")
             return []
 
-    async def get_autocomplete_suggestions(self, prefix: str, limit: int = 10) -> List[str]:
+    async def get_autocomplete_suggestions(
+        self, prefix: str, limit: int = 10
+    ) -> List[str]:
         """Get autocomplete suggestions."""
         try:
             results = (
@@ -522,7 +531,9 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
                     "query_type": r.query_type,
                     "found": bool(r.result_found),
                     "search_count": r.search_count,
-                    "last_searched": r.last_searched.isoformat() if r.last_searched else None,
+                    "last_searched": (
+                        r.last_searched.isoformat() if r.last_searched else None
+                    ),
                 }
                 for r in results
             ]
@@ -536,7 +547,8 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
             # Get search counts grouped by query (assuming queries are symbols/names)
             results = (
                 self.db.query(
-                    SearchHistory.query, func.sum(SearchHistory.search_count).label("total_count")
+                    SearchHistory.query,
+                    func.sum(SearchHistory.search_count).label("total_count"),
                 )
                 .filter(SearchHistory.result_found == 1)  # Only successful searches
                 .group_by(SearchHistory.query)
@@ -556,17 +568,48 @@ class PostgresSearchHistoryRepository(ISearchHistoryRepository):
 
 
 class PostgresSymbolMappingRepository(ISymbolMappingRepository):
-    """PostgreSQL implementation for symbol mappings (to be extended)."""
+    """
+    PostgreSQL implementation for symbol mappings.
+
+    Uses the symbol_mappings table for ISIN/WKN/Name to Yahoo symbol resolution.
+    """
 
     def __init__(self, db: Session):
+        """
+        Initialize repository.
+
+        Args:
+            db: Database session
+        """
         self.db = db
 
     async def get_yahoo_symbol(
         self, isin: Optional[str] = None, wkn: Optional[str] = None
     ) -> Optional[str]:
-        """Get Yahoo symbol from cache (future implementation)."""
-        # TODO: Implement with dedicated mapping table
-        return None
+        """
+        Get Yahoo symbol from symbol_mappings table.
+
+        Args:
+            isin: ISIN code (optional)
+            wkn: WKN code (optional)
+
+        Returns:
+            Yahoo Finance symbol if found, None otherwise
+        """
+        try:
+            from .symbol_mapping_repository import SymbolMappingRepository
+
+            mapping_repo = SymbolMappingRepository()
+
+            if isin:
+                return await mapping_repo.get_isin_mapping(isin, self.db)
+            elif wkn:
+                return await mapping_repo.get_wkn_mapping(wkn, self.db)
+
+            return None
+        except Exception as e:
+            logger.error("Error getting Yahoo symbol: %s", e)
+            return None
 
     async def save_mapping(
         self,
@@ -575,11 +618,66 @@ class PostgresSymbolMappingRepository(ISymbolMappingRepository):
         wkn: Optional[str] = None,
         company_name: Optional[str] = None,
     ) -> None:
-        """Save symbol mapping (future implementation)."""
-        # TODO: Implement with dedicated mapping table
-        pass
+        """
+        Save symbol mapping to database.
+
+        Args:
+            yahoo_symbol: Yahoo Finance symbol
+            isin: ISIN code (optional)
+            wkn: WKN code (optional)
+            company_name: Company name (optional)
+        """
+        try:
+            from .symbol_mapping_repository import SymbolMappingRepository
+
+            mapping_repo = SymbolMappingRepository()
+
+            if isin:
+                await mapping_repo.add_mapping(
+                    "isin",
+                    isin,
+                    yahoo_symbol,
+                    self.db,
+                    stock_name=company_name,
+                    priority=50,
+                )
+            elif wkn:
+                await mapping_repo.add_mapping(
+                    "wkn",
+                    wkn,
+                    yahoo_symbol,
+                    self.db,
+                    stock_name=company_name,
+                    priority=50,
+                )
+        except Exception as e:
+            logger.error("Error saving symbol mapping: %s", e)
 
     async def get_all_mappings(self) -> List[dict]:
-        """Get all mappings (future implementation)."""
-        # TODO: Implement with dedicated mapping table
-        return []
+        """
+        Get all symbol mappings from database.
+
+        Returns:
+            List of mapping dictionaries
+        """
+        try:
+            from ..models import SymbolMapping
+
+            mappings = (
+                self.db.query(SymbolMapping).filter(SymbolMapping.is_active == 1).all()
+            )
+
+            return [
+                {
+                    "identifier_type": m.identifier_type,
+                    "identifier_value": m.identifier_value,
+                    "yahoo_symbol": m.yahoo_symbol,
+                    "stock_name": m.stock_name,
+                    "exchange": m.exchange,
+                    "priority": m.priority,
+                }
+                for m in mappings
+            ]
+        except Exception as e:
+            logger.error("Error getting all mappings: %s", e)
+            return []

@@ -8,7 +8,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-
 from app.supabase_auth_service import AuthError, SupabaseAuthService
 
 
@@ -40,7 +39,9 @@ def mock_db_manager():
 class TestSupabaseAuth:
     """Test cases for Supabase authentication."""
 
-    async def test_sign_up_success(self, auth_service, mock_supabase_client, mock_db_manager):
+    async def test_sign_up_success(
+        self, auth_service, mock_supabase_client, mock_db_manager
+    ):
         """Test successful user registration."""
         mock_user = Mock()
         mock_user.id = "test-user-id"
@@ -91,7 +92,9 @@ class TestSupabaseAuth:
 
         assert exc_info.value.code == "email_exists"
 
-    async def test_sign_in_success(self, auth_service, mock_supabase_client, mock_db_manager):
+    async def test_sign_in_success(
+        self, auth_service, mock_supabase_client, mock_db_manager
+    ):
         """Test successful sign in."""
         mock_user = Mock()
         mock_user.id = "test-user-id"
@@ -125,7 +128,9 @@ class TestSupabaseAuth:
         assert result["session"]["access_token"] == "test-access-token"
         mock_supabase_client.auth.sign_in_with_password.assert_called_once()
 
-    async def test_sign_in_invalid_credentials(self, auth_service, mock_supabase_client):
+    async def test_sign_in_invalid_credentials(
+        self, auth_service, mock_supabase_client
+    ):
         """Test sign in with invalid credentials."""
         from gotrue.errors import AuthApiError
 
@@ -164,7 +169,9 @@ class TestSupabaseAuth:
         result = await auth_service.refresh_session("old-refresh-token")
 
         assert result["session"]["access_token"] == "new-access-token"
-        mock_supabase_client.auth.refresh_session.assert_called_once_with("old-refresh-token")
+        mock_supabase_client.auth.refresh_session.assert_called_once_with(
+            "old-refresh-token"
+        )
 
     async def test_sign_out_success(self, auth_service, mock_supabase_client):
         """Test successful sign out."""
@@ -176,7 +183,9 @@ class TestSupabaseAuth:
         assert result["message"] == "Successfully signed out"
         mock_supabase_client.auth.sign_out.assert_called_once()
 
-    async def test_get_user_success(self, auth_service, mock_supabase_client, mock_db_manager):
+    async def test_get_user_success(
+        self, auth_service, mock_supabase_client, mock_db_manager
+    ):
         """Test getting user data."""
         mock_user = Mock()
         mock_user.id = "test-user-id"

@@ -26,7 +26,9 @@ class SubscriptionUpdate(BaseModel):
     """Subscription update request model."""
 
     plan: str = Field(..., description="Subscription plan: monthly, yearly")
-    payment_method_id: Optional[str] = Field(None, description="Stripe payment method ID")
+    payment_method_id: Optional[str] = Field(
+        None, description="Stripe payment method ID"
+    )
 
 
 class HealthResponse(BaseModel):

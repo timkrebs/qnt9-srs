@@ -1,8 +1,9 @@
 """Integration tests for watchlist feature."""
 
-import pytest
-import httpx
 import time
+
+import httpx
+import pytest
 
 
 class TestWatchlistIntegration:
@@ -40,7 +41,7 @@ class TestWatchlistIntegration:
         """Test that watchlist is initially empty for new user."""
         async with httpx.AsyncClient(base_url="http://localhost:8012") as client:
             response = await client.get("/api/watchlist", headers=auth_headers)
-            
+
             assert response.status_code == 200
             data = response.json()
             assert "watchlist" in data
@@ -56,7 +57,7 @@ class TestWatchlistIntegration:
                 headers=auth_headers,
                 json={"symbol": "AAPL"},
             )
-            
+
             assert response.status_code == 201
             data = response.json()
             assert data["symbol"] == "AAPL"
@@ -71,11 +72,11 @@ class TestWatchlistIntegration:
                 headers=auth_headers,
                 json={"symbol": "TSLA"},
             )
-            
+
             time.sleep(0.1)
-            
+
             response = await client.get("/api/watchlist", headers=auth_headers)
-            
+
             assert response.status_code == 200
             data = response.json()
             assert len(data["watchlist"]) > 0
@@ -90,13 +91,13 @@ class TestWatchlistIntegration:
                 headers=auth_headers,
                 json={"symbol": "MSFT"},
             )
-            
+
             response = await client.post(
                 "/api/watchlist",
                 headers=auth_headers,
                 json={"symbol": "MSFT"},
             )
-            
+
             assert response.status_code == 409
             data = response.json()
             assert "detail" in data
@@ -110,7 +111,7 @@ class TestWatchlistIntegration:
                 await client.delete(
                     f"/api/watchlist/{item['symbol']}", headers=auth_headers
                 )
-            
+
             # Add 3 stocks (should succeed)
             symbols = ["AAPL", "MSFT", "GOOGL"]
             for symbol in symbols:
@@ -120,14 +121,14 @@ class TestWatchlistIntegration:
                     json={"symbol": symbol},
                 )
                 assert response.status_code == 201
-            
+
             # Try to add 4th stock (should fail for free tier)
             response = await client.post(
                 "/api/watchlist",
                 headers=auth_headers,
                 json={"symbol": "AMZN"},
             )
-            
+
             if response.status_code == 403:
                 data = response.json()
                 assert "limit" in data["detail"].lower()
@@ -140,13 +141,11 @@ class TestWatchlistIntegration:
                 headers=auth_headers,
                 json={"symbol": "NFLX"},
             )
-            
-            response = await client.delete(
-                "/api/watchlist/NFLX", headers=auth_headers
-            )
-            
+
+            response = await client.delete("/api/watchlist/NFLX", headers=auth_headers)
+
             assert response.status_code in [200, 204]
-            
+
             response = await client.get("/api/watchlist", headers=auth_headers)
             data = response.json()
             symbols = [item["symbol"] for item in data["watchlist"]]
@@ -158,16 +157,14 @@ class TestWatchlistIntegration:
             response = await client.get("/api/watchlist")
             assert response.status_code == 403
 
-            response = await client.post(
-                "/api/watchlist", json={"symbol": "AAPL"}
-            )
+            response = await client.post("/api/watchlist", json={"symbol": "AAPL"})
             assert response.status_code == 403
 
     async def test_frontend_proxy(self, auth_headers):
         """Test that frontend proxy correctly forwards watchlist requests."""
         async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
             response = await client.get("/api/watchlist", headers=auth_headers)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 assert "watchlist" in data
@@ -185,9 +182,9 @@ class TestWatchlistIntegration:
             )
             assert login_response.status_code == 200
             access_token = login_response.json()["access_token"]
-        
+
         headers = {"Authorization": f"Bearer {access_token}"}
-        
+
         # Step 2: Add stock via frontend proxy
         async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
             add_response = await client.post(
@@ -196,7 +193,7 @@ class TestWatchlistIntegration:
                 json={"symbol": "NVDA"},
             )
             assert add_response.status_code in [201, 409]
-        
+
         # Step 3: View watchlist via frontend
         async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
             view_response = await client.get("/api/watchlist", headers=headers)
@@ -218,7 +215,7 @@ class TestWatchlistIntegration:
                     "alert_price_below": 100.0,
                 },
             )
-            
+
             assert response.status_code == 201
             data = response.json()
             assert data["symbol"] == "AMD"
@@ -237,7 +234,7 @@ class TestWatchlistIntegration:
                     "notes": "Potential turnaround play",
                 },
             )
-            
+
             assert response.status_code == 201
             data = response.json()
             assert data["symbol"] == "INTC"

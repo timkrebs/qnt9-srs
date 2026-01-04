@@ -45,31 +45,78 @@ class SearchMatch:
         }
         return result
 
+    def get_spec_match_score(self) -> float:
+        """
+        Get match score according to technical specification (0-1.0 scale).
+
+        Maps internal scoring to specification format:
+        - Exact symbol match: 1.0
+        - Symbol prefix: 0.8
+        - Symbol contains: 0.6
+        - Name prefix: 0.5
+        - Name contains: 0.3
+        """
+        if self.matched_field == "symbol":
+            if self.match_type == "exact":
+                return 1.0
+            elif self.match_type == "prefix":
+                return 0.8
+            elif self.match_type == "contains":
+                return 0.6
+            else:
+                return 0.6
+        elif self.matched_field == "name":
+            if self.match_type == "exact" or self.match_type == "prefix":
+                return 0.5
+            elif self.match_type == "contains" or self.match_type == "token":
+                return 0.3
+            else:
+                return 0.3
+        else:
+            return min(1.0, self.score / 100.0)
+
 
 class RelevanceScorer:
     """
     Calculate relevance scores for search results.
 
-    Scoring factors:
-    1. Match Type (40%) - Exact > Prefix > Fuzzy > Contains
-    2. Popularity (30%) - Search frequency and market cap
-    3. Field Priority (20%) - Symbol > ISIN > WKN > Name
-    4. Recency (10%) - Recently searched stocks
+    Implements scoring as per technical specification:
+    - Exact symbol match: 1.0
+    - Symbol starts with query: 0.8
+    - Symbol contains query: 0.6
+    - Company name starts with query: 0.5
+    - Company name contains query: 0.3
 
-    Total score normalized to 0-100 scale.
+    Additional factors:
+    - Popularity based on search frequency and market cap
+    - Field priority (symbol > ISIN > WKN > name)
+    - User's recent search history
+
+    Total score normalized to 0-1 scale for match_score field.
     """
 
-    # Scoring weights
+    # Scoring weights for internal calculation (0-100 scale)
     MATCH_TYPE_WEIGHT = 0.40
     POPULARITY_WEIGHT = 0.30
     FIELD_PRIORITY_WEIGHT = 0.20
     RECENCY_WEIGHT = 0.10
 
-    # Match type scores (out of 100)
-    MATCH_TYPE_SCORES = {"exact": 100, "prefix": 80, "fuzzy": 60, "contains": 50, "token": 40}
+    # Match type scores (out of 100) - mapped to spec scores
+    MATCH_TYPE_SCORES = {
+        "exact": 100,
+        "prefix": 80,
+        "fuzzy": 60,
+        "contains": 50,
+        "token": 40,
+    }
 
     # Field priority scores (out of 100)
-    FIELD_PRIORITY_SCORES = {"symbol": 100, "isin": 90, "wkn": 85, "name": 70}
+    FIELD_PRIORITY_SCORES = {
+        "symbol": 100,
+        "isin": 90,
+        "wkn": 85,
+        "name": 70,
+    }
 
     def __init__(self, search_stats: Optional[dict] = None):
         """
@@ -82,7 +129,9 @@ class RelevanceScorer:
         self.search_stats = search_stats or {}
 
         # Calculate max search count for normalization
-        self.max_search_count = max(self.search_stats.values()) if self.search_stats else 1
+        self.max_search_count = (
+            max(self.search_stats.values()) if self.search_stats else 1
+        )
 
     def score(
         self,

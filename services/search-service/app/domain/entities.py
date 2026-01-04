@@ -280,31 +280,51 @@ class Stock:
                 "current": float(self.price.current) if self.price.current else None,
                 "currency": self.price.currency,
                 "change_absolute": (
-                    float(self.price.change_absolute) if self.price.change_absolute else None
+                    float(self.price.change_absolute)
+                    if self.price.change_absolute
+                    else None
                 ),
                 "change_percent": (
-                    float(self.price.change_percent) if self.price.change_percent else None
+                    float(self.price.change_percent)
+                    if self.price.change_percent
+                    else None
                 ),
                 "previous_close": (
-                    float(self.price.previous_close) if self.price.previous_close else None
+                    float(self.price.previous_close)
+                    if self.price.previous_close
+                    else None
                 ),
                 "open": float(self.price.open_price) if self.price.open_price else None,
                 "day_high": float(self.price.day_high) if self.price.day_high else None,
                 "day_low": float(self.price.day_low) if self.price.day_low else None,
-                "week_52_high": float(self.price.week_52_high) if self.price.week_52_high else None,
-                "week_52_low": float(self.price.week_52_low) if self.price.week_52_low else None,
+                "week_52_high": (
+                    float(self.price.week_52_high) if self.price.week_52_high else None
+                ),
+                "week_52_low": (
+                    float(self.price.week_52_low) if self.price.week_52_low else None
+                ),
                 "volume": self.price.volume,
                 "avg_volume": self.price.avg_volume,
-                "timestamp": self.price.timestamp.isoformat() if self.price.timestamp else None,
+                "timestamp": (
+                    self.price.timestamp.isoformat() if self.price.timestamp else None
+                ),
             },
             "metadata": {
                 "exchange": self.metadata.exchange,
                 "sector": self.metadata.sector,
                 "industry": self.metadata.industry,
-                "market_cap": float(self.metadata.market_cap) if self.metadata.market_cap else None,
-                "pe_ratio": float(self.metadata.pe_ratio) if self.metadata.pe_ratio else None,
+                "market_cap": (
+                    float(self.metadata.market_cap)
+                    if self.metadata.market_cap
+                    else None
+                ),
+                "pe_ratio": (
+                    float(self.metadata.pe_ratio) if self.metadata.pe_ratio else None
+                ),
                 "dividend_yield": (
-                    float(self.metadata.dividend_yield) if self.metadata.dividend_yield else None
+                    float(self.metadata.dividend_yield)
+                    if self.metadata.dividend_yield
+                    else None
                 ),
                 "beta": float(self.metadata.beta) if self.metadata.beta else None,
                 "description": self.metadata.description,

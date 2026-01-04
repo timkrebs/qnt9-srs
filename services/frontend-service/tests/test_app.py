@@ -186,7 +186,9 @@ async def test_suggestions_endpoint() -> None:
             response = await client.get("/api/suggestions?query=DE")
 
             assert response.status_code == 200
-            assert "DE0005140008" in response.text or "suggestion" in response.text.lower()
+            assert (
+                "DE0005140008" in response.text or "suggestion" in response.text.lower()
+            )
 
 
 @pytest.mark.asyncio

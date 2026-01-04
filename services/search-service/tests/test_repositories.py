@@ -15,13 +15,8 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from app.domain.entities import (
-    DataSource,
-    Stock,
-    StockIdentifier,
-    StockMetadata,
-    StockPrice,
-)
+from app.domain.entities import (DataSource, Stock, StockIdentifier,
+                                 StockMetadata, StockPrice)
 from app.repositories.postgres_repository import PostgresStockRepository
 from app.repositories.redis_repository import RedisStockRepository
 from sqlalchemy.orm import Session
@@ -93,7 +88,9 @@ class TestRedisRepository:
         assert key == "stock:symbol:AAPL"
 
     @pytest.mark.asyncio
-    async def test_find_by_identifier_cache_hit(self, redis_repo, mock_redis, sample_stock):
+    async def test_find_by_identifier_cache_hit(
+        self, redis_repo, mock_redis, sample_stock
+    ):
         """Test finding stock when in Redis cache."""
         # Serialize stock to JSON
         serialized = redis_repo._serialize_stock(sample_stock)
@@ -147,7 +144,9 @@ class TestRedisRepository:
         assert call_args[0][1] == 300  # TTL seconds
 
     @pytest.mark.asyncio
-    async def test_save_stock_error_handling(self, redis_repo, mock_redis, sample_stock):
+    async def test_save_stock_error_handling(
+        self, redis_repo, mock_redis, sample_stock
+    ):
         """Test error handling when saving fails."""
         mock_redis.setex.side_effect = Exception("Redis write error")
 

@@ -1,11 +1,11 @@
 """
 Alembic migration configuration for search service
 """
+
 import os
 from logging.config import fileConfig
 
 from alembic import context  # type: ignore[attr-defined]
-
 # Import your models here
 from app.models import Base
 from sqlalchemy import engine_from_config, pool

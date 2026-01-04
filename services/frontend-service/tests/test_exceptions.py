@@ -5,12 +5,8 @@ Tests all custom exception types to ensure proper initialization
 and error message formatting.
 """
 
-from app.exceptions import (
-    FrontendServiceException,
-    SearchTimeoutException,
-    ServiceUnavailableException,
-    ValidationException,
-)
+from app.exceptions import (FrontendServiceException, SearchTimeoutException,
+                            ServiceUnavailableException, ValidationException)
 
 
 def test_frontend_service_exception_basic() -> None:

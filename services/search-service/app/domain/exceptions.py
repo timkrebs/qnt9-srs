@@ -36,7 +36,9 @@ class StockNotFoundException(SearchServiceException):
         message = f"Stock not found: {query}"
         if query_type:
             message = f"Stock not found for {query_type}: {query}"
-        super().__init__(message=message, details={"query": query, "query_type": query_type})
+        super().__init__(
+            message=message, details={"query": query, "query_type": query_type}
+        )
 
 
 class ExternalServiceException(SearchServiceException):
@@ -46,13 +48,17 @@ class ExternalServiceException(SearchServiceException):
         message = f"External service '{service}' unavailable"
         if reason:
             message += f": {reason}"
-        super().__init__(message=message, details={"service": service, "reason": reason})
+        super().__init__(
+            message=message, details={"service": service, "reason": reason}
+        )
 
 
 class RateLimitExceededException(SearchServiceException):
     """Raised when rate limit is exceeded."""
 
-    def __init__(self, limit: int, window_seconds: int, retry_after: Optional[int] = None):
+    def __init__(
+        self, limit: int, window_seconds: int, retry_after: Optional[int] = None
+    ):
         message = f"Rate limit exceeded: {limit} requests per {window_seconds} seconds"
         if retry_after:
             message += f". Retry after {retry_after} seconds"
@@ -73,7 +79,9 @@ class CacheException(SearchServiceException):
         message = f"Cache {operation} failed"
         if reason:
             message += f": {reason}"
-        super().__init__(message=message, details={"operation": operation, "reason": reason})
+        super().__init__(
+            message=message, details={"operation": operation, "reason": reason}
+        )
 
 
 class ValidationException(SearchServiceException):
@@ -98,7 +106,9 @@ class DataIntegrityException(SearchServiceException):
 class CircuitBreakerOpenException(SearchServiceException):
     """Raised when circuit breaker is open (too many failures)."""
 
-    def __init__(self, service: str, failure_count: int, retry_after: Optional[int] = None):
+    def __init__(
+        self, service: str, failure_count: int, retry_after: Optional[int] = None
+    ):
         message = f"Circuit breaker open for '{service}' after {failure_count} failures"
         if retry_after:
             message += f". Retry after {retry_after} seconds"

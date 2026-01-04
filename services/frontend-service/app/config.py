@@ -157,7 +157,9 @@ class Settings(BaseSettings):
         value = value.rstrip("/")
 
         if not (value.startswith("http://") or value.startswith("https://")):
-            raise ValueError(f"Service URL must start with http:// or https://, got: {value}")
+            raise ValueError(
+                f"Service URL must start with http:// or https://, got: {value}"
+            )
 
         return value
 

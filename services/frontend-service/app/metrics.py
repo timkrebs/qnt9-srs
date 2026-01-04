@@ -5,17 +5,14 @@ Tracks page views, API proxy requests, template rendering, and user interactions
 """
 
 from fastapi import Response
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-)
+from prometheus_client import (CONTENT_TYPE_LATEST, Counter, Gauge, Histogram,
+                               generate_latest)
 
 # Request metrics
 http_requests_total = Counter(
-    "frontend_http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]
+    "frontend_http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"],
 )
 
 http_request_duration_seconds = Histogram(
@@ -26,7 +23,9 @@ http_request_duration_seconds = Histogram(
 )
 
 # Page view metrics
-frontend_page_views_total = Counter("frontend_page_views_total", "Total page views", ["page"])
+frontend_page_views_total = Counter(
+    "frontend_page_views_total", "Total page views", ["page"]
+)
 
 frontend_page_load_duration_seconds = Histogram(
     "frontend_page_load_duration_seconds",
@@ -58,7 +57,9 @@ frontend_proxy_request_duration_seconds = Histogram(
 )
 
 frontend_proxy_errors_total = Counter(
-    "frontend_proxy_errors_total", "Total proxy request errors", ["service", "error_type"]
+    "frontend_proxy_errors_total",
+    "Total proxy request errors",
+    ["service", "error_type"],
 )
 
 # User interaction metrics
@@ -67,22 +68,34 @@ frontend_search_queries_total = Counter(
 )
 
 frontend_watchlist_operations_total = Counter(
-    "frontend_watchlist_operations_total", "Total watchlist operations", ["operation", "status"]
+    "frontend_watchlist_operations_total",
+    "Total watchlist operations",
+    ["operation", "status"],
 )
 
 # Static file metrics
 frontend_static_file_requests_total = Counter(
-    "frontend_static_file_requests_total", "Total static file requests", ["file_type", "status"]
+    "frontend_static_file_requests_total",
+    "Total static file requests",
+    ["file_type", "status"],
 )
 
 # Active users
-frontend_active_sessions = Gauge("frontend_active_sessions", "Number of active user sessions")
+frontend_active_sessions = Gauge(
+    "frontend_active_sessions", "Number of active user sessions"
+)
 
 
-def track_request_metrics(method: str, endpoint: str, status_code: int, duration: float):
+def track_request_metrics(
+    method: str, endpoint: str, status_code: int, duration: float
+):
     """Track HTTP request metrics."""
-    http_requests_total.labels(method=method, endpoint=endpoint, status=status_code).inc()
-    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(duration)
+    http_requests_total.labels(
+        method=method, endpoint=endpoint, status=status_code
+    ).inc()
+    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(
+        duration
+    )
 
 
 def track_page_view(page: str, duration: float):
@@ -93,7 +106,9 @@ def track_page_view(page: str, duration: float):
 
 def track_template_render(template: str, duration: float):
     """Track template rendering metrics."""
-    frontend_template_render_duration_seconds.labels(template=template).observe(duration)
+    frontend_template_render_duration_seconds.labels(template=template).observe(
+        duration
+    )
 
 
 def track_proxy_request(service: str, endpoint: str, status_code: int, duration: float):
@@ -101,9 +116,9 @@ def track_proxy_request(service: str, endpoint: str, status_code: int, duration:
     frontend_proxy_requests_total.labels(
         service=service, endpoint=endpoint, status=status_code
     ).inc()
-    frontend_proxy_request_duration_seconds.labels(service=service, endpoint=endpoint).observe(
-        duration
-    )
+    frontend_proxy_request_duration_seconds.labels(
+        service=service, endpoint=endpoint
+    ).observe(duration)
 
 
 def track_proxy_error(service: str, error_type: str):
@@ -125,7 +140,9 @@ def track_watchlist_operation(operation: str, success: bool):
 
 def track_static_file(file_type: str, status_code: int):
     """Track static file requests."""
-    frontend_static_file_requests_total.labels(file_type=file_type, status=status_code).inc()
+    frontend_static_file_requests_total.labels(
+        file_type=file_type, status=status_code
+    ).inc()
 
 
 def update_active_sessions(count: int):

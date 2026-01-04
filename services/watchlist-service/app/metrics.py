@@ -5,17 +5,14 @@ Tracks watchlist operations, tier limits, and performance.
 """
 
 from fastapi import Response
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-)
+from prometheus_client import (CONTENT_TYPE_LATEST, Counter, Gauge, Histogram,
+                               generate_latest)
 
 # Request metrics
 http_requests_total = Counter(
-    "watchlist_http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]
+    "watchlist_http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"],
 )
 
 http_request_duration_seconds = Histogram(
@@ -50,11 +47,15 @@ watchlist_tier_limit_exceeded = Counter(
     "watchlist_tier_limit_exceeded_total", "Total tier limit exceeded errors", ["tier"]
 )
 
-watchlist_active_users = Gauge("watchlist_active_users", "Active users with watchlists", ["tier"])
+watchlist_active_users = Gauge(
+    "watchlist_active_users", "Active users with watchlists", ["tier"]
+)
 
 # Database metrics
 watchlist_db_operations_total = Counter(
-    "watchlist_db_operations_total", "Total database operations", ["operation", "status"]
+    "watchlist_db_operations_total",
+    "Total database operations",
+    ["operation", "status"],
 )
 
 watchlist_db_operation_duration_seconds = Histogram(
@@ -65,10 +66,16 @@ watchlist_db_operation_duration_seconds = Histogram(
 )
 
 
-def track_request_metrics(method: str, endpoint: str, status_code: int, duration: float):
+def track_request_metrics(
+    method: str, endpoint: str, status_code: int, duration: float
+):
     """Track HTTP request metrics."""
-    http_requests_total.labels(method=method, endpoint=endpoint, status=status_code).inc()
-    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(duration)
+    http_requests_total.labels(
+        method=method, endpoint=endpoint, status=status_code
+    ).inc()
+    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(
+        duration
+    )
 
 
 def track_watchlist_add(success: bool, tier: str):
@@ -108,7 +115,9 @@ def track_db_operation(operation: str, success: bool, duration: float):
     """Track database operation metrics."""
     status = "success" if success else "failure"
     watchlist_db_operations_total.labels(operation=operation, status=status).inc()
-    watchlist_db_operation_duration_seconds.labels(operation=operation).observe(duration)
+    watchlist_db_operation_duration_seconds.labels(operation=operation).observe(
+        duration
+    )
 
 
 async def metrics_endpoint():

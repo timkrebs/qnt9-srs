@@ -135,7 +135,13 @@ class AuditService:
         except asyncpg.PostgresError as e:
             logger.error(
                 f"Database error logging audit event: {e}",
-                extra={"extra_fields": {"action": action, "user_id": user_id, "error": str(e)}},
+                extra={
+                    "extra_fields": {
+                        "action": action,
+                        "user_id": user_id,
+                        "error": str(e),
+                    }
+                },
             )
             return False
         except Exception as e:
@@ -170,7 +176,9 @@ class AuditService:
 
         sanitized = {}
         for key, value in values.items():
-            if key.lower() in sensitive_fields or any(s in key.lower() for s in sensitive_fields):
+            if key.lower() in sensitive_fields or any(
+                s in key.lower() for s in sensitive_fields
+            ):
                 sanitized[key] = "REDACTED"
             elif isinstance(value, dict):
                 sanitized[key] = AuditService._sanitize_values(value)

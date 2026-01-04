@@ -2,9 +2,10 @@
 Validation models and functions for search service.
 """
 
-from typing import Optional, List
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, Field
 
 # Constants
 MAX_NAME_SEARCH_RESULTS = 50
@@ -13,11 +14,13 @@ MAX_NAME_SEARCH_RESULTS = 50
 # Request Models
 class SearchQuery(BaseModel):
     """Search query model."""
+
     query: str = Field(..., min_length=1, max_length=100)
 
 
 class NameSearchQuery(BaseModel):
     """Name-based search query model."""
+
     query: str = Field(..., min_length=1, max_length=100)
     limit: int = Field(default=10, ge=1, le=MAX_NAME_SEARCH_RESULTS)
 
@@ -25,6 +28,7 @@ class NameSearchQuery(BaseModel):
 # Response Models
 class ErrorResponse(BaseModel):
     """Error response model."""
+
     error: str
     details: Optional[str] = None
     timestamp: datetime = Field(default_factory=datetime.utcnow)
@@ -32,6 +36,7 @@ class ErrorResponse(BaseModel):
 
 class PricePoint(BaseModel):
     """Price point model."""
+
     timestamp: datetime
     price: float
     volume: Optional[int] = None
@@ -39,6 +44,7 @@ class PricePoint(BaseModel):
 
 class WeekRange52(BaseModel):
     """52-week range model."""
+
     high: float
     low: float
     current: float
@@ -46,6 +52,7 @@ class WeekRange52(BaseModel):
 
 class PriceChange(BaseModel):
     """Price change model."""
+
     change_percent: float
     change_absolute: float
     period: str  # "1d", "1w", "1m", etc.
@@ -53,6 +60,7 @@ class PriceChange(BaseModel):
 
 class StockData(BaseModel):
     """Stock data model."""
+
     symbol: str
     name: str
     isin: Optional[str] = None
@@ -71,6 +79,7 @@ class StockData(BaseModel):
 
 class StockReportData(BaseModel):
     """Stock report data model."""
+
     symbol: str
     name: str
     isin: Optional[str] = None
@@ -96,6 +105,7 @@ class StockReportData(BaseModel):
 
 class StockReportResponse(BaseModel):
     """Stock report response model."""
+
     data: StockReportData
     cache_hit: bool = False
     source: str = "api"
@@ -103,6 +113,7 @@ class StockReportResponse(BaseModel):
 
 class NameSearchResponse(BaseModel):
     """Name search response model."""
+
     results: List[StockData]
     count: int
     query: str
@@ -111,6 +122,7 @@ class NameSearchResponse(BaseModel):
 
 class StockSearchResponse(BaseModel):
     """Stock search response model."""
+
     data: Optional[StockData] = None
     found: bool = False
     query: str
@@ -123,27 +135,27 @@ class StockSearchResponse(BaseModel):
 def detect_query_type(query: str) -> str:
     """
     Detect the type of search query.
-    
+
     Args:
         query: The search query string
-        
+
     Returns:
         One of: "isin", "wkn", "symbol", "name"
     """
     query = query.strip().upper()
-    
+
     # ISIN: 12 characters, starts with 2 letters
     if len(query) == 12 and query[:2].isalpha() and query[2:].isalnum():
         return "isin"
-    
+
     # WKN: 6 characters, alphanumeric
     if len(query) == 6 and query.isalnum():
         return "wkn"
-    
+
     # Symbol: Short alphanumeric (1-10 chars)
     if 1 <= len(query) <= 10 and query.replace(".", "").isalnum():
         return "symbol"
-    
+
     # Default to name search
     return "name"
 
@@ -151,16 +163,16 @@ def detect_query_type(query: str) -> str:
 def is_valid_isin(isin: str) -> bool:
     """
     Validate ISIN format.
-    
+
     Args:
         isin: The ISIN string to validate
-        
+
     Returns:
         True if valid ISIN format, False otherwise
     """
     if not isin or len(isin) != 12:
         return False
-    
+
     isin = isin.upper()
     return isin[:2].isalpha() and isin[2:].isalnum()
 
@@ -168,14 +180,14 @@ def is_valid_isin(isin: str) -> bool:
 def is_valid_wkn(wkn: str) -> bool:
     """
     Validate WKN format.
-    
+
     Args:
         wkn: The WKN string to validate
-        
+
     Returns:
         True if valid WKN format, False otherwise
     """
     if not wkn or len(wkn) != 6:
         return False
-    
+
     return wkn.upper().isalnum()

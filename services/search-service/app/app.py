@@ -12,34 +12,22 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .cache import CacheManager
 from .database import get_db, init_db
-from .infrastructure.yahoo_finance_client import YahooFinanceClient as StockAPIClient
+from .infrastructure.yahoo_finance_client import \
+    YahooFinanceClient as StockAPIClient
 from .metrics import metrics_endpoint, track_request_metrics
 from .metrics_middleware import PrometheusMiddleware
 from .shutdown_handler import setup_graceful_shutdown
 from .tracing import configure_opentelemetry, instrument_fastapi
-from .validators import (
-    MAX_NAME_SEARCH_RESULTS,
-    ErrorResponse,
-    NameSearchQuery,
-    NameSearchResponse,
-    PriceChange,
-    PricePoint,
-    SearchQuery,
-    StockData,
-    StockReportData,
-    StockReportResponse,
-    StockSearchResponse,
-    WeekRange52,
-    detect_query_type,
-    is_valid_isin,
-    is_valid_wkn,
-)
+from .validators import (MAX_NAME_SEARCH_RESULTS, ErrorResponse,
+                         NameSearchQuery, NameSearchResponse, PriceChange,
+                         PricePoint, SearchQuery, StockData, StockReportData,
+                         StockReportResponse, StockSearchResponse, WeekRange52,
+                         detect_query_type, is_valid_isin, is_valid_wkn)
 
 # Configure logging
 logging.basicConfig(
@@ -74,9 +62,11 @@ async def lifespan(app: FastAPI):
 
     Startup:
         - Initializes database tables
+        - Initializes Redis connection pool
         - Logs service start
 
     Shutdown:
+        - Closes Redis connections
         - Logs service shutdown
 
     Args:
@@ -86,10 +76,12 @@ async def lifespan(app: FastAPI):
         Control to application runtime
 
     Raises:
-        Exception: If database initialization fails
+        Exception: If database or Redis initialization fails
     """
     # Startup
     logger.info("Starting Search Service...")
+
+    # Initialize database
     try:
         init_db()
         logger.info("Database initialized successfully")
@@ -97,8 +89,28 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database: {e}")
         raise
 
+    # Initialize Redis connection manager
+    try:
+        from .core.redis_manager import get_redis_manager
+
+        redis_manager = get_redis_manager()
+        await redis_manager.initialize()
+        app.state.redis_manager = redis_manager
+        logger.info("Redis connection pool initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize Redis: {e}")
+        raise
+
     # Setup graceful shutdown handlers
-    shutdown_handler = setup_graceful_shutdown(service_name="search-service", cleanup_callbacks=[])
+    async def cleanup_redis():
+        """Clean up Redis connections."""
+        if hasattr(app.state, "redis_manager"):
+            await app.state.redis_manager.close()
+            logger.info("Redis connections closed")
+
+    shutdown_handler = setup_graceful_shutdown(
+        service_name="search-service", cleanup_callbacks=[cleanup_redis]
+    )
     app.state.shutdown_handler = shutdown_handler
     app.state.is_shutting_down = False
 
@@ -109,6 +121,9 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Search Service...")
     app.state.is_shutting_down = True
+
+    # Cleanup Redis
+    await cleanup_redis()
 
 
 # Initialize FastAPI app
@@ -122,14 +137,10 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Configure security middleware
+from .core.security import configure_security_middleware
+
+configure_security_middleware(app)
 
 # Add Prometheus metrics middleware
 app.add_middleware(PrometheusMiddleware, track_func=track_request_metrics)
@@ -146,7 +157,10 @@ async def shutdown_middleware(request: Request, call_next):
 
     Returns 503 Service Unavailable if service is shutting down.
     """
-    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+    if (
+        hasattr(request.app.state, "is_shutting_down")
+        and request.app.state.is_shutting_down
+    ):
         # Allow health checks during shutdown for monitoring
         if request.url.path in ["/health", "/metrics", "/"]:
             return await call_next(request)
@@ -254,7 +268,12 @@ def _is_potential_company_name(query: str) -> bool:
 
     # WKN format (exactly 6 alphanumeric, all uppercase, with at least one digit)
     # is not a company name
-    if len(query) == 6 and query.isalnum() and query.isupper() and any(c.isdigit() for c in query):
+    if (
+        len(query) == 6
+        and query.isalnum()
+        and query.isupper()
+        and any(c.isdigit() for c in query)
+    ):
         return False
 
     # Default to False for edge cases
@@ -400,7 +419,9 @@ async def search_stock(
                 symbol = best_result["symbol"]
                 response_query_type = "name"  # For response only
 
-                logger.info(f"Name search found symbol: {symbol}, fetching complete data...")
+                logger.info(
+                    f"Name search found symbol: {symbol}, fetching complete data..."
+                )
 
                 # Fetch complete stock data for the symbol (not just search result)
                 stock_data = stock_api_client.search_stock(symbol, query_type="symbol")
@@ -410,10 +431,14 @@ async def search_stock(
                     cache_manager.save_to_cache(stock_data, symbol)
                     cache_manager.record_search(original_query, found=True)
 
-                    return _build_success_response(stock_data, response_query_type, start_time)
+                    return _build_success_response(
+                        stock_data, response_query_type, start_time
+                    )
                 else:
                     # Fallback to basic search result if full data fetch fails
-                    logger.warning(f"Could not fetch full data for {symbol}, using search result")
+                    logger.warning(
+                        f"Could not fetch full data for {symbol}, using search result"
+                    )
                     stock_data = {
                         "symbol": best_result["symbol"],
                         "name": best_result["name"],
@@ -437,14 +462,18 @@ async def search_stock(
         # Try cache first
         cached_data = cache_manager.get_cached_stock(query)
         if cached_data:
-            return _build_cached_response(cached_data, query_type, start_time, cache_manager, query)
+            return _build_cached_response(
+                cached_data, query_type, start_time, cache_manager, query
+            )
 
         # Cache miss - fetch from external API
         logger.info(f"Cache miss - fetching from external API for {query}")
         stock_data = stock_api_client.search_stock(query, query_type)
 
         if not stock_data:
-            return _build_not_found_response(query, query_type, start_time, cache_manager)
+            return _build_not_found_response(
+                query, query_type, start_time, cache_manager
+            )
 
         # Save to cache and build response
         cache_manager.save_to_cache(stock_data, query)
@@ -812,10 +841,14 @@ async def search_stock_by_name(
 
         # Fallback to external API if no cache results
         if not results:
-            results = _search_external_api_and_cache(normalized_query, limit, cache_manager)
+            results = _search_external_api_and_cache(
+                normalized_query, limit, cache_manager
+            )
 
         # Build and return response
-        return _build_name_search_response(results, normalized_query, start_time, cache_manager)
+        return _build_name_search_response(
+            results, normalized_query, start_time, cache_manager
+        )
 
     except ValueError as e:
         logger.warning(f"Validation error for name search '{query}': {e}")
@@ -959,7 +992,9 @@ async def get_stock_report(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching stock report for {identifier}: {e}", exc_info=True)
+        logger.error(
+            f"Error fetching stock report for {identifier}: {e}", exc_info=True
+        )
         response_time_ms = int((time.time() - start_time) * 1000)
 
         raise HTTPException(
@@ -1017,7 +1052,9 @@ def _validate_report_data(report_data: Dict[str, Any]) -> None:
         raise ValueError(f"Missing required report fields: {', '.join(missing_fields)}")
 
 
-def _build_report_response(report_data: Dict[str, Any], start_time: float) -> StockReportResponse:
+def _build_report_response(
+    report_data: Dict[str, Any], start_time: float
+) -> StockReportResponse:
     """
     Build stock report response from fetched data.
 
@@ -1171,7 +1208,9 @@ def _build_cached_report_response(
     )
 
 
-def _get_stale_cached_report(symbol: str, cache_manager: CacheManager) -> Optional[Dict[str, Any]]:
+def _get_stale_cached_report(
+    symbol: str, cache_manager: CacheManager
+) -> Optional[Dict[str, Any]]:
     """
     Get stale (expired) cached report data as fallback.
 
@@ -1197,7 +1236,8 @@ def _get_stale_cached_report(symbol: str, cache_manager: CacheManager) -> Option
             logger.info(f"Using stale cache data for {symbol}")
             cache_age = int(
                 (
-                    datetime.now(timezone.utc).replace(tzinfo=None) - cache_entry.created_at
+                    datetime.now(timezone.utc).replace(tzinfo=None)
+                    - cache_entry.created_at
                 ).total_seconds()
             )
             return cache_manager._build_report_dict(cache_entry, cache_age)
@@ -1224,9 +1264,7 @@ def _build_stale_cache_response(
     """
     response = _build_cached_report_response(stale_data, start_time)
     cache_timestamp = stale_data.get("cache_timestamp", "unknown")
-    response.message = (
-        f"Showing cached data from {cache_timestamp}. Fresh data temporarily unavailable."
-    )
+    response.message = f"Showing cached data from {cache_timestamp}. Fresh data temporarily unavailable."
 
     return response
 
@@ -1324,7 +1362,8 @@ def _build_name_search_response(
 
     # Log search analytics
     logger.info(
-        f"Name search for '{query}' returned {len(results)} results " f"in {response_time}ms"
+        f"Name search for '{query}' returned {len(results)} results "
+        f"in {response_time}ms"
     )
 
     # Record search in history
@@ -1527,7 +1566,19 @@ def _validate_period_interval_combination(period: str, interval: str) -> None:
     Raises:
         HTTPException: If combination is invalid
     """
-    valid_periods = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"}
+    valid_periods = {
+        "1d",
+        "5d",
+        "1mo",
+        "3mo",
+        "6mo",
+        "1y",
+        "2y",
+        "5y",
+        "10y",
+        "ytd",
+        "max",
+    }
     valid_intervals = {
         "1m",
         "2m",
@@ -1576,7 +1627,9 @@ def _validate_period_interval_combination(period: str, interval: str) -> None:
         )
 
 
-def _get_cached_historical_data(cache_key: str, cache_manager: CacheManager) -> Optional[list]:
+def _get_cached_historical_data(
+    cache_key: str, cache_manager: CacheManager
+) -> Optional[list]:
     """
     Get cached historical data if available and not expired.
 
@@ -1596,7 +1649,9 @@ def _get_cached_historical_data(cache_key: str, cache_manager: CacheManager) -> 
         return None
 
 
-def _cache_historical_data(cache_key: str, data: list, cache_manager: CacheManager) -> None:
+def _cache_historical_data(
+    cache_key: str, data: list, cache_manager: CacheManager
+) -> None:
     """
     Cache historical data with appropriate TTL.
 

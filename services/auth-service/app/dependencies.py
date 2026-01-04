@@ -42,7 +42,9 @@ def get_token_from_header(authorization: str | None) -> str:
     return parts[1]
 
 
-async def get_current_user_from_token(authorization: str = Header(None)) -> Dict[str, Any]:
+async def get_current_user_from_token(
+    authorization: str = Header(None),
+) -> Dict[str, Any]:
     """
     Dependency that extracts and validates the current user from Supabase JWT token.
 
@@ -80,7 +82,9 @@ async def get_current_user_from_token(authorization: str = Header(None)) -> Dict
     }
 
 
-async def get_current_user_id(current_user: Dict[str, Any] = Header(alias="authorization")) -> str:
+async def get_current_user_id(
+    current_user: Dict[str, Any] = Header(alias="authorization"),
+) -> str:
     """
     Simplified dependency that returns only the user ID.
 
@@ -94,4 +98,8 @@ async def get_current_user_id(current_user: Dict[str, Any] = Header(alias="autho
     return user["user_id"]
 
 
-__all__ = ["get_current_user_from_token", "get_current_user_id", "get_token_from_header"]
+__all__ = [
+    "get_current_user_from_token",
+    "get_current_user_id",
+    "get_token_from_header",
+]

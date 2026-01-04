@@ -28,7 +28,9 @@ class RateLimitConfig:
 
     max_requests: int  # Maximum number of requests allowed
     window_seconds: int  # Time window in seconds
-    block_duration_seconds: int = 0  # How long to block after exceeding limit (0 = no block)
+    block_duration_seconds: int = (
+        0  # How long to block after exceeding limit (0 = no block)
+    )
 
 
 @dataclass
@@ -77,14 +79,17 @@ class RateLimiter:
         expired_clients = [
             ip
             for ip, state in self._clients.items()
-            if (not state.requests or state.requests[-1] < cutoff) and state.blocked_until < now
+            if (not state.requests or state.requests[-1] < cutoff)
+            and state.blocked_until < now
         ]
 
         for ip in expired_clients:
             del self._clients[ip]
 
         if expired_clients:
-            logger.debug(f"Cleaned up {len(expired_clients)} expired rate limit entries")
+            logger.debug(
+                f"Cleaned up {len(expired_clients)} expired rate limit entries"
+            )
 
     def _get_client_ip(self, request: Request) -> str:
         """

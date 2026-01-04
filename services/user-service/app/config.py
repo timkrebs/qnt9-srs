@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # Database Configuration (PostgreSQL)
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/qnt9"  # Local PostgreSQL
+    DATABASE_URL: str = (
+        "postgresql://postgres:postgres@localhost:5432/qnt9"  # Local PostgreSQL
+    )
     DATABASE_POOL_SIZE: int = 20
     DATABASE_POOL_MIN_SIZE: int = 5
 

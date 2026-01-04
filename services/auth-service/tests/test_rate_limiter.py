@@ -8,18 +8,12 @@ import time
 from unittest.mock import MagicMock
 
 import pytest
+from app.rate_limiter import (ClientState, RateLimitConfig, RateLimiter,
+                              auth_rate_limiter, check_auth_rate_limit,
+                              check_password_reset_rate_limit,
+                              general_rate_limiter,
+                              password_reset_rate_limiter)
 from fastapi import HTTPException, Request
-
-from app.rate_limiter import (
-    ClientState,
-    RateLimitConfig,
-    RateLimiter,
-    auth_rate_limiter,
-    check_auth_rate_limit,
-    check_password_reset_rate_limit,
-    general_rate_limiter,
-    password_reset_rate_limiter,
-)
 
 
 class TestRateLimitConfig:

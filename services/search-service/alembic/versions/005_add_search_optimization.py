@@ -11,6 +11,7 @@ This migration adds comprehensive search optimization infrastructure:
 4. Implements automatic search_vector maintenance via triggers
 5. Populates initial data from stock_cache
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
@@ -50,10 +51,22 @@ def upgrade() -> None:
             sa.Column("industry", sa.String(length=100), nullable=True),
             sa.Column("isin", sa.String(length=12), nullable=True),
             sa.Column("wkn", sa.String(length=6), nullable=True),
-            sa.Column("popularity_score", sa.Float(), nullable=False, server_default="0"),
+            sa.Column(
+                "popularity_score", sa.Float(), nullable=False, server_default="0"
+            ),
             sa.Column("search_vector", postgresql.TSVECTOR(), nullable=True),
-            sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
-            sa.Column("updated_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
+            sa.Column(
+                "created_at",
+                sa.DateTime(),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
+            sa.Column(
+                "updated_at",
+                sa.DateTime(),
+                server_default=sa.text("now()"),
+                nullable=False,
+            ),
             sa.PrimaryKeyConstraint("id"),
         )
 
@@ -67,17 +80,25 @@ def upgrade() -> None:
 
         # Composite index for symbol + exchange uniqueness
         op.create_index(
-            "idx_search_symbol_exchange", "stock_search_index", ["symbol", "exchange"], unique=True
+            "idx_search_symbol_exchange",
+            "stock_search_index",
+            ["symbol", "exchange"],
+            unique=True,
         )
 
         # Popularity ranking index (DESC for top results first)
         op.create_index(
-            "idx_search_popularity", "stock_search_index", [sa.text("popularity_score DESC")]
+            "idx_search_popularity",
+            "stock_search_index",
+            [sa.text("popularity_score DESC")],
         )
 
         # GIN index for full-text search on search_vector
         op.create_index(
-            "idx_search_vector_gin", "stock_search_index", ["search_vector"], postgresql_using="gin"
+            "idx_search_vector_gin",
+            "stock_search_index",
+            ["search_vector"],
+            postgresql_using="gin",
         )
 
         # GIN index for trigram fuzzy matching on name
@@ -176,7 +197,9 @@ def downgrade() -> None:
     op.drop_index("idx_history_query_popularity", table_name="search_history")
 
     # Drop trigger and function
-    op.execute("DROP TRIGGER IF EXISTS trigger_update_search_vector ON stock_search_index")
+    op.execute(
+        "DROP TRIGGER IF EXISTS trigger_update_search_vector ON stock_search_index"
+    )
     op.execute("DROP FUNCTION IF EXISTS update_search_vector()")
 
     # Drop indices

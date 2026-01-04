@@ -12,14 +12,9 @@ from uuid import UUID
 from .config import settings
 from .database import db_manager
 from .logging_config import get_logger
-from .security import (
-    create_access_token,
-    create_password_reset_token,
-    create_refresh_token,
-    hash_password,
-    hash_token,
-    verify_password,
-)
+from .security import (create_access_token, create_password_reset_token,
+                       create_refresh_token, hash_password, hash_token,
+                       verify_password)
 
 logger = get_logger(__name__)
 
@@ -100,7 +95,9 @@ class AuthService:
                     tier=user_row["tier"],
                 )
 
-                raw_refresh, hashed_refresh, refresh_expires = create_refresh_token(user_id)
+                raw_refresh, hashed_refresh, refresh_expires = create_refresh_token(
+                    user_id
+                )
 
                 # Store refresh token in same transaction
                 await conn.execute(
@@ -121,7 +118,9 @@ class AuthService:
                     "email": user_row["email"],
                     "full_name": user_row["full_name"],
                     "created_at": (
-                        user_row["created_at"].isoformat() if user_row["created_at"] else None
+                        user_row["created_at"].isoformat()
+                        if user_row["created_at"]
+                        else None
                     ),
                     "tier": user_row["tier"],
                     "email_verified": user_row["email_verified"],
@@ -433,7 +432,9 @@ class AuthService:
                     else None
                 ),
                 "created_at": (
-                    user_row["created_at"].isoformat() if user_row["created_at"] else None
+                    user_row["created_at"].isoformat()
+                    if user_row["created_at"]
+                    else None
                 ),
                 "subscription_start": (
                     user_row["subscription_start"].isoformat()
@@ -446,7 +447,9 @@ class AuthService:
                     else None
                 ),
                 "last_login": (
-                    user_row["last_login"].isoformat() if user_row["last_login"] else None
+                    user_row["last_login"].isoformat()
+                    if user_row["last_login"]
+                    else None
                 ),
             }
 
@@ -551,7 +554,8 @@ class AuthService:
             logger.info(f"Password reset requested for: {email}")
 
             user_row = await db_manager.fetchrow(
-                "SELECT id FROM users WHERE email = $1 AND is_active = TRUE", email.lower()
+                "SELECT id FROM users WHERE email = $1 AND is_active = TRUE",
+                email.lower(),
             )
 
             if user_row:

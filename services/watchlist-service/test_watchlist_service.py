@@ -24,7 +24,6 @@ import asyncpg  # noqa: E402
 import httpx  # noqa: E402
 import jwt  # noqa: E402
 import structlog  # noqa: E402
-
 from app.config import settings  # noqa: E402
 
 logger = structlog.get_logger(__name__)
@@ -45,7 +44,9 @@ def create_test_jwt(user_id: str, email: str, tier: str = "free") -> str:
         "exp": datetime.utcnow() + timedelta(hours=1),
         "iat": datetime.utcnow(),
     }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(
+        payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+    )
 
 
 class Colors:
@@ -84,7 +85,9 @@ async def test_database_connection():
     print_test("Test 1: Supabase Database Connection")
 
     try:
-        print_info(f"Connecting to: {settings.DATABASE_URL.split('@')[1].split('/')[0]}")
+        print_info(
+            f"Connecting to: {settings.DATABASE_URL.split('@')[1].split('/')[0]}"
+        )
 
         conn = await asyncpg.connect(
             settings.DATABASE_URL,
@@ -188,7 +191,9 @@ async def test_authentication():
                 print_success("Request with valid token accepted (200)")
                 return True
             else:
-                print_error(f"Expected 200, got {response.status_code}: {response.text}")
+                print_error(
+                    f"Expected 200, got {response.status_code}: {response.text}"
+                )
                 return False
 
     except Exception as e:
@@ -281,7 +286,9 @@ async def test_crud_operations():
 
             # Test 4.2: POST - Add stock
             payload = {"symbol": "AAPL", "notes": "Test stock", "alert_enabled": False}
-            response = await client.post(f"{BASE_URL}/api/watchlist", json=payload, headers=headers)
+            response = await client.post(
+                f"{BASE_URL}/api/watchlist", json=payload, headers=headers
+            )
             assert response.status_code == 201
             data = response.json()
             assert data["symbol"] == "AAPL"
@@ -297,7 +304,9 @@ async def test_crud_operations():
             print_success("GET watchlist with 1 item: OK")
 
             # Test 4.4: POST - Try to add duplicate
-            response = await client.post(f"{BASE_URL}/api/watchlist", json=payload, headers=headers)
+            response = await client.post(
+                f"{BASE_URL}/api/watchlist", json=payload, headers=headers
+            )
             assert response.status_code == 409  # Conflict
             print_success("POST duplicate prevention: OK")
 
@@ -318,7 +327,9 @@ async def test_crud_operations():
             print_success("PATCH update stock: OK")
 
             # Test 4.6: DELETE - Remove stock
-            response = await client.delete(f"{BASE_URL}/api/watchlist/AAPL", headers=headers)
+            response = await client.delete(
+                f"{BASE_URL}/api/watchlist/AAPL", headers=headers
+            )
             assert response.status_code == 200
             print_success("DELETE remove stock: OK")
 
@@ -369,7 +380,9 @@ async def test_tier_limits():
 
             # Test 5.2: Free tier - 4th stock should be rejected
             payload = {"symbol": symbols[3], "notes": "Test TSLA"}
-            response = await client.post(f"{BASE_URL}/api/watchlist", json=payload, headers=headers)
+            response = await client.post(
+                f"{BASE_URL}/api/watchlist", json=payload, headers=headers
+            )
             assert response.status_code == 403  # Forbidden
             data = response.json()
             assert "limit reached" in data["detail"].lower()
@@ -378,7 +391,9 @@ async def test_tier_limits():
             # Test 5.3: Paid tier - can add more than 3 stocks
             # First clean up
             for symbol in symbols[:3]:
-                await client.delete(f"{BASE_URL}/api/watchlist/{symbol}", headers=headers)
+                await client.delete(
+                    f"{BASE_URL}/api/watchlist/{symbol}", headers=headers
+                )
 
             # Create paid user token
             paid_token = create_test_jwt(TEST_USER_ID, TEST_USER_EMAIL, "paid")
@@ -393,7 +408,9 @@ async def test_tier_limits():
                 assert response.status_code == 201
 
             # Verify we have 4 stocks
-            response = await client.get(f"{BASE_URL}/api/watchlist", headers=paid_headers)
+            response = await client.get(
+                f"{BASE_URL}/api/watchlist", headers=paid_headers
+            )
             data = response.json()
             assert data["total"] == 4
             assert data["tier"] == "paid"
@@ -430,7 +447,9 @@ async def run_all_tests():
 
     # Only continue if database is accessible
     if not results["Database Connection"]:
-        print_error("\n[ERROR] Database connection failed. Cannot continue with other tests.")
+        print_error(
+            "\n[ERROR] Database connection failed. Cannot continue with other tests."
+        )
         return
 
     results["Health Endpoint"] = await test_health_endpoint()
@@ -449,7 +468,9 @@ async def run_all_tests():
 
     for test_name, result in results.items():
         status = (
-            f"{Colors.GREEN}[PASS]{Colors.RESET}" if result else f"{Colors.RED}[FAIL]{Colors.RESET}"
+            f"{Colors.GREEN}[PASS]{Colors.RESET}"
+            if result
+            else f"{Colors.RED}[FAIL]{Colors.RESET}"
         )
         print(f"  {test_name:.<50} {status}")
 

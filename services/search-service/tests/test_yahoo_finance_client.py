@@ -14,7 +14,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from app.domain.entities import DataSource, StockIdentifier
-from app.domain.exceptions import ExternalServiceException, StockNotFoundException
+from app.domain.exceptions import (ExternalServiceException,
+                                   StockNotFoundException)
 from app.infrastructure.yahoo_finance_client import YahooFinanceClient
 
 
@@ -188,7 +189,9 @@ class TestSearchByName:
             assert results[0].identifier.symbol == "AAPL"
 
     @pytest.mark.asyncio
-    async def test_search_by_name_hardcoded_mappings(self, yahoo_client, mock_ticker_info):
+    async def test_search_by_name_hardcoded_mappings(
+        self, yahoo_client, mock_ticker_info
+    ):
         """Test search using hardcoded mappings."""
         with patch("yfinance.Search") as mock_search_class, patch(
             "yfinance.Ticker"

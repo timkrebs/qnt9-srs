@@ -72,7 +72,10 @@ class EmailService:
             )
 
             success = await self._send_email(
-                to_email=email, subject=subject, html_body=html_body, text_body=text_body
+                to_email=email,
+                subject=subject,
+                html_body=html_body,
+                text_body=text_body,
             )
 
             if success:
@@ -83,7 +86,9 @@ class EmailService:
             return success
 
         except Exception as e:
-            logger.error(f"Error sending verification email to {email}: {e}", exc_info=True)
+            logger.error(
+                f"Error sending verification email to {email}: {e}", exc_info=True
+            )
             return False
 
     async def send_password_reset_email(
@@ -120,7 +125,10 @@ class EmailService:
             )
 
             success = await self._send_email(
-                to_email=email, subject=subject, html_body=html_body, text_body=text_body
+                to_email=email,
+                subject=subject,
+                html_body=html_body,
+                text_body=text_body,
             )
 
             if success:
@@ -131,7 +139,9 @@ class EmailService:
             return success
 
         except Exception as e:
-            logger.error(f"Error sending password reset email to {email}: {e}", exc_info=True)
+            logger.error(
+                f"Error sending password reset email to {email}: {e}", exc_info=True
+            )
             return False
 
     async def _send_email(
@@ -183,7 +193,9 @@ class EmailService:
             logger.error(f"Timeout sending email to {to_email}")
             return False
         except Exception as e:
-            logger.error(f"Unexpected error sending email to {to_email}: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error sending email to {to_email}: {e}", exc_info=True
+            )
             return False
 
     def _create_verification_email_html(

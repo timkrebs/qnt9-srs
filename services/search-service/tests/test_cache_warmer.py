@@ -82,12 +82,19 @@ class TestWarmupFromPopularity:
     """Test warmup from popularity scores."""
 
     def test_warmup_basic(
-        self, cache_warmer, mock_db, mock_memory_cache, sample_stock_index, sample_stock_cache
+        self,
+        cache_warmer,
+        mock_db,
+        mock_memory_cache,
+        sample_stock_index,
+        sample_stock_cache,
     ):
         """Test basic warmup functionality."""
         # Mock database queries
         mock_query = MagicMock()
-        mock_query.order_by.return_value.limit.return_value.all.return_value = [sample_stock_index]
+        mock_query.order_by.return_value.limit.return_value.all.return_value = [
+            sample_stock_index
+        ]
 
         mock_stock_query = MagicMock()
         mock_stock_query.filter.return_value.order_by.return_value.first.return_value = (
@@ -107,7 +114,11 @@ class TestWarmupFromPopularity:
         """Test warming up multiple stocks."""
         # Create multiple stock indices
         stock_indices = []
-        isin_map = {"AAPL": "US0378331005", "MSFT": "US5949181045", "GOOGL": "US02079K1079"}
+        isin_map = {
+            "AAPL": "US0378331005",
+            "MSFT": "US5949181045",
+            "GOOGL": "US02079K1079",
+        }
         for symbol in ["AAPL", "MSFT", "GOOGL"]:
             index = MagicMock(spec=StockSearchIndex)
             index.symbol = symbol
@@ -116,7 +127,9 @@ class TestWarmupFromPopularity:
 
         # Mock queries
         mock_query = MagicMock()
-        mock_query.order_by.return_value.limit.return_value.all.return_value = stock_indices
+        mock_query.order_by.return_value.limit.return_value.all.return_value = (
+            stock_indices
+        )
 
         def create_stock_cache(symbol):
             cache = MagicMock(spec=StockCache)
@@ -165,14 +178,21 @@ class TestWarmupFromPopularity:
         assert mock_memory_cache.set.call_count >= 3
 
     def test_warmup_skips_expired_stocks(
-        self, cache_warmer, mock_db, mock_memory_cache, sample_stock_index, sample_stock_cache
+        self,
+        cache_warmer,
+        mock_db,
+        mock_memory_cache,
+        sample_stock_index,
+        sample_stock_cache,
     ):
         """Test warmup skips expired stocks."""
         # Mark stock as expired
         sample_stock_cache.is_expired = MagicMock(return_value=True)
 
         mock_query = MagicMock()
-        mock_query.order_by.return_value.limit.return_value.all.return_value = [sample_stock_index]
+        mock_query.order_by.return_value.limit.return_value.all.return_value = [
+            sample_stock_index
+        ]
 
         mock_stock_query = MagicMock()
         mock_stock_query.filter.return_value.order_by.return_value.first.return_value = (
@@ -192,10 +212,14 @@ class TestWarmupFromPopularity:
     ):
         """Test warmup skips stocks not found in cache."""
         mock_query = MagicMock()
-        mock_query.order_by.return_value.limit.return_value.all.return_value = [sample_stock_index]
+        mock_query.order_by.return_value.limit.return_value.all.return_value = [
+            sample_stock_index
+        ]
 
         mock_stock_query = MagicMock()
-        mock_stock_query.filter.return_value.order_by.return_value.first.return_value = None
+        mock_stock_query.filter.return_value.order_by.return_value.first.return_value = (
+            None
+        )
 
         mock_db.query.side_effect = [mock_query, mock_stock_query]
 
@@ -203,7 +227,9 @@ class TestWarmupFromPopularity:
 
         assert count == 0
 
-    def test_warmup_handles_errors_gracefully(self, cache_warmer, mock_db, mock_memory_cache):
+    def test_warmup_handles_errors_gracefully(
+        self, cache_warmer, mock_db, mock_memory_cache
+    ):
         """Test warmup handles database errors gracefully."""
         # Simulate database error
         mock_db.query.side_effect = Exception("Database error")
@@ -214,11 +240,18 @@ class TestWarmupFromPopularity:
         assert count == 0
 
     def test_warmup_caches_with_multiple_keys(
-        self, cache_warmer, mock_db, mock_memory_cache, sample_stock_index, sample_stock_cache
+        self,
+        cache_warmer,
+        mock_db,
+        mock_memory_cache,
+        sample_stock_index,
+        sample_stock_cache,
     ):
         """Test warmup caches stock with symbol, ISIN, and WKN."""
         mock_query = MagicMock()
-        mock_query.order_by.return_value.limit.return_value.all.return_value = [sample_stock_index]
+        mock_query.order_by.return_value.limit.return_value.all.return_value = [
+            sample_stock_index
+        ]
 
         mock_stock_query = MagicMock()
         mock_stock_query.filter.return_value.order_by.return_value.first.return_value = (
@@ -259,7 +292,9 @@ class TestWarmupFromSearchHistory:
         assert count == 1
         assert mock_memory_cache.set.call_count >= 1
 
-    def test_warmup_from_history_multiple(self, cache_warmer, mock_db, mock_memory_cache):
+    def test_warmup_from_history_multiple(
+        self, cache_warmer, mock_db, mock_memory_cache
+    ):
         """Test warmup from history with multiple searches."""
         # Mock search history with multiple queries
         searches = [("AAPL", 150), ("MSFT", 100), ("GOOGL", 75)]
@@ -268,7 +303,11 @@ class TestWarmupFromSearchHistory:
         mock_db.execute.return_value = mock_result
 
         # Mock stock cache queries with valid ISINs
-        isin_map = {"AAPL": "US0378331005", "MSFT": "US5949181045", "GOOGL": "US02079K1079"}
+        isin_map = {
+            "AAPL": "US0378331005",
+            "MSFT": "US5949181045",
+            "GOOGL": "US02079K1079",
+        }
 
         def create_stock(symbol):
             stock = MagicMock(spec=StockCache)
@@ -298,7 +337,9 @@ class TestWarmupFromSearchHistory:
                     stock
                 )
             else:
-                mock_stock_query.filter.return_value.order_by.return_value.first.return_value = None
+                mock_stock_query.filter.return_value.order_by.return_value.first.return_value = (
+                    None
+                )
             return mock_stock_query
 
         mock_db.query.side_effect = lambda model: query_side_effect()
@@ -327,7 +368,9 @@ class TestWarmupFromSearchHistory:
 
         assert count == 0
 
-    def test_warmup_from_history_handles_errors(self, cache_warmer, mock_db, mock_memory_cache):
+    def test_warmup_from_history_handles_errors(
+        self, cache_warmer, mock_db, mock_memory_cache
+    ):
         """Test warmup from history handles errors gracefully."""
         mock_db.execute.side_effect = Exception("Database error")
 
@@ -395,7 +438,9 @@ class TestWarmupOnStartup:
 
         # Mock warmer methods
         with patch.object(CacheWarmer, "warmup", return_value=80):
-            with patch.object(CacheWarmer, "warmup_from_search_history", return_value=20):
+            with patch.object(
+                CacheWarmer, "warmup_from_search_history", return_value=20
+            ):
                 # Should not raise exception
                 warmup_cache_on_startup(max_stocks=1000)
 
@@ -418,7 +463,9 @@ class TestWarmupOnStartup:
 class TestCacheWarmerIntegration:
     """Integration tests for cache warmer."""
 
-    def test_warmup_respects_max_stocks_limit(self, cache_warmer, mock_db, mock_memory_cache):
+    def test_warmup_respects_max_stocks_limit(
+        self, cache_warmer, mock_db, mock_memory_cache
+    ):
         """Test warmup respects max_stocks parameter."""
         # Create many stock indices
         stock_indices = []
@@ -441,7 +488,9 @@ class TestCacheWarmerIntegration:
         # Verify limit was called with 10
         mock_query.order_by.return_value.limit.assert_called_once_with(10)
 
-    def test_warmup_orders_by_popularity(self, cache_warmer, mock_db, mock_memory_cache):
+    def test_warmup_orders_by_popularity(
+        self, cache_warmer, mock_db, mock_memory_cache
+    ):
         """Test warmup orders stocks by popularity score."""
         mock_query = MagicMock()
         mock_query.order_by.return_value.limit.return_value.all.return_value = []

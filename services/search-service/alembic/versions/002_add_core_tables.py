@@ -5,6 +5,7 @@ Revises: 001_add_stock_report_cache
 Create Date: 2025-11-11 12:00:00.000000
 
 """
+
 from alembic import op
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.sql import func
@@ -19,9 +20,13 @@ depends_on = None
 def upgrade():
     # First, rename index on stock_report_cache to avoid conflict
     op.drop_index("idx_symbol_expires", table_name="stock_report_cache")
-    op.create_index("idx_report_symbol_expires", "stock_report_cache", ["symbol", "expires_at"])
+    op.create_index(
+        "idx_report_symbol_expires", "stock_report_cache", ["symbol", "expires_at"]
+    )
     op.drop_index("idx_isin_expires_report", table_name="stock_report_cache")
-    op.create_index("idx_report_isin_expires", "stock_report_cache", ["isin", "expires_at"])
+    op.create_index(
+        "idx_report_isin_expires", "stock_report_cache", ["isin", "expires_at"]
+    )
 
     # Create stock_cache table
     op.create_table(
@@ -117,6 +122,10 @@ def downgrade():
 
     # Restore original indexes on stock_report_cache
     op.drop_index("idx_report_symbol_expires", table_name="stock_report_cache")
-    op.create_index("idx_symbol_expires", "stock_report_cache", ["symbol", "expires_at"])
+    op.create_index(
+        "idx_symbol_expires", "stock_report_cache", ["symbol", "expires_at"]
+    )
     op.drop_index("idx_report_isin_expires", table_name="stock_report_cache")
-    op.create_index("idx_isin_expires_report", "stock_report_cache", ["isin", "expires_at"])
+    op.create_index(
+        "idx_isin_expires_report", "stock_report_cache", ["isin", "expires_at"]
+    )

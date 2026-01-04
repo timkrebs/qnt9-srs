@@ -5,10 +5,8 @@ Tests for Circuit Breaker, Rate Limiter, and API clients.
 """
 
 import pytest
-from app.domain.exceptions import (
-    CircuitBreakerOpenException,
-    RateLimitExceededException,
-)
+from app.domain.exceptions import (CircuitBreakerOpenException,
+                                   RateLimitExceededException)
 from app.infrastructure.circuit_breaker import CircuitBreaker, CircuitState
 from app.infrastructure.rate_limiter import RateLimiter
 
@@ -19,7 +17,9 @@ class TestCircuitBreaker:
     @pytest.fixture
     def circuit_breaker(self):
         """Create a circuit breaker for testing."""
-        return CircuitBreaker(failure_threshold=3, recovery_timeout=5, name="test_service")
+        return CircuitBreaker(
+            failure_threshold=3, recovery_timeout=5, name="test_service"
+        )
 
     def test_initial_state_closed(self, circuit_breaker):
         """Test circuit breaker starts in CLOSED state."""

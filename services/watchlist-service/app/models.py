@@ -25,7 +25,9 @@ class WatchlistItem(BaseModel):
 class WatchlistCreate(BaseModel):
     """Request model for adding stock to watchlist."""
 
-    symbol: str = Field(..., max_length=10, min_length=1, description="Stock ticker symbol")
+    symbol: str = Field(
+        ..., max_length=10, min_length=1, description="Stock ticker symbol"
+    )
     notes: Optional[str] = Field(None, max_length=500, description="Optional notes")
     alert_enabled: bool = Field(default=False, description="Enable price alerts")
     alert_price_above: Optional[float] = Field(

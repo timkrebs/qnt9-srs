@@ -115,12 +115,15 @@ class CircuitBreaker:
                 self.success_count = 0
                 self._update_state_metric()
                 circuit_breaker_state_changes.labels(
-                    name=self.name, from_state=old_state.value, to_state=self.state.value
+                    name=self.name,
+                    from_state=old_state.value,
+                    to_state=self.state.value,
                 ).inc()
             else:
                 retry_after = self._get_retry_after_seconds()
                 logger.warning(
-                    f"Circuit breaker '{self.name}' is OPEN, " f"retry after {retry_after}s"
+                    f"Circuit breaker '{self.name}' is OPEN, "
+                    f"retry after {retry_after}s"
                 )
                 raise CircuitBreakerOpenException(
                     service=self.name,
@@ -155,7 +158,9 @@ class CircuitBreaker:
                 self.opened_at = None
                 self._update_state_metric()
                 circuit_breaker_state_changes.labels(
-                    name=self.name, from_state=old_state.value, to_state=self.state.value
+                    name=self.name,
+                    from_state=old_state.value,
+                    to_state=self.state.value,
                 ).inc()
 
     def _on_failure(self):
@@ -171,7 +176,9 @@ class CircuitBreaker:
 
         if self.state == CircuitState.HALF_OPEN:
             # Failed during recovery - back to OPEN
-            logger.warning(f"Circuit breaker '{self.name}' failed during recovery, reopening")
+            logger.warning(
+                f"Circuit breaker '{self.name}' failed during recovery, reopening"
+            )
             old_state = self.state
             self.state = CircuitState.OPEN
             self.opened_at = datetime.now()
@@ -182,7 +189,8 @@ class CircuitBreaker:
         elif self.failure_count >= self.failure_threshold:
             # Too many failures - OPEN the circuit
             logger.error(
-                f"Circuit breaker '{self.name}' OPENING after " f"{self.failure_count} failures"
+                f"Circuit breaker '{self.name}' OPENING after "
+                f"{self.failure_count} failures"
             )
             old_state = self.state
             self.state = CircuitState.OPEN
@@ -242,6 +250,8 @@ class CircuitBreaker:
             "failure_threshold": self.failure_threshold,
             "opened_at": self.opened_at.isoformat() if self.opened_at else None,
             "retry_after_seconds": (
-                self._get_retry_after_seconds() if self.state == CircuitState.OPEN else None
+                self._get_retry_after_seconds()
+                if self.state == CircuitState.OPEN
+                else None
             ),
         }

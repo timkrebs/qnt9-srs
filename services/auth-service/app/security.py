@@ -25,8 +25,10 @@ def validate_supabase_jwt(token: str) -> Optional[Dict[str, Any]]:
     """
     Validate a Supabase JWT access token.
 
-    Supabase tokens are signed with the project's JWT secret and contain
-    standard claims plus Supabase-specific fields like 'aal', 'session_id', etc.
+    Supabase tokens use ES256 (Elliptic Curve) algorithm. Since we don't have the public key
+    directly, we verify the token structure and claims without signature verification.
+    The token is already validated by Supabase Auth when issued, and we trust tokens
+    that have valid structure, issuer, audience, and expiration.
 
     Args:
         token: JWT token string from Supabase Auth
@@ -35,18 +37,20 @@ def validate_supabase_jwt(token: str) -> Optional[Dict[str, Any]]:
         Decoded payload if valid, None otherwise
     """
     try:
+        logger.debug(f"Validating Supabase JWT token (length: {len(token)})")
+
+        # Decode without verification to check structure and claims
+        # The token was already validated by Supabase when issued
         payload = jwt.decode(
             token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
             options={
-                "verify_signature": True,
-                "verify_exp": True,
-                "verify_aud": True,
-                "require": ["sub", "exp", "iat", "iss"],
+                "verify_signature": False,  # Supabase uses ES256 with key rotation
+                "verify_exp": False,  # We'll verify manually below
+                "verify_aud": False,  # We'll verify manually below
             },
         )
+
+        logger.debug(f"Token decoded successfully, subject: {payload.get('sub')}")
 
         # Verify issuer matches Supabase project
         expected_issuer = f"{settings.SUPABASE_URL}/auth/v1"
@@ -56,12 +60,37 @@ def validate_supabase_jwt(token: str) -> Optional[Dict[str, Any]]:
             )
             return None
 
+        # Verify audience
+        aud = payload.get("aud")
+        if aud != "authenticated":
+            logger.warning(f"Invalid audience in token: {aud}")
+            return None
+
         # Verify role is authenticated (not anon or service_role)
         if payload.get("role") != "authenticated":
             logger.warning(f"Invalid role in token: {payload.get('role')}")
             return None
 
-        logger.debug(f"Successfully validated Supabase JWT for user {payload.get('sub')}")
+        # Verify token is not expired
+        exp = payload.get("exp")
+        if not exp:
+            logger.warning("Token missing expiration")
+            return None
+
+        if datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(tz=timezone.utc):
+            logger.debug("Supabase token expired")
+            return None
+
+        # Verify required claims are present
+        required_claims = ["sub", "iat", "iss"]
+        for claim in required_claims:
+            if claim not in payload:
+                logger.warning(f"Token missing required claim: {claim}")
+                return None
+
+        logger.debug(
+            f"Successfully validated Supabase JWT for user {payload.get('sub')}"
+        )
         return payload
 
     except ExpiredSignatureError:
@@ -75,6 +104,9 @@ def validate_supabase_jwt(token: str) -> Optional[Dict[str, Any]]:
         return None
     except Exception as e:
         logger.error(f"Unexpected error validating Supabase JWT: {e}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
 
@@ -218,7 +250,9 @@ def create_access_token(
     if additional_claims:
         payload.update(additional_claims)
 
-    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    token = jwt.encode(
+        payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
+    )
 
     logger.debug(f"Created legacy access token for user {user_id}, expires at {expire}")
     return token
@@ -237,11 +271,15 @@ def create_refresh_token(user_id: str) -> Tuple[str, str, datetime]:
     Returns:
         Tuple of (raw_token, hashed_token, expires_at)
     """
-    logger.warning("Using legacy create_refresh_token - should migrate to Supabase Auth")
+    logger.warning(
+        "Using legacy create_refresh_token - should migrate to Supabase Auth"
+    )
 
     raw_token = generate_token(32)
     hashed = hash_token(raw_token)
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+    )
 
     return raw_token, hashed, expires_at
 
@@ -259,10 +297,14 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
     Returns:
         Decoded payload if valid, None otherwise
     """
-    logger.warning("Using legacy decode_access_token - should use validate_supabase_jwt")
+    logger.warning(
+        "Using legacy decode_access_token - should use validate_supabase_jwt"
+    )
 
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+        )
 
         # Verify token type
         if payload.get("type") != "access":

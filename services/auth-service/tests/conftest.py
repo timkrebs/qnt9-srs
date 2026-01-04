@@ -22,7 +22,9 @@ os.environ["LOG_LEVEL"] = "WARNING"
 # Supabase test environment variables (mock values for testing)
 os.environ["SUPABASE_URL"] = "https://test-project.supabase.co"
 os.environ["SUPABASE_KEY"] = "test-anon-key-for-testing-purposes-only"
-os.environ["SUPABASE_SERVICE_ROLE_KEY"] = "test-service-role-key-for-testing-purposes-only"
-os.environ[
-    "SUPABASE_JWT_SECRET"
-] = "test-jwt-secret-key-for-testing-purposes-only-must-be-at-least-32-chars"
+os.environ["SUPABASE_SERVICE_ROLE_KEY"] = (
+    "test-service-role-key-for-testing-purposes-only"
+)
+os.environ["SUPABASE_JWT_SECRET"] = (
+    "test-jwt-secret-key-for-testing-purposes-only-must-be-at-least-32-chars"
+)

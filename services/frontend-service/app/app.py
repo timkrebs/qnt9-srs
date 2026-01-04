@@ -22,11 +22,8 @@ from .consul import ConsulClient, get_service_id
 from .logging_config import get_logger, setup_logging
 from .metrics import metrics_endpoint, track_request_metrics
 from .metrics_middleware import PrometheusMiddleware
-from .middleware import (
-    PerformanceMonitoringMiddleware,
-    RequestLoggingMiddleware,
-    StaticFileCacheMiddleware,
-)
+from .middleware import (PerformanceMonitoringMiddleware,
+                         RequestLoggingMiddleware, StaticFileCacheMiddleware)
 from .shutdown_handler import setup_graceful_shutdown
 from .tracing import configure_opentelemetry, instrument_fastapi
 
@@ -187,7 +184,10 @@ async def shutdown_middleware(request: Request, call_next):
     """
     from fastapi import HTTPException, status
 
-    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+    if (
+        hasattr(request.app.state, "is_shutting_down")
+        and request.app.state.is_shutting_down
+    ):
         # Allow health checks during shutdown for monitoring
         if request.url.path in ["/health", "/metrics"]:
             return await call_next(request)
@@ -511,7 +511,9 @@ async def search_stock(
 async def get_historical_data(
     symbol: str,
     period: str = Query(default="1d", description="Time period (1d, 5d, 1mo, 3mo, 1y)"),
-    interval: str = Query(default="5m", description="Data interval (1m, 5m, 15m, 1h, 1d)"),
+    interval: str = Query(
+        default="5m", description="Data interval (1m, 5m, 15m, 1h, 1d)"
+    ),
     request: Request = None,
 ) -> JSONResponse:
     """

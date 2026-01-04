@@ -5,24 +5,36 @@ Tracks search operations, cache performance, API fallback usage, and query patte
 """
 
 from fastapi import Response
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-)
+from prometheus_client import (CONTENT_TYPE_LATEST, Counter, Gauge, Histogram,
+                               generate_latest)
 
 # Request metrics
 http_requests_total = Counter(
-    "search_http_requests_total", "Total HTTP requests", ["method", "endpoint", "status"]
+    "search_http_requests_total",
+    "Total HTTP requests",
+    ["method", "endpoint", "status"],
 )
 
 http_request_duration_seconds = Histogram(
     "search_http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "endpoint"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0),
+    buckets=(
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        2.5,
+        5.0,
+        7.5,
+        10.0,
+    ),
 )
 
 # Search metrics
@@ -45,13 +57,17 @@ search_results_per_query = Histogram(
 )
 
 # Cache metrics
-search_cache_hits_total = Counter("search_cache_hits_total", "Total cache hits", ["cache_type"])
+search_cache_hits_total = Counter(
+    "search_cache_hits_total", "Total cache hits", ["cache_type"]
+)
 
 search_cache_misses_total = Counter(
     "search_cache_misses_total", "Total cache misses", ["cache_type"]
 )
 
-search_cache_size = Gauge("search_cache_size", "Current cache size in items", ["cache_type"])
+search_cache_size = Gauge(
+    "search_cache_size", "Current cache size in items", ["cache_type"]
+)
 
 search_cache_evictions_total = Counter(
     "search_cache_evictions_total", "Total cache evictions", ["cache_type"]
@@ -59,7 +75,9 @@ search_cache_evictions_total = Counter(
 
 # API source metrics
 search_api_calls_total = Counter(
-    "search_api_calls_total", "Total API calls to external providers", ["provider", "status"]
+    "search_api_calls_total",
+    "Total API calls to external providers",
+    ["provider", "status"],
 )
 
 search_api_call_duration_seconds = Histogram(
@@ -70,7 +88,9 @@ search_api_call_duration_seconds = Histogram(
 )
 
 search_api_fallback_total = Counter(
-    "search_api_fallback_total", "Total API fallback attempts", ["from_provider", "to_provider"]
+    "search_api_fallback_total",
+    "Total API fallback attempts",
+    ["from_provider", "to_provider"],
 )
 
 # Database metrics
@@ -86,13 +106,21 @@ search_db_operation_duration_seconds = Histogram(
 )
 
 
-def track_request_metrics(method: str, endpoint: str, status_code: int, duration: float):
+def track_request_metrics(
+    method: str, endpoint: str, status_code: int, duration: float
+):
     """Track HTTP request metrics."""
-    http_requests_total.labels(method=method, endpoint=endpoint, status=status_code).inc()
-    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(duration)
+    http_requests_total.labels(
+        method=method, endpoint=endpoint, status=status_code
+    ).inc()
+    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(
+        duration
+    )
 
 
-def track_search_query(query_type: str, success: bool, duration: float, result_count: int = 0):
+def track_search_query(
+    query_type: str, success: bool, duration: float, result_count: int = 0
+):
     """Track search query metrics."""
     status = "success" if success else "failure"
     search_queries_total.labels(query_type=query_type, status=status).inc()
@@ -130,7 +158,9 @@ def track_api_call(provider: str, success: bool, duration: float):
 
 def track_api_fallback(from_provider: str, to_provider: str):
     """Track API fallback attempts."""
-    search_api_fallback_total.labels(from_provider=from_provider, to_provider=to_provider).inc()
+    search_api_fallback_total.labels(
+        from_provider=from_provider, to_provider=to_provider
+    ).inc()
 
 
 def track_db_operation(operation: str, success: bool, duration: float):

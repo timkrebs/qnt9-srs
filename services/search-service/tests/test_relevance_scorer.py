@@ -18,13 +18,8 @@ from decimal import Decimal
 from typing import Optional
 
 import pytest
-from app.domain.entities import (
-    DataSource,
-    Stock,
-    StockIdentifier,
-    StockMetadata,
-    StockPrice,
-)
+from app.domain.entities import (DataSource, Stock, StockIdentifier,
+                                 StockMetadata, StockPrice)
 from app.search.relevance_scorer import RelevanceScorer, SearchMatch
 
 # ============================================================================
@@ -63,7 +58,10 @@ def create_stock(
     price = StockPrice(current=Decimal("100.00"), currency="USD")
 
     metadata = StockMetadata(
-        exchange="NASDAQ", sector="Technology", industry="Software", market_cap=market_cap
+        exchange="NASDAQ",
+        sector="Technology",
+        industry="Software",
+        market_cap=market_cap,
     )
 
     return Stock(
@@ -199,7 +197,9 @@ class TestPopularityScoring:
 
     def test_market_cap_mega_cap(self, scorer):
         """Test mega cap stock (>$200B) gets max market cap score."""
-        stock = create_stock("AAPL", "Apple Inc.", market_cap=Decimal("3000000000000"))  # $3T
+        stock = create_stock(
+            "AAPL", "Apple Inc.", market_cap=Decimal("3000000000000")
+        )  # $3T
         match = scorer.score(stock, "exact", "symbol", 1.0)
 
         # Should get 30 points from market cap (out of 30)
@@ -207,7 +207,9 @@ class TestPopularityScoring:
 
     def test_market_cap_large_cap(self, scorer):
         """Test large cap stock ($10B-$200B)."""
-        stock = create_stock("XYZ", "XYZ Corp.", market_cap=Decimal("50000000000"))  # $50B
+        stock = create_stock(
+            "XYZ", "XYZ Corp.", market_cap=Decimal("50000000000")
+        )  # $50B
         match = scorer.score(stock, "exact", "symbol", 1.0)
 
         # Should get 25 points from market cap
@@ -215,7 +217,9 @@ class TestPopularityScoring:
 
     def test_market_cap_mid_cap(self, scorer):
         """Test mid cap stock ($2B-$10B)."""
-        stock = create_stock("XYZ", "XYZ Corp.", market_cap=Decimal("5000000000"))  # $5B
+        stock = create_stock(
+            "XYZ", "XYZ Corp.", market_cap=Decimal("5000000000")
+        )  # $5B
         match = scorer.score(stock, "exact", "symbol", 1.0)
 
         # Should get 20 points from market cap
@@ -223,7 +227,9 @@ class TestPopularityScoring:
 
     def test_market_cap_small_cap(self, scorer):
         """Test small cap stock ($300M-$2B)."""
-        stock = create_stock("XYZ", "XYZ Corp.", market_cap=Decimal("1000000000"))  # $1B
+        stock = create_stock(
+            "XYZ", "XYZ Corp.", market_cap=Decimal("1000000000")
+        )  # $1B
         match = scorer.score(stock, "exact", "symbol", 1.0)
 
         # Should get 15 points from market cap
@@ -231,7 +237,9 @@ class TestPopularityScoring:
 
     def test_market_cap_micro_cap(self, scorer):
         """Test micro cap stock (<$300M)."""
-        stock = create_stock("XYZ", "XYZ Corp.", market_cap=Decimal("100000000"))  # $100M
+        stock = create_stock(
+            "XYZ", "XYZ Corp.", market_cap=Decimal("100000000")
+        )  # $100M
         match = scorer.score(stock, "exact", "symbol", 1.0)
 
         # Should get 10 points from market cap
@@ -410,7 +418,9 @@ class TestWeightedCombination:
         # Create perfect stock: exact match on symbol, mega cap, most recent
         stock = create_stock("AAPL", "Apple Inc.", market_cap=Decimal("3000000000000"))
 
-        match = scorer_no_stats.score(stock, "exact", "symbol", 1.0, user_search_history=["AAPL"])
+        match = scorer_no_stats.score(
+            stock, "exact", "symbol", 1.0, user_search_history=["AAPL"]
+        )
 
         # Should get high score (79.0 = 40 match + 15 popularity + 20 field + 4 recency)
         assert match.score >= 75
@@ -440,7 +450,9 @@ class TestBatchScoring:
         """Test batch scoring sorts by relevance."""
         stocks = [
             create_stock("AAPL", "Apple Inc.", market_cap=Decimal("3000000000000")),
-            create_stock("MSFT", "Microsoft Corp.", market_cap=Decimal("2000000000000")),
+            create_stock(
+                "MSFT", "Microsoft Corp.", market_cap=Decimal("2000000000000")
+            ),
             create_stock("XYZ", "Unknown Corp.", market_cap=Decimal("100000000")),
         ]
 
@@ -499,7 +511,9 @@ class TestBatchScoring:
         ]
 
         # MSFT is most recent in history
-        results = scorer.score_batch(matches, user_search_history=["MSFT", "GOOGL", "AAPL"])
+        results = scorer.score_batch(
+            matches, user_search_history=["MSFT", "GOOGL", "AAPL"]
+        )
 
         # MSFT should benefit from recency boost
         msft_result = next(r for r in results if r.stock.identifier.symbol == "MSFT")
@@ -621,7 +635,9 @@ class TestEdgeCases:
 
     def test_very_large_market_cap(self, scorer):
         """Test handling of very large market cap."""
-        stock = create_stock("XYZ", "XYZ Corp.", market_cap=Decimal("10000000000000"))  # $10T
+        stock = create_stock(
+            "XYZ", "XYZ Corp.", market_cap=Decimal("10000000000000")
+        )  # $10T
         match = scorer.score(stock, "exact", "symbol", 1.0)
 
         # Should get mega cap score (30 points)
@@ -675,9 +691,13 @@ class TestRealWorldScenarios:
 
     def test_apple_exact_symbol_match(self, scorer):
         """Test scoring for exact Apple symbol match."""
-        stock = create_stock("AAPL", "Apple Inc.", market_cap=Decimal("3000000000000"))  # $3T
+        stock = create_stock(
+            "AAPL", "Apple Inc.", market_cap=Decimal("3000000000000")
+        )  # $3T
 
-        match = scorer.score(stock, "exact", "symbol", 1.0, user_search_history=["AAPL", "MSFT"])
+        match = scorer.score(
+            stock, "exact", "symbol", 1.0, user_search_history=["AAPL", "MSFT"]
+        )
 
         # Should get very high score
         assert match.score > 80
@@ -719,8 +739,12 @@ class TestRealWorldScenarios:
 
     def test_popular_stock_vs_exact_match(self, scorer):
         """Test popular stock with fuzzy match vs unpopular with exact match."""
-        popular_stock = create_stock("AAPL", "Apple Inc.", market_cap=Decimal("3000000000000"))
-        unpopular_stock = create_stock("XYZ", "XYZ Corp.", market_cap=Decimal("100000000"))
+        popular_stock = create_stock(
+            "AAPL", "Apple Inc.", market_cap=Decimal("3000000000000")
+        )
+        unpopular_stock = create_stock(
+            "XYZ", "XYZ Corp.", market_cap=Decimal("100000000")
+        )
 
         popular_match = scorer.score(popular_stock, "fuzzy", "symbol", 0.8)
         unpopular_match = scorer.score(unpopular_stock, "exact", "symbol", 1.0)

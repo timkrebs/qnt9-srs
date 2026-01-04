@@ -5,13 +5,8 @@ Tracks user profile operations, cache performance, and subscription management.
 """
 
 from fastapi import Response
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-)
+from prometheus_client import (CONTENT_TYPE_LATEST, Counter, Gauge, Histogram,
+                               generate_latest)
 
 # Request metrics
 http_requests_total = Counter(
@@ -27,13 +22,19 @@ http_request_duration_seconds = Histogram(
 
 # User profile metrics
 user_profile_operations_total = Counter(
-    "user_profile_operations_total", "Total user profile operations", ["operation", "status"]
+    "user_profile_operations_total",
+    "Total user profile operations",
+    ["operation", "status"],
 )
 
 # Cache metrics
-user_cache_hits_total = Counter("user_cache_hits_total", "Total cache hits", ["cache_type"])
+user_cache_hits_total = Counter(
+    "user_cache_hits_total", "Total cache hits", ["cache_type"]
+)
 
-user_cache_misses_total = Counter("user_cache_misses_total", "Total cache misses", ["cache_type"])
+user_cache_misses_total = Counter(
+    "user_cache_misses_total", "Total cache misses", ["cache_type"]
+)
 
 user_cache_size = Gauge("user_cache_size", "Current cache size", ["cache_type"])
 
@@ -63,10 +64,16 @@ user_db_operation_duration_seconds = Histogram(
 )
 
 
-def track_request_metrics(method: str, endpoint: str, status_code: int, duration: float):
+def track_request_metrics(
+    method: str, endpoint: str, status_code: int, duration: float
+):
     """Track HTTP request metrics."""
-    http_requests_total.labels(method=method, endpoint=endpoint, status=status_code).inc()
-    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(duration)
+    http_requests_total.labels(
+        method=method, endpoint=endpoint, status=status_code
+    ).inc()
+    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(
+        duration
+    )
 
 
 def track_profile_operation(operation: str, success: bool):

@@ -9,7 +9,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import BigInteger, Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy import (BigInteger, Column, DateTime, Float, Index, Integer,
+                        String, Text)
 from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
@@ -73,7 +74,9 @@ class StockCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -161,7 +164,9 @@ class SearchHistory(Base):
     search_count = Column(Integer, default=1, nullable=False)
     user_id = Column(UUID(as_uuid=True), index=True, nullable=True)
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    last_searched = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    last_searched = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     __table_args__ = (
         Index("idx_query_type", "query", "query_type"),
@@ -245,7 +250,9 @@ class StockReportCache(Base):
 
     # Cache management
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
     expires_at = Column(DateTime, nullable=False)
     cache_hits = Column(Integer, default=0, nullable=False)
 
@@ -297,6 +304,55 @@ class UserFavorite(Base):
         Index("idx_user_favorites_user_id", "user_id"),
         Index("idx_user_favorites_symbol", "symbol"),
         Index("idx_user_favorites_user_symbol", "user_id", "symbol", unique=True),
+    )
+
+
+class SymbolMapping(Base):
+    """
+    Symbol mapping model for ISIN/WKN to Yahoo Finance symbol resolution.
+
+    Stores mappings between international identifiers and Yahoo Finance symbols
+    to enable fast lookups without external API calls. Replaces hard-coded
+    mappings in YahooFinanceClient.
+
+    Attributes:
+        id: Primary key identifier
+        identifier_type: Type of identifier (isin, wkn, or name)
+        identifier_value: The identifier value (e.g., US0378331005, 865985)
+        yahoo_symbol: Corresponding Yahoo Finance symbol (e.g., AAPL, TSLA)
+        stock_name: Company name for reference
+        exchange: Stock exchange (e.g., NASDAQ, NYSE, XETRA)
+        priority: Priority for multiple mappings (higher = preferred)
+        is_active: Whether this mapping is currently active
+        verified_at: Last time this mapping was verified to work
+        created_at: Timestamp of mapping creation
+        updated_at: Timestamp of last update
+    """
+
+    __tablename__ = "symbol_mappings"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    identifier_type = Column(String(10), nullable=False, index=True)
+    identifier_value = Column(String(50), nullable=False, index=True)
+    yahoo_symbol = Column(String(20), nullable=False)
+
+    stock_name = Column(String(255), nullable=True)
+    exchange = Column(String(50), nullable=True)
+
+    priority = Column(Integer, default=0, nullable=False)
+    is_active = Column(Integer, default=1, nullable=False)
+    verified_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("idx_mapping_type_value", "identifier_type", "identifier_value"),
+        Index("idx_mapping_yahoo_symbol", "yahoo_symbol"),
+        Index("idx_mapping_active", "is_active"),
     )
 
 
@@ -362,7 +418,9 @@ class StockSearchIndex(Base):
 
     # Timestamps
     created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime, default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     # Composite indices defined in migration
     __table_args__ = (

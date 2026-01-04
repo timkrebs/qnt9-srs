@@ -8,18 +8,11 @@ import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from app.security import (
-    create_access_token,
-    create_email_verification_token,
-    create_password_reset_token,
-    create_refresh_token,
-    decode_access_token,
-    generate_token,
-    get_token_from_header,
-    hash_password,
-    hash_token,
-    verify_password,
-)
+from app.security import (create_access_token, create_email_verification_token,
+                          create_password_reset_token, create_refresh_token,
+                          decode_access_token, generate_token,
+                          get_token_from_header, hash_password, hash_token,
+                          verify_password)
 
 
 class TestPasswordHashing:

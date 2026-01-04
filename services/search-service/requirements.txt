@@ -18,6 +18,9 @@ hiredis>=2.2.0  # Fast Redis protocol parser
 # In-Memory Cache
 cachetools>=5.3.0  # LRU cache for hot data
 
+# Meilisearch for autocomplete
+meilisearch-python-sdk>=3.5.0
+
 # Fuzzy Matching & Search
 python-Levenshtein>=0.25.0  # Fast string similarity
 rapidfuzz>=3.5.0  # Alternative fuzzy matching

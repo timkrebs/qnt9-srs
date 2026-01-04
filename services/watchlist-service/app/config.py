@@ -18,14 +18,20 @@ class Settings(BaseSettings):
     SERVICE_HOST: str = Field(default="0.0.0.0")
     SERVICE_PORT: int = Field(default=8012, ge=1, le=65535)
     DEBUG: bool = Field(default=True)
-    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO"
+    )
 
     # JWT Authentication
-    JWT_SECRET_KEY: str = Field(default="your-super-secret-key-change-in-production-min-32-chars")
+    JWT_SECRET_KEY: str = Field(
+        default="your-super-secret-key-change-in-production-min-32-chars"
+    )
     JWT_ALGORITHM: str = Field(default="HS256")
 
     # Database
-    DATABASE_URL: str = Field(default="postgresql://postgres:postgres@localhost:5432/qnt9")
+    DATABASE_URL: str = Field(
+        default="postgresql://postgres:postgres@localhost:5432/qnt9"
+    )
 
     # Tier Limits
     FREE_TIER_WATCHLIST_LIMIT: int = Field(default=3, ge=1)

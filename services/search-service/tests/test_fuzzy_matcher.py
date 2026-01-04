@@ -485,7 +485,9 @@ class TestRealWorldExamples:
 
         for typo, correct in typos:
             matches, score = matcher.match_name(typo, correct)
-            assert matches is True, f"{typo} should fuzzy match {correct} (score: {score})"
+            assert (
+                matches is True
+            ), f"{typo} should fuzzy match {correct} (score: {score})"
 
     def test_german_stock_symbols(self):
         """Test German stock symbols with numbers."""
@@ -579,8 +581,12 @@ class TestThresholdBehavior:
 
         candidates = ["AAPL", "MSFT", "GOOGL"]
 
-        strict_result = strict_matcher.find_best_match("APL", candidates, is_symbol=True)
-        lenient_result = lenient_matcher.find_best_match("APL", candidates, is_symbol=True)
+        strict_result = strict_matcher.find_best_match(
+            "APL", candidates, is_symbol=True
+        )
+        lenient_result = lenient_matcher.find_best_match(
+            "APL", candidates, is_symbol=True
+        )
 
         # Lenient should be more likely to return a match
         if strict_result is None:

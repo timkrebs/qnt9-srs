@@ -72,7 +72,11 @@ def sample_stock():
 def sample_search_match(sample_stock):
     """Create sample search match."""
     return SearchMatch(
-        stock=sample_stock, score=95.0, match_type="exact", matched_field="symbol", similarity=1.0
+        stock=sample_stock,
+        score=95.0,
+        match_type="exact",
+        matched_field="symbol",
+        similarity=1.0,
     )
 
 
@@ -260,7 +264,9 @@ class TestCachingHeaders:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_cache_control_header(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_cache_control_header(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test Cache-Control header is set correctly."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None
@@ -343,19 +349,25 @@ class TestRateLimiting:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_rate_limit_exceeded(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_rate_limit_exceeded(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test rate limit exceeded."""
         mock_get_user.return_value = None
 
         # Simulate rate limit exceeded
-        mock_rate_limit.side_effect = HTTPException(status_code=429, detail="Rate limit exceeded")
+        mock_rate_limit.side_effect = HTTPException(
+            status_code=429, detail="Rate limit exceeded"
+        )
 
         response = client.get("/api/v1/search/instant?q=test")
 
         assert response.status_code == 429
 
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_premium_tier_rate_limiting(self, mock_rate_limit, client, mock_service, mock_user):
+    def test_premium_tier_rate_limiting(
+        self, mock_rate_limit, client, mock_service, mock_user
+    ):
         """Test rate limiting uses premium tier."""
         from app.core.auth import get_current_user
 
@@ -392,7 +404,9 @@ class TestErrorHandling:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_validation_error(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_validation_error(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test validation error handling."""
         from app.domain.exceptions import ValidationException
 
@@ -439,7 +453,9 @@ class TestSuggestionsEndpoint:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_successful_suggestions(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_successful_suggestions(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test successful suggestions request."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None
@@ -464,7 +480,9 @@ class TestSuggestionsEndpoint:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_suggestions_caching(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_suggestions_caching(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test suggestions endpoint has caching headers."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None
@@ -477,7 +495,9 @@ class TestSuggestionsEndpoint:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_suggestions_default_limit(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_suggestions_default_limit(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test suggestions default limit is 5."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None
@@ -491,7 +511,9 @@ class TestSuggestionsEndpoint:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_suggestions_custom_limit(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_suggestions_custom_limit(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test suggestions with custom limit."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None
@@ -510,7 +532,9 @@ class TestSuggestionsEndpoint:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_suggestions_error_handling(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_suggestions_error_handling(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test suggestions error handling."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None
@@ -535,7 +559,9 @@ class TestResponseFormat:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_latency_tracking(self, mock_rate_limit, mock_get_user, client, mock_service):
+    def test_latency_tracking(
+        self, mock_rate_limit, mock_get_user, client, mock_service
+    ):
         """Test latency is tracked and returned."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None
@@ -591,7 +617,9 @@ class TestIntegrationScenarios:
 
     @patch("app.routers.instant_search_router.get_current_user")
     @patch("app.routers.instant_search_router.rate_limiter.check_rate_limit")
-    def test_typo_search(self, mock_rate_limit, mock_get_user, client, mock_service, sample_stock):
+    def test_typo_search(
+        self, mock_rate_limit, mock_get_user, client, mock_service, sample_stock
+    ):
         """Test search with typo using fuzzy matching."""
         mock_rate_limit.return_value = None
         mock_get_user.return_value = None

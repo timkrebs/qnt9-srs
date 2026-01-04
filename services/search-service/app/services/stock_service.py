@@ -14,7 +14,8 @@ from ..cache.memory_cache import get_memory_cache
 from ..domain.entities import IdentifierType, Stock, StockIdentifier
 from ..domain.exceptions import StockNotFoundException, ValidationException
 from ..infrastructure.stock_api_client import IStockAPIClient
-from ..repositories.stock_repository import ISearchHistoryRepository, IStockRepository
+from ..repositories.stock_repository import (ISearchHistoryRepository,
+                                             IStockRepository)
 from ..search import FuzzyMatcher, RelevanceScorer, SearchMatch
 
 logger = logging.getLogger(__name__)
@@ -95,10 +96,14 @@ class StockSearchService:
             logger.info(f"Detected name search for: {query}")
             results = await self.search_by_name(query, limit=1)
             if results:
-                await self._record_search(query, identifier_type, True, start_time, user_id)
+                await self._record_search(
+                    query, identifier_type, True, start_time, user_id
+                )
                 return results[0]
             else:
-                await self._record_search(query, identifier_type, False, start_time, user_id)
+                await self._record_search(
+                    query, identifier_type, False, start_time, user_id
+                )
                 raise StockNotFoundException(query, "name")
 
         # Build identifier object for ISIN/WKN/Symbol searches
@@ -110,7 +115,9 @@ class StockSearchService:
             cached_stock = self.memory_cache.get(cache_key)
             if cached_stock:
                 logger.info(f"Found in MEMORY cache: {query}")
-                await self._record_search(query, identifier_type, True, start_time, user_id)
+                await self._record_search(
+                    query, identifier_type, True, start_time, user_id
+                )
                 return cached_stock
 
             # Layer 1: Check Redis
@@ -119,7 +126,9 @@ class StockSearchService:
                 logger.info(f"Found in Redis: {query}")
                 # Save to memory cache for next time
                 self.memory_cache.set(cache_key, stock)
-                await self._record_search(query, identifier_type, True, start_time, user_id)
+                await self._record_search(
+                    query, identifier_type, True, start_time, user_id
+                )
                 return stock
 
             # Layer 2: Check PostgreSQL
@@ -129,7 +138,9 @@ class StockSearchService:
                 # Save to Redis and Memory for next time
                 await self.redis_repo.save(stock)
                 self.memory_cache.set(cache_key, stock)
-                await self._record_search(query, identifier_type, True, start_time, user_id)
+                await self._record_search(
+                    query, identifier_type, True, start_time, user_id
+                )
                 return stock
 
             # Layer 3: Fetch from external API
@@ -147,7 +158,9 @@ class StockSearchService:
                     # Try to get company name from PostgreSQL cache (partial match)
                     # This might help if we've seen this ISIN before with a different query
                     try:
-                        name_results = await self.postgres_repo.find_by_name(query[:8], limit=5)
+                        name_results = await self.postgres_repo.find_by_name(
+                            query[:8], limit=5
+                        )
                         if name_results:
                             logger.info(
                                 f"Found {len(name_results)} potential matches in cache "
@@ -164,7 +177,9 @@ class StockSearchService:
                     except Exception as e:
                         logger.debug(f"Cache lookup failed during fallback: {e}")
 
-                await self._record_search(query, identifier_type, False, start_time, user_id)
+                await self._record_search(
+                    query, identifier_type, False, start_time, user_id
+                )
                 raise StockNotFoundException(query, identifier_type.value)
 
             # Save to all caches (PostgreSQL, Redis, Memory)
@@ -179,7 +194,9 @@ class StockSearchService:
             raise
         except Exception as e:
             logger.error(f"Error during stock search: {e}")
-            await self._record_search(query, identifier_type, False, start_time, user_id)
+            await self._record_search(
+                query, identifier_type, False, start_time, user_id
+            )
             raise
 
     async def search_by_name(self, name: str, limit: int = 10) -> List[Stock]:
@@ -199,7 +216,9 @@ class StockSearchService:
 
         # Validate
         if not name or len(name) < 2:
-            raise ValidationException("name", name, "Name must be at least 2 characters")
+            raise ValidationException(
+                "name", name, "Name must be at least 2 characters"
+            )
 
         try:
             # Check PostgreSQL cache first
@@ -282,7 +301,9 @@ class StockSearchService:
             # Don't fail the request if history recording fails
             logger.warning(f"Failed to record search history: {e}")
 
-    async def batch_search(self, symbols: List[str], user_id: Optional[str] = None) -> List[Stock]:
+    async def batch_search(
+        self, symbols: List[str], user_id: Optional[str] = None
+    ) -> List[Stock]:
         """
         Search multiple stocks efficiently using concurrent requests.
 
@@ -315,7 +336,9 @@ class StockSearchService:
         logger.info(f"Batch search completed: {len(stocks)}/{len(symbols)} successful")
         return stocks
 
-    async def get_user_search_history(self, user_id: str, limit: int = 10) -> List[dict]:
+    async def get_user_search_history(
+        self, user_id: str, limit: int = 10
+    ) -> List[dict]:
         """
         Get user's recent search history.
 
@@ -419,7 +442,11 @@ class StockSearchService:
         }
 
     async def intelligent_search(
-        self, query: str, limit: int = 10, user_id: Optional[str] = None, include_fuzzy: bool = True
+        self,
+        query: str,
+        limit: int = 10,
+        user_id: Optional[str] = None,
+        include_fuzzy: bool = True,
     ) -> List[SearchMatch]:
         """
         Intelligent search with fuzzy matching and relevance scoring.
@@ -470,9 +497,14 @@ class StockSearchService:
             name_results = await self.postgres_repo.find_by_name(query, limit=limit)
             for stock in name_results:
                 # Check if exact name match
-                if stock.identifier.name and query.lower() in stock.identifier.name.lower():
+                if (
+                    stock.identifier.name
+                    and query.lower() in stock.identifier.name.lower()
+                ):
                     match_type = (
-                        "exact" if query.lower() == stock.identifier.name.lower() else "contains"
+                        "exact"
+                        if query.lower() == stock.identifier.name.lower()
+                        else "contains"
                     )
                     matches.append((stock, match_type, "name", 1.0))
         except Exception as e:
@@ -490,7 +522,9 @@ class StockSearchService:
         if user_id:
             try:
                 history_entries = await self.get_user_search_history(user_id, limit=20)
-                user_history = [entry.get("query", "").upper() for entry in history_entries]
+                user_history = [
+                    entry.get("query", "").upper() for entry in history_entries
+                ]
             except Exception as e:
                 logger.debug(f"Could not load user history: {e}")
 
@@ -505,7 +539,9 @@ class StockSearchService:
         # Record search
         latency_ms = (time.time() - start_time) * 1000
         found = len(ranked_matches) > 0
-        await self._record_search(query, IdentifierType.NAME, found, start_time, user_id)
+        await self._record_search(
+            query, IdentifierType.NAME, found, start_time, user_id
+        )
 
         logger.info(
             f"Intelligent search: query={query}, results={len(ranked_matches)}, "
@@ -515,7 +551,11 @@ class StockSearchService:
         return ranked_matches
 
     async def _add_fuzzy_matches(
-        self, query: str, query_upper: str, matches: List[Tuple[Stock, str, str, float]], limit: int
+        self,
+        query: str,
+        query_upper: str,
+        matches: List[Tuple[Stock, str, str, float]],
+        limit: int,
     ) -> None:
         """Add fuzzy matches to results list."""
         try:
@@ -525,7 +565,9 @@ class StockSearchService:
             # Fuzzy match against candidates
             for stock in candidates:
                 # Skip if already matched
-                if any(m[0].identifier.symbol == stock.identifier.symbol for m in matches):
+                if any(
+                    m[0].identifier.symbol == stock.identifier.symbol for m in matches
+                ):
                     continue
 
                 # Try fuzzy symbol match

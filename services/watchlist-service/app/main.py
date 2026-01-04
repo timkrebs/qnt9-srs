@@ -14,14 +14,8 @@ from app.config import settings
 from app.database import close_db_pool, get_db_connection, get_db_pool
 from app.metrics import metrics_endpoint, track_request_metrics
 from app.metrics_middleware import PrometheusMiddleware
-from app.models import (
-    ErrorResponse,
-    MessageResponse,
-    WatchlistCreate,
-    WatchlistItem,
-    WatchlistResponse,
-    WatchlistUpdate,
-)
+from app.models import (ErrorResponse, MessageResponse, WatchlistCreate,
+                        WatchlistItem, WatchlistResponse, WatchlistUpdate)
 from app.shutdown_handler import setup_graceful_shutdown
 from app.tracing import configure_opentelemetry, instrument_fastapi
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -120,7 +114,10 @@ async def shutdown_middleware(request: Request, call_next):
 
     Returns 503 Service Unavailable if service is shutting down.
     """
-    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+    if (
+        hasattr(request.app.state, "is_shutting_down")
+        and request.app.state.is_shutting_down
+    ):
         # Allow health checks during shutdown for monitoring
         if request.url.path in ["/health", "/metrics"]:
             return await call_next(request)
@@ -205,12 +202,16 @@ async def get_watchlist(user: User = Depends(get_current_user)):
                 user_id=str(row["user_id"]),
                 symbol=row["symbol"],
                 alert_enabled=row["alert_enabled"],
-                alert_price_above=float(row["alert_price_above"])
-                if row["alert_price_above"]
-                else None,
-                alert_price_below=float(row["alert_price_below"])
-                if row["alert_price_below"]
-                else None,
+                alert_price_above=(
+                    float(row["alert_price_above"])
+                    if row["alert_price_above"]
+                    else None
+                ),
+                alert_price_below=(
+                    float(row["alert_price_below"])
+                    if row["alert_price_below"]
+                    else None
+                ),
                 notes=row["notes"],
                 added_at=row["added_at"],
             )
@@ -354,8 +355,12 @@ async def add_to_watchlist(
             user_id=str(row["user_id"]),
             symbol=row["symbol"],
             alert_enabled=row["alert_enabled"],
-            alert_price_above=float(row["alert_price_above"]) if row["alert_price_above"] else None,
-            alert_price_below=float(row["alert_price_below"]) if row["alert_price_below"] else None,
+            alert_price_above=(
+                float(row["alert_price_above"]) if row["alert_price_above"] else None
+            ),
+            alert_price_below=(
+                float(row["alert_price_below"]) if row["alert_price_below"] else None
+            ),
             notes=row["notes"],
             added_at=row["added_at"],
         )
@@ -497,8 +502,12 @@ async def update_watchlist_item(
             user_id=str(row["user_id"]),
             symbol=row["symbol"],
             alert_enabled=row["alert_enabled"],
-            alert_price_above=float(row["alert_price_above"]) if row["alert_price_above"] else None,
-            alert_price_below=float(row["alert_price_below"]) if row["alert_price_below"] else None,
+            alert_price_above=(
+                float(row["alert_price_above"]) if row["alert_price_above"] else None
+            ),
+            alert_price_below=(
+                float(row["alert_price_below"]) if row["alert_price_below"] else None
+            ),
             notes=row["notes"],
             added_at=row["added_at"],
         )

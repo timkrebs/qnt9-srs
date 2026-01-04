@@ -10,18 +10,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ...audit import AuditAction, audit_service
-from ...supabase_auth_service import AuthError, auth_service
 from ...dependencies import get_current_user_from_token
 from ...middleware import check_password_reset_rate_limit
-from ...models import (
-    MessageResponse,
-    PasswordResetRequest,
-    PasswordUpdate,
-    UserResponse,
-    UserTierResponse,
-    UserTierUpdate,
-    UserUpdate,
-)
+from ...models import (MessageResponse, PasswordResetRequest, PasswordUpdate,
+                       UserResponse, UserTierResponse, UserTierUpdate,
+                       UserUpdate)
+from ...supabase_auth_service import AuthError, auth_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +27,16 @@ router = APIRouter(prefix="/users", tags=["User Management"])
     response_model=UserResponse,
     summary="Get current user",
 )
-async def get_current_user(current_user: dict = Depends(get_current_user_from_token)):
+async def get_current_user(
+    request: Request, current_user: dict = Depends(get_current_user_from_token)
+):
     """
     Get current authenticated user information.
 
     Requires a valid access token in the Authorization header.
 
     Args:
+        request: FastAPI request object for extracting JWT token
         current_user: Injected user data from token
 
     Returns:
@@ -49,7 +46,14 @@ async def get_current_user(current_user: dict = Depends(get_current_user_from_to
         HTTPException: If token is invalid or user not found
     """
     try:
-        user = await auth_service.get_user(current_user["user_id"])
+        # Extract JWT token from Authorization header
+        auth_header = request.headers.get("authorization", "")
+        jwt_token = None
+        if auth_header.startswith("Bearer "):
+            jwt_token = auth_header.split(" ")[1]
+
+        # Get user with JWT validation
+        user = await auth_service.get_user(current_user["user_id"], jwt_token=jwt_token)
 
         if not user:
             raise HTTPException(
@@ -99,20 +103,22 @@ async def update_current_user(
         # Capture client info for audit
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
-        
+
         # Track changes for audit
         changes = {}
         if user_update.email and user_update.email != current_user.get("email"):
             changes["email"] = {
                 "old": current_user.get("email"),
-                "new": user_update.email
+                "new": user_update.email,
             }
-        if user_update.full_name and user_update.full_name != current_user.get("full_name"):
+        if user_update.full_name and user_update.full_name != current_user.get(
+            "full_name"
+        ):
             changes["full_name"] = {
                 "old": current_user.get("full_name"),
-                "new": user_update.full_name
+                "new": user_update.full_name,
             }
-        
+
         result = await auth_service.update_user(
             user_id=current_user["user_id"],
             email=user_update.email,
@@ -128,14 +134,14 @@ async def update_current_user(
                 ip_address=ip_address,
                 user_agent=user_agent,
                 success=True,
-                details={"changes": changes}
+                details={"changes": changes},
             )
 
         return UserResponse(**result)
 
     except AuthError as e:
         logger.error(f"User update failed: {e.message}")
-        
+
         # Log failed user update
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -146,9 +152,9 @@ async def update_current_user(
             ip_address=ip_address,
             user_agent=user_agent,
             success=False,
-            details={"error": e.message}
+            details={"error": e.message},
         )
-        
+
         if e.code == "email_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -196,7 +202,7 @@ async def update_password(
         # Capture client info for audit
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
-        
+
         await auth_service.update_user(
             user_id=current_user["user_id"],
             password=password_update.password,
@@ -210,7 +216,7 @@ async def update_password(
             ip_address=ip_address,
             user_agent=user_agent,
             success=True,
-            details={"initiated_by": "user"}
+            details={"initiated_by": "user"},
         )
 
         return MessageResponse(
@@ -220,7 +226,7 @@ async def update_password(
 
     except AuthError as e:
         logger.error(f"Password update failed: {e.message}")
-        
+
         # Log failed password change
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -231,9 +237,9 @@ async def update_password(
             ip_address=ip_address,
             user_agent=user_agent,
             success=False,
-            details={"error": e.message}
+            details={"error": e.message},
         )
-        
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Password update failed: {e.message}",
@@ -272,7 +278,7 @@ async def request_password_reset(reset_request: PasswordResetRequest, request: R
         # Capture client info for audit
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
-        
+
         await auth_service.reset_password_request(reset_request.email)
 
         # Log password reset request
@@ -282,7 +288,7 @@ async def request_password_reset(reset_request: PasswordResetRequest, request: R
             ip_address=ip_address,
             user_agent=user_agent,
             success=True,
-            details={"email_sent": True}
+            details={"email_sent": True},
         )
 
         return MessageResponse(
@@ -292,7 +298,7 @@ async def request_password_reset(reset_request: PasswordResetRequest, request: R
 
     except Exception as e:
         logger.exception(f"Unexpected error requesting password reset: {e}")
-        
+
         # Log failed password reset request
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -302,9 +308,9 @@ async def request_password_reset(reset_request: PasswordResetRequest, request: R
             ip_address=ip_address,
             user_agent=user_agent,
             success=False,
-            details={"error": str(e)}
+            details={"error": str(e)},
         )
-        
+
         # Don't reveal errors for security
         return MessageResponse(
             message="If the email exists, a password reset link has been sent.",
@@ -386,10 +392,10 @@ async def update_user_tier(
         # Capture client info for audit
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
-        
+
         # Get old tier for audit
         old_tier = current_user.get("tier", "unknown")
-        
+
         updated_tier = await auth_service.update_user_tier(
             current_user["user_id"],
             tier_update.tier,
@@ -406,8 +412,8 @@ async def update_user_tier(
             new_value=tier_update.tier,
             details={
                 "subscription_start": str(updated_tier.get("subscription_start")),
-                "subscription_end": str(updated_tier.get("subscription_end"))
-            }
+                "subscription_end": str(updated_tier.get("subscription_end")),
+            },
         )
 
         return UserTierResponse(
@@ -419,7 +425,7 @@ async def update_user_tier(
         )
     except AuthError as e:
         logger.error(f"Error updating user tier: {e.message}")
-        
+
         # Log failed tier update
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -430,9 +436,9 @@ async def update_user_tier(
             ip_address=ip_address,
             user_agent=user_agent,
             success=False,
-            details={"error": e.message, "attempted_tier": tier_update.tier}
+            details={"error": e.message, "attempted_tier": tier_update.tier},
         )
-        
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to update tier: {e.message}",

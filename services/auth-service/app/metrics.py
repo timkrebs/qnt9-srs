@@ -4,9 +4,9 @@ Prometheus metrics for Auth Service.
 Tracks authentication operations, token generation, and request performance.
 """
 
-
 from fastapi import Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
+from prometheus_client import (CONTENT_TYPE_LATEST, Counter, Gauge, Histogram,
+                               generate_latest)
 
 # Request metrics
 http_requests_total = Counter(
@@ -17,7 +17,22 @@ http_request_duration_seconds = Histogram(
     "auth_http_request_duration_seconds",
     "HTTP request duration in seconds",
     ["method", "endpoint"],
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0),
+    buckets=(
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        2.5,
+        5.0,
+        7.5,
+        10.0,
+    ),
 )
 
 # Authentication metrics
@@ -34,7 +49,9 @@ auth_password_reset_total = Counter(
 )
 
 # Rate limiting metrics
-auth_rate_limit_hits = Counter("auth_rate_limit_hits_total", "Total rate limit hits", ["endpoint"])
+auth_rate_limit_hits = Counter(
+    "auth_rate_limit_hits_total", "Total rate limit hits", ["endpoint"]
+)
 
 # Active users gauge
 auth_active_sessions = Gauge("auth_active_sessions", "Number of active user sessions")
@@ -52,10 +69,16 @@ auth_db_operation_duration_seconds = Histogram(
 )
 
 
-def track_request_metrics(method: str, endpoint: str, status_code: int, duration: float):
+def track_request_metrics(
+    method: str, endpoint: str, status_code: int, duration: float
+):
     """Track HTTP request metrics."""
-    http_requests_total.labels(method=method, endpoint=endpoint, status=status_code).inc()
-    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(duration)
+    http_requests_total.labels(
+        method=method, endpoint=endpoint, status=status_code
+    ).inc()
+    http_request_duration_seconds.labels(method=method, endpoint=endpoint).observe(
+        duration
+    )
 
 
 def track_signup(success: bool):

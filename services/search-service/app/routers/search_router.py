@@ -14,12 +14,9 @@ from pydantic import BaseModel, Field
 from ..core.auth import User, get_current_user, require_authentication
 from ..core.rate_limiter import rate_limiter
 from ..dependencies import get_stock_service
-from ..domain.exceptions import (
-    CircuitBreakerOpenException,
-    RateLimitExceededException,
-    StockNotFoundException,
-    ValidationException,
-)
+from ..domain.exceptions import (CircuitBreakerOpenException,
+                                 RateLimitExceededException,
+                                 StockNotFoundException, ValidationException)
 from ..services.stock_service import StockSearchService
 
 logger = structlog.get_logger(__name__)
@@ -47,7 +44,9 @@ class StockResponse(BaseModel):
     data: dict
     message: str = "Stock found successfully"
     cache_source: str = Field(description="Source: redis, postgresql, or api")
-    user_tier: Optional[str] = Field(None, description="User tier (anonymous, free, paid)")
+    user_tier: Optional[str] = Field(
+        None, description="User tier (anonymous, free, paid)"
+    )
 
 
 class SearchByNameRequest(BaseModel):
@@ -147,7 +146,9 @@ async def search_stock(
         # Enhance response for paid users with ML predictions link
         if user and user.tier == "paid":
             response_data["ml_predictions_available"] = True
-            response_data["ml_predictions_url"] = f"/api/predictions/{stock.identifier.symbol}"
+            response_data["ml_predictions_url"] = (
+                f"/api/predictions/{stock.identifier.symbol}"
+            )
 
         return StockResponse(
             success=True,
@@ -596,4 +597,6 @@ async def get_rate_limit_stats():
         return {"success": True, "stats": stats}
     except Exception as e:
         logger.error(f"Error getting rate limit stats: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to retrieve rate limit statistics")
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve rate limit statistics"
+        )

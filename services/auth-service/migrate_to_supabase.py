@@ -16,23 +16,25 @@ Usage:
     python migrate_to_supabase.py            # Execute migration
 """
 
-import asyncio
 import argparse
-import sys
-from datetime import datetime
-from typing import List, Dict, Any
-
-import asyncpg
-from supabase import create_client, Client
-from gotrue.errors import AuthApiError
-
+import asyncio
 # Configuration from environment or defaults
 import os
+import sys
+from datetime import datetime
+from typing import Any, Dict, List
+
+import asyncpg
 from dotenv import load_dotenv
+from gotrue.errors import AuthApiError
+
+from supabase import Client, create_client
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:pass@localhost:5432/qnt9_db")
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", "postgresql://user:pass@localhost:5432/qnt9_db"
+)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
@@ -40,14 +42,14 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8080")
 
 class MigrationStats:
     """Track migration statistics."""
-    
+
     def __init__(self):
         self.total_users = 0
         self.success_count = 0
         self.already_exists_count = 0
         self.error_count = 0
         self.errors: List[Dict[str, Any]] = []
-    
+
     def print_report(self):
         """Print migration summary report."""
         print("\n" + "=" * 60)
@@ -58,16 +60,14 @@ class MigrationStats:
         print(f"Already existed:           {self.already_exists_count}")
         print(f"Errors:                    {self.error_count}")
         print("=" * 60)
-        
+
         if self.errors:
             print("\nERRORS:")
             for error in self.errors:
                 print(f"  - {error['email']}: {error['error']}")
-        
+
         success_rate = (
-            (self.success_count / self.total_users * 100)
-            if self.total_users > 0
-            else 0
+            (self.success_count / self.total_users * 100) if self.total_users > 0 else 0
         )
         print(f"\nSuccess rate: {success_rate:.1f}%")
 
@@ -75,10 +75,10 @@ class MigrationStats:
 async def fetch_existing_users(conn: asyncpg.Connection) -> List[Dict[str, Any]]:
     """
     Fetch all users from the legacy public.users table.
-    
+
     Args:
         conn: Database connection
-    
+
     Returns:
         List of user records
     """
@@ -100,7 +100,7 @@ async def fetch_existing_users(conn: asyncpg.Connection) -> List[Dict[str, Any]]
         WHERE is_active = true
         ORDER BY created_at ASC
     """
-    
+
     rows = await conn.fetch(query)
     return [dict(row) for row in rows]
 
@@ -114,28 +114,28 @@ async def create_supabase_user(
 ) -> Dict[str, Any]:
     """
     Create user in Supabase Auth via Admin API.
-    
+
     Since we can't migrate passwords, we create the user with a random password
     and immediately trigger a password reset email.
-    
+
     Args:
         supabase: Supabase client
         email: User email
         full_name: User's full name
         tier: Subscription tier
         email_verified: Whether email is verified
-    
+
     Returns:
         Created user data
-    
+
     Raises:
         AuthApiError: If user creation fails
     """
     import secrets
-    
+
     # Generate a random password (user will reset it)
     temp_password = secrets.token_urlsafe(32)
-    
+
     # Create user in Supabase Auth
     response = supabase.auth.admin.create_user(
         {
@@ -149,10 +149,10 @@ async def create_supabase_user(
             },
         }
     )
-    
+
     if not response.user:
         raise Exception("User creation failed")
-    
+
     return {
         "id": response.user.id,
         "email": response.user.email,
@@ -162,11 +162,11 @@ async def create_supabase_user(
 async def send_password_reset_email(supabase: Client, email: str) -> bool:
     """
     Send password reset email to user.
-    
+
     Args:
         supabase: Supabase client
         email: User email
-    
+
     Returns:
         True if email sent successfully
     """
@@ -194,7 +194,7 @@ async def create_user_profile(
 ) -> None:
     """
     Create user profile in user_profiles table.
-    
+
     Args:
         conn: Database connection
         user_id: User UUID from Supabase
@@ -215,7 +215,7 @@ async def create_user_profile(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
         ON CONFLICT (id) DO NOTHING
     """
-    
+
     await conn.execute(
         query,
         user_id,
@@ -238,26 +238,26 @@ async def migrate_user(
 ) -> bool:
     """
     Migrate a single user to Supabase.
-    
+
     Args:
         supabase: Supabase client
         db_conn: Database connection
         user: User data from legacy table
         stats: Migration statistics
         dry_run: If True, don't actually make changes
-    
+
     Returns:
         True if migration successful
     """
     email = user["email"]
     print(f"Migrating user: {email}")
-    
+
     try:
         if dry_run:
             print(f"  [DRY RUN] Would create Supabase user for {email}")
             stats.success_count += 1
             return True
-        
+
         # Create user in Supabase
         supabase_user = await create_supabase_user(
             supabase,
@@ -266,9 +266,9 @@ async def migrate_user(
             tier=user.get("tier", "free"),
             email_verified=user.get("email_verified", False),
         )
-        
+
         print(f"  ✓ Created Supabase user: {supabase_user['id']}")
-        
+
         # Create user profile
         await create_user_profile(
             db_conn,
@@ -281,17 +281,17 @@ async def migrate_user(
             stripe_subscription_id=user.get("stripe_subscription_id"),
             metadata=user.get("metadata", {}),
         )
-        
-        print(f"  ✓ Created user profile")
-        
+
+        print("  ✓ Created user profile")
+
         # Send password reset email
         email_sent = await send_password_reset_email(supabase, email)
         if email_sent:
-            print(f"  ✓ Sent password reset email")
-        
+            print("  ✓ Sent password reset email")
+
         stats.success_count += 1
         return True
-    
+
     except AuthApiError as e:
         if "already registered" in str(e).lower() or "duplicate" in str(e).lower():
             print(f"  ⚠ User already exists in Supabase: {email}")
@@ -302,7 +302,7 @@ async def migrate_user(
             stats.error_count += 1
             stats.errors.append({"email": email, "error": str(e)})
             return False
-    
+
     except Exception as e:
         print(f"  ✗ Unexpected error: {e}")
         stats.error_count += 1
@@ -313,14 +313,14 @@ async def migrate_user(
 async def run_migration(dry_run: bool = False) -> None:
     """
     Execute the migration process.
-    
+
     Args:
         dry_run: If True, simulate migration without making changes
     """
     print("=" * 60)
     print("SUPABASE MIGRATION SCRIPT")
     print("=" * 60)
-    
+
     if dry_run:
         print("Running in DRY RUN mode - no changes will be made\n")
     else:
@@ -330,43 +330,43 @@ async def run_migration(dry_run: bool = False) -> None:
         if response.lower() != "yes":
             print("Migration cancelled")
             return
-    
+
     # Validate configuration
     if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
         print("ERROR: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
         sys.exit(1)
-    
+
     stats = MigrationStats()
-    
+
     try:
         # Connect to database
         print("\nConnecting to database...")
         db_conn = await asyncpg.connect(DATABASE_URL)
         print("✓ Connected to PostgreSQL")
-        
+
         # Initialize Supabase client
         print("Initializing Supabase client...")
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         print("✓ Supabase client initialized\n")
-        
+
         # Fetch existing users
         print("Fetching existing users...")
         users = await fetch_existing_users(db_conn)
         stats.total_users = len(users)
         print(f"Found {stats.total_users} users to migrate\n")
-        
+
         if stats.total_users == 0:
             print("No users to migrate")
             return
-        
+
         # Migrate each user
         for i, user in enumerate(users, 1):
             print(f"\n[{i}/{stats.total_users}]", end=" ")
             await migrate_user(supabase, db_conn, user, stats, dry_run)
-        
+
         # Print summary
         stats.print_report()
-        
+
         if not dry_run and stats.success_count > 0:
             print("\n" + "=" * 60)
             print("NEXT STEPS:")
@@ -377,15 +377,16 @@ async def run_migration(dry_run: bool = False) -> None:
             print("4. Once verified, consider archiving the old users table")
             print("5. Update your application to use Supabase auth endpoints")
             print("=" * 60)
-    
+
     except Exception as e:
         print(f"\nFATAL ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)
-    
+
     finally:
-        if 'db_conn' in locals():
+        if "db_conn" in locals():
             await db_conn.close()
             print("\n✓ Database connection closed")
 
@@ -401,7 +402,7 @@ def main():
         help="Simulate migration without making changes",
     )
     args = parser.parse_args()
-    
+
     asyncio.run(run_migration(dry_run=args.dry_run))
 
 

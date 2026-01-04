@@ -149,7 +149,9 @@ if ENABLE_READ_REPLICA and READ_REPLICA_URL:
 # Create session factories
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 ReadSessionLocal = (
-    sessionmaker(autocommit=False, autoflush=False, bind=read_engine) if read_engine else None
+    sessionmaker(autocommit=False, autoflush=False, bind=read_engine)
+    if read_engine
+    else None
 )
 
 

@@ -7,24 +7,12 @@ Tests validation rules, required fields, and optional fields.
 from datetime import datetime
 
 import pytest
+from app.models import (AuthResponse, ErrorResponse, MessageResponse,
+                        PasswordResetRequest, PasswordUpdate, RefreshToken,
+                        SessionResponse, UserResponse, UserSignIn, UserSignUp,
+                        UserStatusUpdate, UserTierResponse, UserTierUpdate,
+                        UserUpdate)
 from pydantic import ValidationError
-
-from app.models import (
-    AuthResponse,
-    ErrorResponse,
-    MessageResponse,
-    PasswordResetRequest,
-    PasswordUpdate,
-    RefreshToken,
-    SessionResponse,
-    UserResponse,
-    UserSignIn,
-    UserSignUp,
-    UserStatusUpdate,
-    UserTierResponse,
-    UserTierUpdate,
-    UserUpdate,
-)
 
 
 class TestUserSignUp:

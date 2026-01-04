@@ -78,7 +78,9 @@ class ConsulClient:
 
         if self.enabled:
             try:
-                self.client = consul.Consul(host=host, port=port, scheme=scheme, token=token)
+                self.client = consul.Consul(
+                    host=host, port=port, scheme=scheme, token=token
+                )
                 logger.info(f"Consul client initialized at {host}:{port}")
             except Exception as e:
                 logger.error(f"Failed to initialize Consul client: {e}")
@@ -172,7 +174,9 @@ class ConsulClient:
             return True
 
         except ConsulException as e:
-            logger.error(f"Failed to deregister service from Consul ({service_id}): {e}")
+            logger.error(
+                f"Failed to deregister service from Consul ({service_id}): {e}"
+            )
             return False
 
     def discover_service(
@@ -195,7 +199,9 @@ class ConsulClient:
 
         try:
             # Get service instances
-            _, services = self.client.health.service(service_name, tag=tag, passing=passing_only)
+            _, services = self.client.health.service(
+                service_name, tag=tag, passing=passing_only
+            )
 
             if not services:
                 logger.warning(
@@ -214,7 +220,9 @@ class ConsulClient:
                 "meta": service["Service"].get("Meta", {}),
             }
 
-            logger.debug(f"Service instance discovered: {service_name} - {instance_info}")
+            logger.debug(
+                f"Service instance discovered: {service_name} - {instance_info}"
+            )
 
             return instance_info
 
@@ -242,7 +250,9 @@ class ConsulClient:
 
         try:
             # Get service instances
-            _, services = self.client.health.service(service_name, tag=tag, passing=passing_only)
+            _, services = self.client.health.service(
+                service_name, tag=tag, passing=passing_only
+            )
 
             instances = []
             for service in services:
@@ -256,12 +266,16 @@ class ConsulClient:
                 }
                 instances.append(instance_info)
 
-            logger.debug(f"Discovered {len(instances)} instances of service: {service_name}")
+            logger.debug(
+                f"Discovered {len(instances)} instances of service: {service_name}"
+            )
 
             return instances
 
         except ConsulException as e:
-            logger.error(f"Failed to discover service instances for {service_name}: {e}")
+            logger.error(
+                f"Failed to discover service instances for {service_name}: {e}"
+            )
             return []
 
     def get_service_url(

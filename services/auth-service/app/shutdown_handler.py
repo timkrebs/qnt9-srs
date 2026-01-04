@@ -92,7 +92,9 @@ class GracefulShutdownHandler:
         for idx, callback in enumerate(reversed(self.cleanup_callbacks), 1):
             try:
                 callback_name = callback.__name__
-                logger.debug(f"Executing cleanup {idx}/{cleanup_count}: {callback_name}")
+                logger.debug(
+                    f"Executing cleanup {idx}/{cleanup_count}: {callback_name}"
+                )
 
                 if asyncio.iscoroutinefunction(callback):
                     await callback()
@@ -102,7 +104,9 @@ class GracefulShutdownHandler:
                 logger.debug(f"Completed cleanup: {callback_name}")
 
             except Exception as e:
-                logger.error(f"Error in cleanup callback {callback.__name__}: {e}", exc_info=True)
+                logger.error(
+                    f"Error in cleanup callback {callback.__name__}: {e}", exc_info=True
+                )
 
         logger.info(f"Graceful shutdown completed for {self.service_name}")
         self.shutdown_event.set()

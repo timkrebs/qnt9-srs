@@ -1,46 +1,6 @@
 services:
   # ==================== DATABASE & CACHE ====================
   
-  # PostgreSQL Database for user data and authentication
-  postgres:
-    image: postgres:16-alpine
-    container_name: qnt9-postgres
-    environment:
-      POSTGRES_USER: qnt9
-      POSTGRES_PASSWORD: qnt9_secret_password
-      POSTGRES_DB: qnt9_db
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - qnt9-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U qnt9 -d qnt9_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-  
-  # Redis for distributed caching and rate limiting
-  redis:
-    image: redis:7-alpine
-    container_name: qnt9-redis
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - qnt9-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
-
   # ==================== MESSAGING ====================
   
   # Zookeeper for Kafka
@@ -96,7 +56,7 @@ services:
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 8011
       LOG_LEVEL: INFO
-      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
+      DATABASE_URL: ${DATABASE_URL}
       DATABASE_POOL_SIZE: 20
       DATABASE_POOL_MIN_SIZE: 5
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
@@ -104,9 +64,6 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
     ports:
       - "8011:8011"
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
       interval: 30s
@@ -125,7 +82,7 @@ services:
     container_name: qnt9-auth-service
     environment:
       # Database Configuration
-      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
+      DATABASE_URL: ${DATABASE_URL}
       DATABASE_POOL_SIZE: 20
       DATABASE_POOL_MIN_SIZE: 5
       
@@ -147,7 +104,7 @@ services:
       CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
       
       # Redis Configuration
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: ${REDIS_URL}
       REDIS_MAX_CONNECTIONS: 50
       CACHE_PREFIX: "qnt9:auth:cache:"
       CACHE_DEFAULT_TTL: 300
@@ -162,11 +119,6 @@ services:
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
     ports:
       - "8010:8010"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
       interval: 30s
@@ -189,7 +141,7 @@ services:
       SERVICE_PORT: 8012
       LOG_LEVEL: DEBUG
       DEBUG: "true"
-      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
+      DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
       JWT_ALGORITHM: HS256
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
@@ -198,9 +150,6 @@ services:
       CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
     ports:
       - "8012:8012"
-    depends_on:
-      postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
       interval: 30s
@@ -217,12 +166,12 @@ services:
       context: ./services/search-service
       dockerfile: Dockerfile.dev
     container_name: qnt9-search-service
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       # Database Configuration
-      DATABASE_URL: postgresql://qnt9:qnt9_secret_password@postgres:5432/qnt9_db
+      DATABASE_URL: ${DATABASE_URL}
+      
+      # Redis Configuration
+      REDIS_URL: ${REDIS_URL}
       
       # JWT Configuration (must match auth-service)
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
@@ -320,9 +269,3 @@ services:
 networks:
   qnt9-network:
     driver: bridge
-
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local

@@ -9,6 +9,7 @@ from typing import AsyncGenerator, Optional
 
 import asyncpg
 from asyncpg import Pool
+
 from supabase import Client as SupabaseClient
 from supabase import create_client
 
@@ -226,12 +227,14 @@ class SupabaseManager:
         if self._client is None:
             logger.info("Initializing Supabase client...")
             try:
+                # Create client with service role key
+                # The service role key automatically bypasses Row Level Security
                 self._client = create_client(
                     supabase_url=settings.SUPABASE_URL,
                     supabase_key=settings.SUPABASE_SERVICE_ROLE_KEY,
                 )
                 logger.info(
-                    "Supabase client initialized",
+                    "Supabase client initialized with service role (bypasses RLS)",
                     extra={
                         "extra_fields": {
                             "supabase_url": settings.SUPABASE_URL,

@@ -7,11 +7,12 @@ Provides endpoints for health checks, readiness probes, and metrics.
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..cache.memory_cache import get_memory_cache
-from ..database import get_db_stats
+from ..database import get_db_stats, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -58,23 +59,27 @@ async def health_check():
     summary="Readiness check",
     description="Check if service is ready to accept traffic (dependencies available)",
 )
-async def readiness_check():
+async def readiness_check(session: AsyncSession = Depends(get_session)):
     """
-    Readiness check.
+    Readiness check with actual dependency verification.
 
     Checks if all dependencies are available:
-    - PostgreSQL database
-    - Redis cache
-    - External APIs
+    - PostgreSQL database (connection and query test)
+    - Redis cache (connection test)
+    - External APIs (optional health check)
 
     Returns 200 if ready, 503 if not ready.
     Used by Kubernetes readiness probes.
     """
-    checks = {
-        "database": "healthy",  # TODO: Implement actual DB check
-        "redis": "healthy",  # TODO: Implement actual Redis check
-        "external_api": "healthy",  # TODO: Implement actual API check
-    }
+    checks = {}
+
+    db_healthy = await _check_database_health(session)
+    checks["database"] = "healthy" if db_healthy else "unhealthy"
+
+    redis_healthy = await _check_redis_health()
+    checks["redis"] = "healthy" if redis_healthy else "unhealthy"
+
+    checks["external_api"] = "healthy"
 
     all_ready = all(check == "healthy" for check in checks.values())
 
@@ -82,29 +87,70 @@ async def readiness_check():
         ready=all_ready, checks=checks, timestamp=datetime.utcnow().isoformat()
     )
 
-    if not all_ready:
-        return response  # FastAPI will return 200 by default
-
     return response
 
 
-@router.get("/metrics", summary="Prometheus metrics", description="Prometheus metrics endpoint")
+async def _check_database_health(session: AsyncSession) -> bool:
+    """
+    Check PostgreSQL database health.
+
+    Args:
+        session: Database session
+
+    Returns:
+        True if database is healthy, False otherwise
+    """
+    try:
+        from sqlalchemy import text
+
+        result = await session.execute(text("SELECT 1"))
+        result.scalar()
+        return True
+    except Exception as e:
+        logger.error("Database health check failed: %s", e)
+        return False
+
+
+async def _check_redis_health() -> bool:
+    """
+    Check Redis health.
+
+    Returns:
+        True if Redis is healthy, False otherwise
+    """
+    try:
+        from ..repositories.redis_repository import redis_client
+
+        if redis_client:
+            await redis_client.ping()
+            return True
+        else:
+            logger.warning("Redis client not initialized")
+            return False
+    except Exception as e:
+        logger.error("Redis health check failed: %s", e)
+        return False
+
+
+@router.get(
+    "/metrics", summary="Prometheus metrics", description="Prometheus metrics endpoint"
+)
 async def metrics():
     """
     Prometheus metrics endpoint.
 
-    Returns metrics in Prometheus format.
-    TODO: Implement with prometheus_client library.
+    Returns metrics in Prometheus format for monitoring and alerting.
+    Integrates with the metrics system configured in metrics_middleware.
     """
-    # TODO: Implement Prometheus metrics
-    # from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-    # return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    from ..metrics import metrics_endpoint
 
-    return {"message": "Metrics endpoint - to be implemented with prometheus_client"}
+    return metrics_endpoint()
 
 
 @router.get(
-    "/cache/stats", summary="Cache statistics", description="Get statistics for all cache layers"
+    "/cache/stats",
+    summary="Cache statistics",
+    description="Get statistics for all cache layers",
 )
 async def cache_stats():
     """

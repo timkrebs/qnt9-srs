@@ -2,7 +2,7 @@
 Add stock_report_cache table for comprehensive report data caching.
 
 Revision ID: 001_add_stock_report_cache
-Revises: 
+Revises:
 Create Date: 2025-11-02 12:00:00.000000
 """
 
@@ -71,9 +71,13 @@ def upgrade():
     )
 
     # Create composite indexes for faster lookups
-    op.create_index("idx_symbol_expires", "stock_report_cache", ["symbol", "expires_at"])
+    op.create_index(
+        "idx_symbol_expires", "stock_report_cache", ["symbol", "expires_at"]
+    )
 
-    op.create_index("idx_isin_expires_report", "stock_report_cache", ["isin", "expires_at"])
+    op.create_index(
+        "idx_isin_expires_report", "stock_report_cache", ["isin", "expires_at"]
+    )
 
 
 def downgrade():

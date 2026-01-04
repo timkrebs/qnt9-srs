@@ -5,6 +5,7 @@ Revises: 003_add_user_features
 Create Date: 2025-11-21 11:22:00.000000
 
 """
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -40,7 +41,9 @@ def upgrade():
 
     # Rename timestamp columns to match model
     op.alter_column("search_history", "searched_at", new_column_name="created_at")
-    op.alter_column("search_history", "last_searched_at", new_column_name="last_searched")
+    op.alter_column(
+        "search_history", "last_searched_at", new_column_name="last_searched"
+    )
 
     # Add result_found column
     op.add_column(
@@ -76,22 +79,37 @@ def downgrade():
 
     # Rename timestamp columns back
     op.alter_column("search_history", "created_at", new_column_name="searched_at")
-    op.alter_column("search_history", "last_searched", new_column_name="last_searched_at")
+    op.alter_column(
+        "search_history", "last_searched", new_column_name="last_searched_at"
+    )
 
     # Add old columns back
-    op.add_column("search_history", sa.Column("result_symbol", sa.String(20), nullable=True))
-    op.add_column("search_history", sa.Column("result_isin", sa.String(12), nullable=True))
-    op.add_column("search_history", sa.Column("result_wkn", sa.String(6), nullable=True))
     op.add_column(
-        "search_history", sa.Column("success", sa.Boolean(), nullable=False, server_default="true")
+        "search_history", sa.Column("result_symbol", sa.String(20), nullable=True)
+    )
+    op.add_column(
+        "search_history", sa.Column("result_isin", sa.String(12), nullable=True)
+    )
+    op.add_column(
+        "search_history", sa.Column("result_wkn", sa.String(6), nullable=True)
+    )
+    op.add_column(
+        "search_history",
+        sa.Column("success", sa.Boolean(), nullable=False, server_default="true"),
     )
     op.add_column(
         "search_history",
         sa.Column("cache_hit", sa.Boolean(), nullable=False, server_default="false"),
     )
-    op.add_column("search_history", sa.Column("data_source", sa.String(50), nullable=True))
-    op.add_column("search_history", sa.Column("response_time_ms", sa.Integer(), nullable=True))
-    op.add_column("search_history", sa.Column("error_message", sa.Text(), nullable=True))
+    op.add_column(
+        "search_history", sa.Column("data_source", sa.String(50), nullable=True)
+    )
+    op.add_column(
+        "search_history", sa.Column("response_time_ms", sa.Integer(), nullable=True)
+    )
+    op.add_column(
+        "search_history", sa.Column("error_message", sa.Text(), nullable=True)
+    )
 
     # Revert column types
     op.alter_column(

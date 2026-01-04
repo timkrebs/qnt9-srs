@@ -9,10 +9,9 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.app import app
 from app.auth_service import AuthError, AuthService
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -51,7 +50,9 @@ def mock_security():
     """Mock security functions for testing."""
     with patch("app.auth_service.hash_password") as mock_hash, patch(
         "app.auth_service.verify_password"
-    ) as mock_verify, patch("app.auth_service.create_access_token") as mock_access, patch(
+    ) as mock_verify, patch(
+        "app.auth_service.create_access_token"
+    ) as mock_access, patch(
         "app.auth_service.create_refresh_token"
     ) as mock_refresh:
         mock_hash.return_value = "hashed_password"
@@ -566,7 +567,9 @@ class TestAuthServiceUnit:
         assert "Sign in failed" in exc_info.value.message
 
     @pytest.mark.asyncio
-    async def test_get_user_returns_none_on_exception(self, auth_service, mock_db_manager):
+    async def test_get_user_returns_none_on_exception(
+        self, auth_service, mock_db_manager
+    ):
         """Test get_user returns None on exception."""
         mock_db_manager.fetchrow.side_effect = Exception("Database error")
 
@@ -574,7 +577,9 @@ class TestAuthServiceUnit:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_user_returns_none_for_nonexistent(self, auth_service, mock_db_manager):
+    async def test_get_user_returns_none_for_nonexistent(
+        self, auth_service, mock_db_manager
+    ):
         """Test get_user returns None for non-existent user."""
         mock_db_manager.fetchrow.return_value = None
 
@@ -605,7 +610,10 @@ class TestAuthServiceUnit:
     @pytest.mark.asyncio
     async def test_update_user_not_found(self, auth_service, mock_db_manager):
         """Test update_user when user not found."""
-        mock_db_manager.fetchrow.side_effect = [None, None]  # No existing email, no user
+        mock_db_manager.fetchrow.side_effect = [
+            None,
+            None,
+        ]  # No existing email, no user
 
         with pytest.raises(AuthError) as exc_info:
             await auth_service.update_user(
@@ -616,7 +624,9 @@ class TestAuthServiceUnit:
         assert exc_info.value.code == "user_not_found"
 
     @pytest.mark.asyncio
-    async def test_refresh_session_disabled_account(self, auth_service, mock_db_manager):
+    async def test_refresh_session_disabled_account(
+        self, auth_service, mock_db_manager
+    ):
         """Test refresh_session with disabled account."""
         mock_db_manager.fetchrow.return_value = {
             "id": 1,

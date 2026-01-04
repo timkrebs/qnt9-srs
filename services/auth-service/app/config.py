@@ -140,7 +140,9 @@ class Settings(BaseSettings):
 
     def get_cors_origins(self) -> List[str]:
         """Get CORS origins as a list with validation."""
-        origins = [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+        origins = [
+            origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()
+        ]
 
         if not origins and not self.DEBUG:
             raise ValueError("CORS_ORIGINS must be configured for production")
@@ -148,7 +150,8 @@ class Settings(BaseSettings):
         for origin in origins:
             if origin == "*":
                 print(
-                    "WARNING: CORS configured with wildcard (*). This is insecure!", file=sys.stderr
+                    "WARNING: CORS configured with wildcard (*). This is insecure!",
+                    file=sys.stderr,
                 )
                 if not self.DEBUG:
                     raise ValueError("Wildcard CORS origin not allowed in production")

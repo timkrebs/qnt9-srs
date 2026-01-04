@@ -9,7 +9,8 @@ from typing import Optional
 
 from fastapi import FastAPI
 from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import \
+    OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
@@ -38,7 +39,8 @@ def configure_opentelemetry(
     # Default to Grafana Agent service in Kubernetes
     if otlp_endpoint is None:
         otlp_endpoint = os.getenv(
-            "OTEL_EXPORTER_OTLP_ENDPOINT", "grafana-agent.qnt9-monitoring.svc.cluster.local:4317"
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "grafana-agent.qnt9-monitoring.svc.cluster.local:4317",
         )
 
     # Create resource with service information

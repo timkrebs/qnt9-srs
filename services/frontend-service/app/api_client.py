@@ -220,7 +220,9 @@ class SearchServiceClient:
                             "stock_name": stock_data.get("name"),
                             "stock_symbol": stock_data.get("symbol"),
                             "query_type": result.get("query_type"),
-                            "backend_response_time_ms": result.get("response_time_ms", 0),
+                            "backend_response_time_ms": result.get(
+                                "response_time_ms", 0
+                            ),
                             "total_time_ms": duration_ms,
                         }
                     },

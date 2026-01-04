@@ -15,7 +15,8 @@ from app.config import settings
 from app.db.connection import db_manager, get_db_connection
 from app.metrics import metrics_endpoint, track_request_metrics
 from app.metrics_middleware import PrometheusMiddleware
-from app.models import HealthResponse, MessageResponse, SubscriptionUpdate, UserProfile
+from app.models import (HealthResponse, MessageResponse, SubscriptionUpdate,
+                        UserProfile)
 from app.shutdown_handler import setup_graceful_shutdown
 from app.tracing import configure_opentelemetry, instrument_fastapi
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -92,7 +93,10 @@ async def shutdown_middleware(request: Request, call_next):
 
     Returns 503 Service Unavailable if service is shutting down.
     """
-    if hasattr(request.app.state, "is_shutting_down") and request.app.state.is_shutting_down:
+    if (
+        hasattr(request.app.state, "is_shutting_down")
+        and request.app.state.is_shutting_down
+    ):
         # Allow health checks during shutdown for monitoring
         if request.url.path in ["/health", "/metrics"]:
             return await call_next(request)
@@ -124,7 +128,9 @@ async def health_check():
 
 
 @app.get("/users/{user_id}", response_model=UserProfile)
-async def get_user_profile(user_id: str, conn: asyncpg.Connection = Depends(get_db_connection)):
+async def get_user_profile(
+    user_id: str, conn: asyncpg.Connection = Depends(get_db_connection)
+):
     """Get user profile with tier information. Uses caching for performance."""
     try:
         # Check cache first
@@ -146,7 +152,9 @@ async def get_user_profile(user_id: str, conn: asyncpg.Connection = Depends(get_
         )
 
         if not row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
 
         profile_data = dict(row)
 
@@ -161,7 +169,8 @@ async def get_user_profile(user_id: str, conn: asyncpg.Connection = Depends(get_
     except Exception as e:
         logger.error("Failed to fetch user profile", user_id=user_id, error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch user profile"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch user profile",
         )
 
 
@@ -183,7 +192,9 @@ async def upgrade_user(
         # Check if user exists
         user = await conn.fetchrow("SELECT id, email FROM users WHERE id = $1", user_id)
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
 
         # Stub Stripe integration
         stripe_customer_id = f"cus_stub_{user_id[:8]}"
@@ -206,7 +217,9 @@ async def upgrade_user(
             stripe_subscription_id,
         )
 
-        logger.info("User upgraded to paid tier", user_id=user_id, plan=subscription.plan)
+        logger.info(
+            "User upgraded to paid tier", user_id=user_id, plan=subscription.plan
+        )
 
         # Invalidate user profile cache
         user_profile_cache.delete(cache_key_user_profile(user_id))
@@ -223,18 +236,23 @@ async def upgrade_user(
     except Exception as e:
         logger.error("Failed to upgrade user", user_id=user_id, error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to upgrade user"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upgrade user",
         )
 
 
 @app.post("/users/{user_id}/downgrade", response_model=MessageResponse)
-async def downgrade_user(user_id: str, conn: asyncpg.Connection = Depends(get_db_connection)):
+async def downgrade_user(
+    user_id: str, conn: asyncpg.Connection = Depends(get_db_connection)
+):
     """Downgrade user to free tier."""
     try:
         # Check if user exists
         user = await conn.fetchrow("SELECT id FROM users WHERE id = $1", user_id)
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+            )
 
         # Update user tier
         await conn.execute(
@@ -253,23 +271,29 @@ async def downgrade_user(user_id: str, conn: asyncpg.Connection = Depends(get_db
         # Invalidate user profile cache
         user_profile_cache.delete(cache_key_user_profile(user_id))
 
-        return MessageResponse(message="Successfully downgraded to free tier", success=True)
+        return MessageResponse(
+            message="Successfully downgraded to free tier", success=True
+        )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error("Failed to downgrade user", user_id=user_id, error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to downgrade user"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to downgrade user",
         )
 
 
 @app.patch("/users/{user_id}/last-login")
-async def update_last_login(user_id: str, conn: asyncpg.Connection = Depends(get_db_connection)):
+async def update_last_login(
+    user_id: str, conn: asyncpg.Connection = Depends(get_db_connection)
+):
     """Update user's last login timestamp."""
     try:
         await conn.execute(
-            "UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1", user_id
+            "UPDATE users SET last_login = NOW(), updated_at = NOW() WHERE id = $1",
+            user_id,
         )
         # Invalidate cache since last_login changed
         user_profile_cache.delete(cache_key_user_profile(user_id))
@@ -277,7 +301,8 @@ async def update_last_login(user_id: str, conn: asyncpg.Connection = Depends(get
     except Exception as e:
         logger.error("Failed to update last login", user_id=user_id, error=str(e))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update last login"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update last login",
         )
 
 
@@ -289,7 +314,9 @@ async def trigger_watchlist_training(user_id: str, conn: asyncpg.Connection):
     """
     try:
         # Get user's watchlist stocks
-        stocks = await conn.fetch("SELECT symbol FROM watchlists WHERE user_id = $1", user_id)
+        stocks = await conn.fetch(
+            "SELECT symbol FROM watchlists WHERE user_id = $1", user_id
+        )
 
         if not stocks:
             return
@@ -322,7 +349,9 @@ async def trigger_watchlist_training(user_id: str, conn: asyncpg.Connection):
                 logger.info("Training job queued", symbol=symbol, job_id=str(job_id))
 
     except Exception as e:
-        logger.error("Failed to trigger watchlist training", user_id=user_id, error=str(e))
+        logger.error(
+            "Failed to trigger watchlist training", user_id=user_id, error=str(e)
+        )
 
 
 if __name__ == "__main__":

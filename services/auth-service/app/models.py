@@ -121,7 +121,9 @@ class UserResponse(BaseModel):
         mode="before",
     )
     @classmethod
-    def convert_datetime_to_string(cls, v: Optional[Union[str, datetime]]) -> Optional[str]:
+    def convert_datetime_to_string(
+        cls, v: Optional[Union[str, datetime]]
+    ) -> Optional[str]:
         """Convert datetime objects to ISO format strings."""
         if v is None:
             return None

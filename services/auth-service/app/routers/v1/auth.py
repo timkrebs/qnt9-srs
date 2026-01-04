@@ -2,7 +2,7 @@
 Authentication endpoints for API v1.
 
 This module contains all authentication-related endpoints including signup,
-signin, signout, and session refresh using Supabase Auth.
+signin, signout, session refresh, and password reset using Supabase Auth.
 """
 
 import logging
@@ -10,17 +10,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from ...audit import AuditAction, audit_service
-from ...supabase_auth_service import AuthError, auth_service
+from ...dependencies import get_current_user_from_token
 from ...middleware import check_auth_rate_limit
-from ...models import (
-    AuthResponse,
-    MessageResponse,
-    RefreshToken,
-    SessionResponse,
-    UserResponse,
-    UserSignIn,
-    UserSignUp,
-)
+from ...models import (AuthResponse, MessageResponse, PasswordUpdate,
+                       RefreshToken, SessionResponse, UserResponse, UserSignIn,
+                       UserSignUp)
+from ...supabase_auth_service import AuthError, auth_service
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +47,14 @@ async def sign_up(user_data: UserSignUp, request: Request):
     """
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
-    
+
     try:
         result = await auth_service.sign_up(
             email=user_data.email,
             password=user_data.password,
             full_name=user_data.full_name,
         )
-        
+
         # Log successful signup
         await audit_service.log_auth_event(
             action=AuditAction.USER_SIGNUP,
@@ -68,7 +63,7 @@ async def sign_up(user_data: UserSignUp, request: Request):
             ip_address=ip_address,
             user_agent=user_agent,
             success=True,
-            details={"tier": result["user"]["tier"]}
+            details={"tier": result["user"]["tier"]},
         )
 
         return AuthResponse(
@@ -78,7 +73,7 @@ async def sign_up(user_data: UserSignUp, request: Request):
 
     except AuthError as e:
         logger.error(f"Sign up failed: {e.message}")
-        
+
         # Log failed signup
         await audit_service.log_auth_event(
             action=AuditAction.USER_SIGNUP,
@@ -87,9 +82,9 @@ async def sign_up(user_data: UserSignUp, request: Request):
             ip_address=ip_address,
             user_agent=user_agent,
             success=False,
-            details={"error": e.message}
+            details={"error": e.message},
         )
-        
+
         if e.code == "email_exists":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -149,7 +144,7 @@ async def sign_in(credentials: UserSignIn, request: Request):
             ip_address=client_ip,
             user_agent=user_agent,
             success=True,
-            details={"user_id": result["user"]["id"]}
+            details={"user_id": result["user"]["id"]},
         )
 
         return AuthResponse(
@@ -159,7 +154,7 @@ async def sign_in(credentials: UserSignIn, request: Request):
 
     except AuthError as e:
         logger.error(f"Sign in failed: {e.message}")
-        
+
         # Log failed signin
         await audit_service.log_auth_event(
             action=AuditAction.USER_SIGNIN_FAILED,
@@ -168,9 +163,9 @@ async def sign_in(credentials: UserSignIn, request: Request):
             ip_address=client_ip,
             user_agent=user_agent,
             success=False,
-            details={"error": e.message, "code": e.code}
+            details={"error": e.message, "code": e.code},
         )
-        
+
         if e.code == "invalid_credentials":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -198,15 +193,18 @@ async def sign_in(credentials: UserSignIn, request: Request):
     response_model=MessageResponse,
     summary="Sign out user",
 )
-async def sign_out(token_data: RefreshToken, request: Request):
+async def sign_out(
+    request: Request,
+    current_user: dict = Depends(get_current_user_from_token),
+):
     """
     Sign out the current user.
 
-    Invalidates the user's refresh token.
+    Invalidates the user's session in Supabase Auth.
 
     Args:
-        token_data: Refresh token to invalidate
         request: FastAPI request object for IP/user-agent capture
+        current_user: User info extracted from access token
 
     Returns:
         Success message
@@ -218,9 +216,18 @@ async def sign_out(token_data: RefreshToken, request: Request):
         # Capture client info for audit
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
-        
-        result = await auth_service.sign_out(token_data.refresh_token)
-        
+
+        # Extract access token from Authorization header
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header",
+            )
+        access_token = auth_header.split(" ")[1]
+
+        result = await auth_service.sign_out(access_token)
+
         # Extract user info for audit (returned by service)
         user_id = result.get("user_id")
         email = result.get("email")
@@ -233,7 +240,7 @@ async def sign_out(token_data: RefreshToken, request: Request):
             ip_address=ip_address,
             user_agent=user_agent,
             success=True,
-            details={"token_provided": True}
+            details={"token_provided": True},
         )
 
         return MessageResponse(
@@ -243,7 +250,7 @@ async def sign_out(token_data: RefreshToken, request: Request):
 
     except AuthError as e:
         logger.error(f"Sign out failed: {e.message}")
-        
+
         # Log failed signout
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -254,9 +261,9 @@ async def sign_out(token_data: RefreshToken, request: Request):
             ip_address=ip_address,
             user_agent=user_agent,
             success=False,
-            details={"error": e.message}
+            details={"error": e.message},
         )
-        
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Sign out failed: {e.message}",
@@ -294,10 +301,10 @@ async def refresh_session(token_data: RefreshToken, request: Request):
         # Capture client info for audit
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
-        
+
         result = await auth_service.refresh_session(token_data.refresh_token)
-        
-        # Extract user info for audit (returned by service)
+
+        # Extract user info for audit (included in result)
         user_id = result.pop("user_id", None)
         email = result.pop("email", None)
 
@@ -309,14 +316,14 @@ async def refresh_session(token_data: RefreshToken, request: Request):
             ip_address=ip_address,
             user_agent=user_agent,
             success=True,
-            details={"refreshed": True}
+            details={"refreshed": True},
         )
 
         return SessionResponse(**result)
 
     except AuthError as e:
         logger.error(f"Session refresh failed: {e.message}")
-        
+
         # Log failed token refresh
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
@@ -327,10 +334,15 @@ async def refresh_session(token_data: RefreshToken, request: Request):
             ip_address=ip_address,
             user_agent=user_agent,
             success=False,
-            details={"error": e.message, "code": e.code}
+            details={"error": e.message, "code": e.code},
         )
-        
-        if e.code in ("invalid_token", "token_revoked", "token_expired"):
+
+        if e.code in (
+            "invalid_token",
+            "token_revoked",
+            "token_expired",
+            "invalid_refresh_token",
+        ):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired refresh token",
@@ -344,4 +356,95 @@ async def refresh_session(token_data: RefreshToken, request: Request):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred during session refresh",
+        )
+
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    summary="Update password with reset token",
+)
+async def update_password(
+    password_data: PasswordUpdate,
+    request: Request,
+    current_user: dict = Depends(get_current_user_from_token),
+):
+    """
+    Update user password using reset token from email.
+
+    This endpoint is called after the user clicks the reset link in their email.
+    The access token from the reset link is passed in the Authorization header.
+
+    Args:
+        password_data: New password
+        request: FastAPI request object for IP/user-agent capture
+        current_user: User info extracted from reset token
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: If password update fails
+    """
+    try:
+        # Capture client info for audit
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+
+        # Extract access token from Authorization header
+        auth_header = request.headers.get("authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authorization header",
+            )
+        access_token = auth_header.split(" ")[1]
+
+        # Update password
+        await auth_service.update_password(access_token, password_data.password)
+
+        # Log successful password update
+        await audit_service.log_auth_event(
+            action=AuditAction.PASSWORD_CHANGE,
+            user_id=current_user["user_id"],
+            email=current_user["email"],
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=True,
+            details={"method": "reset_token"},
+        )
+
+        return MessageResponse(
+            message="Password updated successfully",
+            success=True,
+        )
+
+    except AuthError as e:
+        logger.error(f"Password update failed: {e.message}")
+
+        # Log failed password update
+        await audit_service.log_auth_event(
+            action=AuditAction.PASSWORD_CHANGE,
+            user_id=current_user.get("user_id") if current_user else None,
+            email=current_user.get("email") if current_user else None,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=False,
+            details={"error": e.message, "code": e.code},
+        )
+
+        if e.code == "invalid_token":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired reset token",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password update failed: {e.message}",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error updating password: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during password update",
         )

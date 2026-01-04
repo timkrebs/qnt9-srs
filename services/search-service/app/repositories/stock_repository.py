@@ -227,7 +227,9 @@ class ISearchHistoryRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_autocomplete_suggestions(self, prefix: str, limit: int = 10) -> List[str]:
+    async def get_autocomplete_suggestions(
+        self, prefix: str, limit: int = 10
+    ) -> List[str]:
         """
         Get autocomplete suggestions based on search history.
 

@@ -351,16 +351,72 @@ MY_COUNTER.labels(label='value').inc()
 
 ## TODO / Roadmap
 
-- [ ] OpenFIGI Integration für ISIN/WKN → Symbol Mapping
-- [ ] Distributed Rate Limiting mit Redis
-- [ ] API Key Authentication
+- [x] OpenFIGI Integration für ISIN/WKN → Symbol Mapping (Implemented as SymbolMapping)
+- [x] Distributed Rate Limiting mit Redis (Phase 1 Complete)
+- [x] Enhanced Security Middleware (OWASP Headers, Input Validation)
+- [x] SLO Tracking and Observability (Prometheus + Custom Metrics)
+- [ ] API Key Authentication Enhancement
 - [ ] Batch Request Endpoint
-- [ ] Autocomplete Endpoint
+- [ ] Meilisearch for Autocomplete (<100ms target)
 - [ ] WebSocket für Realtime Updates
 - [ ] GraphQL API
-- [ ] OpenFIGI Integration für besseres ISIN/WKN Mapping
 
 ## Recent Changes
+
+### v2.3.0 - Production Readiness (2024)
+
+**Production-Ready Improvements:**
+
+1. **Redis Connection Management**
+   - Singleton connection manager with pooling (max 50 connections)
+   - Exponential backoff retry logic
+   - Health checks and diagnostics
+   - Graceful connection handling
+
+2. **Security Middleware**
+   - OWASP security headers (X-Content-Type-Options, CSP, HSTS)
+   - Request validation (size limits, SQL injection protection, XSS protection)
+   - CORS configuration with environment-based origins
+   - Input sanitization
+
+3. **Distributed Rate Limiting**
+   - Redis-backed rate limiter with sliding window algorithm
+   - Tier-based limits (Anonymous: 10/min, Free: 30/min, Paid: 100/min, Enterprise: 1000/min)
+   - Automatic fallback to local rate limiting
+   - Rate limit headers in API responses
+
+4. **Enhanced Observability**
+   - Search-specific Prometheus metrics (latency, cache hits, result counts)
+   - SLO tracking (P95/P99 latency, error rate, availability)
+   - Error budget monitoring
+   - Comprehensive logging and tracing
+
+5. **Infrastructure Updates**
+   - Dependency injection for Redis client
+   - Application lifespan management
+   - Graceful shutdown with cleanup
+   - Backward compatible changes
+
+**Configuration:**
+```bash
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_MAX_CONNECTIONS=50
+
+# Security
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+CORS_ALLOW_CREDENTIALS=true
+
+# Rate Limiting (optional overrides)
+RATE_LIMIT_ANONYMOUS=10
+RATE_LIMIT_FREE=30
+RATE_LIMIT_PAID=100
+```
+
+**See Also:**
+- `PRODUCTION_READINESS_IMPLEMENTATION.md` - Complete implementation details
+- `PRODUCTION_PLAN.md` - 4-phase implementation plan
 
 ### v2.2.0 - Performance Refactoring (2025-11-11)
 
@@ -410,5 +466,5 @@ QNT9 Development Team
 
 ---
 
-**Version**: 2.2.0  
-**Last Updated**: 2025-11-11
+**Version**: 2.3.0  
+**Last Updated**: 2024

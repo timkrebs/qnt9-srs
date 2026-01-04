@@ -8,13 +8,8 @@ import logging
 
 from app.cache.memory_cache import MemoryStockCache
 from app.database import get_db
-from app.domain.entities import (
-    DataSource,
-    Stock,
-    StockIdentifier,
-    StockMetadata,
-    StockPrice,
-)
+from app.domain.entities import (DataSource, Stock, StockIdentifier,
+                                 StockMetadata, StockPrice)
 from app.models import StockCache, StockSearchIndex
 from sqlalchemy import text
 from sqlalchemy.orm import Session
