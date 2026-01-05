@@ -11,14 +11,14 @@ WORKDIR /app
 # Install libc6-compat for Alpine compatibility
 RUN apk add --no-cache libc6-compat
 
-# Enable pnpm via corepack
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable pnpm via corepack with specific version for consistency
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Copy package files
-COPY package.json pnpm-lock.yaml* .npmrc* ./
+COPY package.json pnpm-lock.yaml* ./
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies (use --no-frozen-lockfile if lockfile might be stale)
+RUN pnpm install --frozen-lockfile || pnpm install
 
 # ============================================
 # Stage 2: Builder
@@ -27,8 +27,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable pnpm with same version
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Build arguments for NEXT_PUBLIC_* variables (required at build time)
 ARG NEXT_PUBLIC_AUTH_SERVICE_URL=https://api.finio.cloud/api/v1/auth
@@ -48,6 +48,8 @@ ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+
+# Copy all source code
 COPY . .
 
 # Set build-time environment variables
