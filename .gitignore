@@ -22,8 +22,11 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Python lib directories (but not webapp-service/lib which is needed)
+/lib/
+/lib64/
+services/*/lib/
+!services/webapp-service/lib/
 parts/
 sdist/
 var/
