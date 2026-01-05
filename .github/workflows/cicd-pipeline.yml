@@ -44,7 +44,7 @@ concurrency:
 env:
   TF_CLOUD_ORGANIZATION: "tim-krebs-org"
   TF_VAR_FILE_PATH: "infrastructure/terraform"
-  SERVICES: "auth-service,search-service,frontend-service,watchlist-service,user-service"
+  SERVICES: "auth-service,search-service,watchlist-service,user-service,webapp-service"
 
 jobs:
   # ============================================================================
@@ -352,7 +352,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [auth-service, search-service, frontend-service, watchlist-service, user-service]
+        service: [auth-service, search-service, watchlist-service, user-service, webapp-service]
     
     steps:
       - name: Checkout code
@@ -518,7 +518,7 @@ jobs:
           find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${ACR_LOGIN_SERVER}/'"${ACR}"'/g' {} \;
           find infrastructure/kubernetes -name "*.yaml" -exec sed -i 's/\${IMAGE_TAG}/'"${TAG}"'/g' {} \;
           
-          for service in auth-service search-service frontend-service watchlist-service user-service; do
+          for service in auth-service search-service watchlist-service user-service webapp-service; do
             DEPLOY_FILE="infrastructure/kubernetes/${service}/deployment.yaml"
             SERVICE_FILE="infrastructure/kubernetes/${service}/service.yaml"
             
@@ -537,7 +537,7 @@ jobs:
         run: |
           NAMESPACE="qnt9-srs-${{ needs.detect-changes.outputs.environment }}"
           
-          for service in auth-service search-service frontend-service watchlist-service user-service; do
+          for service in auth-service search-service watchlist-service user-service webapp-service; do
             echo "Waiting for $service deployment..."
             kubectl rollout status deployment/$service -n "$NAMESPACE" --timeout=300s || true
           done

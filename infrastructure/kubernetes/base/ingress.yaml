@@ -26,9 +26,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: frontend-service
+                name: webapp-service
                 port:
-                  number: 8080
+                  number: 3000
           - path: /api/auth
             pathType: Prefix
             backend:

@@ -62,6 +62,7 @@ services:
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       STRIPE_API_KEY: ${STRIPE_API_KEY:-sk_test_stub}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000
     ports:
       - "8011:8011"
     healthcheck:
@@ -101,7 +102,7 @@ services:
       LOG_LEVEL: DEBUG
       
       # CORS Configuration
-      CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000
       
       # Redis Configuration
       REDIS_URL: ${REDIS_URL}
@@ -147,7 +148,7 @@ services:
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       FREE_TIER_WATCHLIST_LIMIT: 3
       PAID_TIER_WATCHLIST_LIMIT: 999
-      CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000
     ports:
       - "8012:8012"
     healthcheck:
@@ -180,12 +181,17 @@ services:
       AUTH_SERVICE_URL: http://auth-service:8010
       
       # CORS
-      CORS_ORIGINS: http://localhost:8080,http://localhost:3000,http://frontend-service:8080
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000
       
       # External APIs
       YAHOO_FINANCE_TIMEOUT: 5.0
       YAHOO_FINANCE_MAX_RETRIES: 3
       YAHOO_FINANCE_RATE_LIMIT: 5
+      
+      # Massive API (formerly Polygon.io) Configuration
+      MASSIVE_API_KEY: ${MASSIVE_API_KEY:-E0aTGuCEv454Yrck2CCmFq4acCeTXdpC}
+      MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-E0aTGuCEv454Yrck2CCmFq4acCeTXdpC}
       
       # Cache Settings (PostgreSQL only - Redis removed)
       POSTGRES_CACHE_TTL_MINUTES: 5
@@ -220,33 +226,35 @@ services:
     restart: unless-stopped
 
   # ==================== FRONTEND ====================
-  
-  # Frontend Service (Web UI - Legacy Python/HTMX)
-  frontend-service:
+
+  # Webapp Service (Next.js Modern Frontend)
+  webapp-service:
     build:
-      context: ./services/frontend-service
+      context: ./services/webapp-service
       dockerfile: Dockerfile.dev
-    container_name: qnt9-frontend-service
+    container_name: qnt9-webapp-service
     environment:
-      # Service URLs
-      SEARCH_SERVICE_URL: http://search-service:8000
-      AUTH_SERVICE_URL: http://auth-service:8010
-      USER_SERVICE_URL: http://user-service:8011
-      WATCHLIST_SERVICE_URL: http://watchlist-service:8012
+      # API Service URLs (for client-side requests - browser makes direct requests)
+      # NOTE: These must be accessible from the browser, not just from the container
+      # Use localhost for local development, or your domain for production
+      NEXT_PUBLIC_AUTH_SERVICE_URL: http://localhost:8010
+      NEXT_PUBLIC_SEARCH_SERVICE_URL: http://localhost:8000
+      NEXT_PUBLIC_WATCHLIST_SERVICE_URL: http://localhost:8012
+      NEXT_PUBLIC_USER_SERVICE_URL: http://localhost:8011
       
-      # Service Configuration
-      SERVICE_NAME: frontend-service
-      HOST: 0.0.0.0
-      PORT: 8080
-      LOG_LEVEL: DEBUG
-      DEBUG: "true"
-      
-      # CORS
-      CORS_ORIGINS: http://localhost:8080,http://localhost:3000
+      # Next.js Configuration
+      NODE_ENV: development
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: 1
     ports:
-      - "8080:8080"
+      - "3000:3000"
     volumes:
-      - ./services/frontend-service/app:/app/app:ro
+      # Mount source for hot reload in development
+      # Exclude node_modules and .next to avoid permission/build issues
+      - ./services/webapp-service:/app:cached
+      - webapp_node_modules:/app/node_modules
+      - webapp_next:/app/.next
     depends_on:
       search-service:
         condition: service_healthy
@@ -256,12 +264,6 @@ services:
         condition: service_healthy
       watchlist-service:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
     networks:
       - qnt9-network
     restart: unless-stopped
@@ -269,3 +271,7 @@ services:
 networks:
   qnt9-network:
     driver: bridge
+
+volumes:
+  webapp_node_modules:
+  webapp_next:

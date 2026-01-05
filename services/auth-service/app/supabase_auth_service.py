@@ -352,7 +352,7 @@ class SupabaseAuthService:
             profile_result = (
                 self.supabase.table("user_profiles")
                 .select(
-                    "tier, full_name, subscription_start, subscription_end, "
+                    "tier, role, full_name, subscription_start, subscription_end, "
                     "stripe_customer_id, stripe_subscription_id, metadata, "
                     "last_login, created_at, updated_at"
                 )
@@ -361,6 +361,9 @@ class SupabaseAuthService:
             )
 
             profile = profile_result.data[0] if profile_result.data else None
+
+            # Get role from profile, default to 'user' if not set
+            user_role = profile.get("role", "user") if profile else "user"
 
             # Log if profile not found
             if not profile:
@@ -376,14 +379,15 @@ class SupabaseAuthService:
                 "user_metadata": user.user_metadata or {},
                 "app_metadata": user.app_metadata or {},
                 "tier": profile["tier"] if profile else "free",
+                "role": user_role,
                 "full_name": profile["full_name"] if profile else None,
                 "subscription_start": (
-                    profile["subscription_start"].isoformat()
+                    profile["subscription_start"]
                     if profile and profile["subscription_start"]
                     else None
                 ),
                 "subscription_end": (
-                    profile["subscription_end"].isoformat()
+                    profile["subscription_end"]
                     if profile and profile["subscription_end"]
                     else None
                 ),
@@ -395,7 +399,7 @@ class SupabaseAuthService:
                 ),
                 "metadata": profile["metadata"] if profile else {},
                 "last_login": (
-                    profile["last_login"].isoformat()
+                    profile["last_login"]
                     if profile and profile["last_login"]
                     else None
                 ),

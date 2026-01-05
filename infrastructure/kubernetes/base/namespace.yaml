@@ -28,4 +28,4 @@ data:
   AUTH_SERVICE_URL: "http://auth-service:8010"
   SEARCH_SERVICE_URL: "http://search-service:8000"
   USER_SERVICE_URL: "http://user-service:8020"
-  FRONTEND_SERVICE_URL: "http://frontend-service:8080"
+  WEBAPP_SERVICE_URL: "http://webapp-service:3000"

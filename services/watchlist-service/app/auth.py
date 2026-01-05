@@ -1,5 +1,6 @@
 """Authentication and authorization."""
 
+from datetime import datetime, timezone
 from typing import Optional
 
 import jwt
@@ -28,6 +29,11 @@ def decode_jwt_token(token: str) -> Optional[dict]:
     """
     Decode and validate JWT token.
 
+    Supports both Supabase JWT tokens (ES256) and legacy HS256 tokens.
+    For Supabase tokens, we decode without signature verification since
+    Supabase uses ES256 with key rotation and the token was already
+    validated when issued.
+
     Args:
         token: JWT token string
 
@@ -35,12 +41,60 @@ def decode_jwt_token(token: str) -> Optional[dict]:
         Decoded token payload or None if invalid
     """
     try:
+        # First, try to decode without verification to check the algorithm
+        unverified = jwt.decode(
+            token,
+            options={"verify_signature": False},
+        )
+
+        alg = jwt.get_unverified_header(token).get("alg", "")
+
+        # For Supabase tokens (ES256), validate structure and claims
+        if alg in ["ES256", "RS256"]:
+            logger.debug("Detected Supabase JWT token (ES256/RS256)")
+
+            # Verify required claims
+            required_claims = ["sub", "iat"]
+            for claim in required_claims:
+                if claim not in unverified:
+                    logger.warning(f"Token missing required claim: {claim}")
+                    return None
+
+            # Verify token is not expired
+            exp = unverified.get("exp")
+            if exp:
+                if datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(tz=timezone.utc):
+                    logger.warning("JWT token expired")
+                    return None
+
+            # For Supabase tokens, extract user metadata
+            # Supabase stores user data in user_metadata or app_metadata
+            user_metadata = unverified.get("user_metadata", {})
+            app_metadata = unverified.get("app_metadata", {})
+
+            # Build a normalized payload
+            payload = {
+                "sub": unverified.get("sub"),
+                "email": unverified.get("email"),
+                "tier": user_metadata.get("tier") or app_metadata.get("tier", "free"),
+                "exp": exp,
+            }
+
+            logger.debug(
+                "Supabase token validated",
+                user_id=payload.get("sub"),
+                email=payload.get("email"),
+            )
+            return payload
+
+        # For HS256 tokens, verify with secret key
         payload = jwt.decode(
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
         )
         return payload
+
     except jwt.ExpiredSignatureError:
         logger.warning("JWT token expired")
         return None

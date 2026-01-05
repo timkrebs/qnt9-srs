@@ -1,0 +1,30 @@
+# Development Dockerfile for Next.js webapp-service
+# Optimized for hot-reload and fast iteration
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for native modules and pnpm
+RUN apk add --no-cache libc6-compat && corepack enable && corepack prepare pnpm@latest --activate
+
+# Copy package files first for better caching
+COPY package.json pnpm-lock.yaml* .npmrc* ./
+
+# Install dependencies using pnpm with hoisting
+RUN pnpm install --frozen-lockfile
+
+# Copy application source
+COPY . .
+
+# Expose Next.js default port
+EXPOSE 3000
+
+# Set environment variables for development
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+
+# Start development server with hot-reload
+CMD ["pnpm", "run", "dev"]

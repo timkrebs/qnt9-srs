@@ -44,7 +44,6 @@ help:
 test-all:
 	@echo "Running tests for all services..."
 	@cd services/search-service && make test || true
-	@cd services/frontend-service && make test || true
 
 # Format all services
 format-all:
@@ -138,8 +137,8 @@ logs: ## Follow logs from all services
 logs-search: ## Follow logs from search service only
 	docker-compose logs -f search-service
 
-logs-frontend: ## Follow logs from frontend service only
-	docker-compose logs -f frontend-service
+logs-webapp: ## Follow logs from webapp service only
+	docker-compose logs -f webapp-service
 
 logs-db: ## Follow logs from PostgreSQL only
 	docker-compose logs -f postgres
@@ -151,8 +150,8 @@ status: ## Show status of all services
 health: ## Check health of all services
 	@echo "Checking service health..."
 	@echo ""
-	@echo "Frontend Service:"
-	@curl -sf http://localhost:8080/health | jq '.' 2>/dev/null || echo "  Not responding"
+	@echo "Webapp Service:"
+	@curl -sf http://localhost:3000/api/health 2>/dev/null && echo "  Healthy" || echo "  Not responding"
 	@echo ""
 	@echo "Search Service:"
 	@curl -sf http://localhost:8000/api/v1/health | jq '.' 2>/dev/null || echo "  Not responding"
@@ -168,8 +167,8 @@ health: ## Check health of all services
 shell-search: ## Open shell in search service container
 	docker-compose exec search-service /bin/bash
 
-shell-frontend: ## Open shell in frontend service container
-	docker-compose exec frontend-service /bin/bash
+shell-webapp: ## Open shell in webapp service container
+	docker-compose exec webapp-service /bin/sh
 
 shell-db: ## Open PostgreSQL shell
 	docker-compose exec postgres psql -U qnt9_user -d qnt9_search
@@ -207,26 +206,20 @@ test: ## Run all tests in containers
 	@echo "Testing search service..."
 	@docker-compose exec -T search-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
 	@echo ""
-	@echo "Testing frontend service..."
-	@docker-compose exec -T frontend-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
-	@echo ""
 	@echo "All tests completed!"
 
 test-search-docker: ## Run search service tests in container
 	docker-compose exec search-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
 
-test-frontend-docker: ## Run frontend service tests in container
-	docker-compose exec frontend-service sh -c "cd /app && PYTHONPATH=/app pytest tests/ -v --cov=app --cov-report=term-missing"
-
 # Development workflow
 dev: up logs ## Start services and follow logs
 
 # Quick access
-open-frontend: ## Open frontend in browser
-	@python3 -m webbrowser http://localhost:8080 2>/dev/null || \
-	open http://localhost:8080 2>/dev/null || \
-	xdg-open http://localhost:8080 2>/dev/null || \
-	echo "Visit: http://localhost:8080"
+open-webapp: ## Open webapp in browser
+	@python3 -m webbrowser http://localhost:3000 2>/dev/null || \
+	open http://localhost:3000 2>/dev/null || \
+	xdg-open http://localhost:3000 2>/dev/null || \
+	echo "Visit: http://localhost:3000"
 
 open-docs: ## Open API documentation in browser
 	@python3 -m webbrowser http://localhost:8000/api/docs 2>/dev/null || \

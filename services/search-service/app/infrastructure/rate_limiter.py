@@ -66,6 +66,38 @@ class RateLimiter:
             f"requests in window"
         )
 
+    async def wait_and_acquire(self) -> None:
+        """
+        Wait for available capacity and acquire permission to make a request.
+        
+        This method waits instead of throwing RateLimitExceededException,
+        making it suitable for scenarios where we want to queue requests.
+        """
+        import asyncio
+        
+        while True:
+            now = time.time()
+            self._clean_old_requests(now)
+            
+            if len(self.requests) < self.max_requests:
+                # We have capacity, acquire and return
+                self.requests.append(now)
+                logger.debug(
+                    f"Rate limiter '{self.name}': {len(self.requests)}/{self.max_requests} "
+                    f"requests in window (waited)"
+                )
+                return
+            
+            # Calculate how long to wait until oldest request expires
+            oldest_request = self.requests[0]
+            wait_time = self.window_seconds - (now - oldest_request) + 0.05  # Small buffer
+            
+            if wait_time > 0:
+                logger.debug(
+                    f"Rate limiter '{self.name}': waiting {wait_time:.2f}s for capacity"
+                )
+                await asyncio.sleep(wait_time)
+
     def _clean_old_requests(self, now: float) -> None:
         """Remove requests outside the current window."""
         window_start = now - self.window_seconds

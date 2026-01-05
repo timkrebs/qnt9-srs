@@ -213,6 +213,72 @@ async def health_check() -> Dict[str, Any]:
     }
 
 
+@app.get("/search", tags=["Search"])
+async def simple_search(
+    q: str = Query(
+        ..., min_length=1, max_length=50, description="Search query (symbol or name)"
+    ),
+    limit: int = Query(default=10, ge=1, le=50, description="Maximum results"),
+) -> Dict[str, Any]:
+    """
+    Simple search endpoint for frontend compatibility.
+    
+    Searches for stocks by symbol or name and returns basic results.
+    This is a simplified endpoint that returns mock data for testing.
+    """
+    query_upper = q.upper()
+    
+    # Mock stock database for testing
+    mock_stocks = [
+        {"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ"},
+        {"symbol": "MSFT", "name": "Microsoft Corporation", "exchange": "NASDAQ"},
+        {"symbol": "GOOGL", "name": "Alphabet Inc.", "exchange": "NASDAQ"},
+        {"symbol": "AMZN", "name": "Amazon.com Inc.", "exchange": "NASDAQ"},
+        {"symbol": "TSLA", "name": "Tesla Inc.", "exchange": "NASDAQ"},
+        {"symbol": "META", "name": "Meta Platforms Inc.", "exchange": "NASDAQ"},
+        {"symbol": "NVDA", "name": "NVIDIA Corporation", "exchange": "NASDAQ"},
+        {"symbol": "JPM", "name": "JPMorgan Chase & Co.", "exchange": "NYSE"},
+        {"symbol": "V", "name": "Visa Inc.", "exchange": "NYSE"},
+        {"symbol": "WMT", "name": "Walmart Inc.", "exchange": "NYSE"},
+    ]
+    
+    # Simple search: match symbol or name
+    results = []
+    for stock in mock_stocks:
+        score = 0.0
+        if query_upper == stock["symbol"]:
+            score = 1.0  # Exact symbol match
+        elif stock["symbol"].startswith(query_upper):
+            score = 0.8  # Symbol prefix match
+        elif query_upper in stock["symbol"]:
+            score = 0.6  # Symbol contains
+        elif query_upper in stock["name"].upper():
+            score = 0.5  # Name contains
+        
+        if score > 0:
+            results.append({
+                "symbol": stock["symbol"],
+                "name": stock["name"],
+                "exchange": stock["exchange"],
+                "type": "stock",
+                "match_score": score
+            })
+    
+    # Sort by score descending
+    results.sort(key=lambda x: x["match_score"], reverse=True)
+    
+    # Limit results
+    results = results[:limit]
+    
+    logger.info(f"Search query: {q}, found {len(results)} results")
+    
+    return {
+        "results": results,
+        "query": q,
+        "total_matches": len(results)
+    }
+
+
 def _is_potential_company_name(query: str) -> bool:
     """
     Check if query looks like a company name rather than an identifier.
@@ -1690,6 +1756,83 @@ async def global_exception_handler(request, exc):
             "message": "An unexpected error occurred. Please try again later.",
         },
     )
+
+
+# Register search routers using importlib to avoid __init__.py circular import issues
+import importlib.util
+import os
+
+def load_router_module(module_name: str, file_name: str):
+    """Load a router module directly without triggering __init__.py imports."""
+    try:
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            f"/app/app/routers/{file_name}"
+        )
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    except Exception as e:
+        logger.error(f"Failed to load router module {module_name}: {e}")
+    return None
+
+# Load and register instant search router
+instant_search_module = load_router_module("instant_search_router", "instant_search_router.py")
+if instant_search_module:
+    app.include_router(instant_search_module.router)
+    logger.info("Instant search router registered successfully")
+
+# Load and register autocomplete router  
+autocomplete_module = load_router_module("autocomplete_router", "autocomplete_router.py")
+if autocomplete_module:
+    app.include_router(autocomplete_module.router)
+    logger.info("Autocomplete router registered successfully")
+
+
+# Register additional routers - stock data endpoints
+try:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "stock_data_router",
+        "/app/app/routers/stock_data_router.py"
+    )
+    stock_data_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stock_data_module)
+    app.include_router(stock_data_module.router)
+    logger.info("Stock data router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register stock data router: {e}")
+
+# Register Massive API routers - ticker search, stock snapshots, charts, websocket
+# Using direct imports since dynamic loading breaks relative imports
+try:
+    from .routers.ticker_router import router as ticker_router
+    app.include_router(ticker_router)
+    logger.info("ticker_router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register ticker_router: {e}")
+
+try:
+    from .routers.stock_router import router as stock_router
+    app.include_router(stock_router)
+    logger.info("stock_router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register stock_router: {e}")
+
+try:
+    from .routers.chart_router import router as chart_router
+    app.include_router(chart_router)
+    logger.info("chart_router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register chart_router: {e}")
+
+try:
+    from .routers.ws_router import router as ws_router
+    app.include_router(ws_router)
+    logger.info("ws_router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register ws_router: {e}")
 
 
 if __name__ == "__main__":

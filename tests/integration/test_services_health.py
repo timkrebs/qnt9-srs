@@ -5,7 +5,7 @@ Tests the actual deployed services:
 - auth-service (port 8010)
 - user-service (port 8011)
 - search-service (port 8000)
-- frontend-service (port 8080)
+- webapp-service (port 3000)
 """
 
 
@@ -17,7 +17,7 @@ SERVICE_URLS = {
     "auth": "http://localhost:8010",
     "user": "http://localhost:8011",
     "search": "http://localhost:8000",
-    "frontend": "http://localhost:8080",
+    "webapp": "http://localhost:3000",
 }
 
 

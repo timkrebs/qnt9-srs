@@ -38,7 +38,7 @@ async def legacy_search_stock(
     """
     Legacy search endpoint for backwards compatibility.
 
-    Returns the old API format expected by frontend-service.
+    Returns the old API format for backwards compatibility.
     This endpoint is deprecated. Please use /api/v1/search instead.
     """
     start_time = time.time()

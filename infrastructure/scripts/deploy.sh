@@ -201,7 +201,7 @@ main() {
     if [[ -z "$environment" ]]; then
         echo "Usage: $0 <environment> <service> <image_tag>"
         echo "  environment: dev, staging, or prd"
-        echo "  service: auth-service, search-service, frontend-service, user-service"
+        echo "  service: auth-service, search-service, webapp-service, user-service, watchlist-service"
         echo "  image_tag: Docker image tag (e.g., v1.0.0, sha-abc123)"
         exit 1
     fi

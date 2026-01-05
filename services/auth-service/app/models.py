@@ -103,6 +103,7 @@ class UserResponse(BaseModel):
     user_metadata: Dict[str, Any] = Field(default_factory=dict)
     app_metadata: Dict[str, Any] = Field(default_factory=dict)
     tier: str = "free"
+    role: str = "user"
     full_name: Optional[str] = None
     subscription_start: Optional[str] = None
     subscription_end: Optional[str] = None

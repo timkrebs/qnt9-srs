@@ -1,0 +1,44 @@
+# Webapp Service Kubernetes Service (Next.js)
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-service
+  namespace: qnt9
+  labels:
+    app: webapp-service
+spec:
+  type: ClusterIP
+  selector:
+    app: webapp-service
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+      protocol: TCP
+---
+# Webapp Service Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: webapp-service-hpa
+  namespace: qnt9
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: webapp-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

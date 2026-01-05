@@ -17,10 +17,13 @@ kubernetes/
 ├── search-service/          # Search service manifests
 │   ├── deployment.yaml
 │   └── service.yaml
-├── frontend-service/        # Frontend service manifests
+├── webapp-service/          # Webapp service manifests (Next.js)
 │   ├── deployment.yaml
 │   └── service.yaml
-└── user-service/            # User service manifests
+├── user-service/            # User service manifests
+│   ├── deployment.yaml
+│   └── service.yaml
+└── watchlist-service/       # Watchlist service manifests
     ├── deployment.yaml
     └── service.yaml
 ```
@@ -73,30 +76,32 @@ envsubst < auth-service/service.yaml | kubectl apply -f -
 ./scripts/deploy.sh dev auth-service v1.0.0
 
 # Deploy all services
-for service in auth-service search-service frontend-service user-service; do
+for service in auth-service search-service webapp-service user-service watchlist-service; do
     ./scripts/deploy.sh dev $service v1.0.0
 done
 ```
 
 ## Service Endpoints
 
-| Service          | Port | Internal URL                     |
-|------------------|------|----------------------------------|
-| auth-service     | 8010 | http://auth-service:8010         |
-| search-service   | 8000 | http://search-service:8000       |
-| frontend-service | 8080 | http://frontend-service:8080     |
-| user-service     | 8020 | http://user-service:8020         |
+| Service           | Port | Internal URL                      |
+|-------------------|------|-----------------------------------|
+| auth-service      | 8010 | http://auth-service:8010          |
+| search-service    | 8000 | http://search-service:8000        |
+| webapp-service    | 3000 | http://webapp-service:3000        |
+| user-service      | 8020 | http://user-service:8020          |
+| watchlist-service | 8012 | http://watchlist-service:8012     |
 
 ## Resource Specifications
 
 ### CPU and Memory
 
-| Service          | CPU Request | CPU Limit | Memory Request | Memory Limit |
-|------------------|-------------|-----------|----------------|--------------|
-| auth-service     | 100m        | 500m      | 256Mi          | 512Mi        |
-| search-service   | 200m        | 1000m     | 512Mi          | 1Gi          |
-| frontend-service | 100m        | 500m      | 256Mi          | 512Mi        |
-| user-service     | 100m        | 500m      | 256Mi          | 512Mi        |
+| Service           | CPU Request | CPU Limit | Memory Request | Memory Limit |
+|-------------------|-------------|-----------|----------------|--------------|
+| auth-service      | 100m        | 500m      | 256Mi          | 512Mi        |
+| search-service    | 200m        | 1000m     | 512Mi          | 1Gi          |
+| webapp-service    | 100m        | 500m      | 256Mi          | 512Mi        |
+| user-service      | 100m        | 500m      | 256Mi          | 512Mi        |
+| watchlist-service | 100m        | 500m      | 256Mi          | 512Mi        |
 
 ### Auto-scaling
 

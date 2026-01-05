@@ -9,10 +9,10 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from ..cache.memory_cache import get_memory_cache
-from ..database import get_db_stats, get_session
+from ..database import get_db_stats, get_db
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ async def health_check():
     summary="Readiness check",
     description="Check if service is ready to accept traffic (dependencies available)",
 )
-async def readiness_check(session: AsyncSession = Depends(get_session)):
+async def readiness_check(session: Session = Depends(get_db)):
     """
     Readiness check with actual dependency verification.
 
@@ -90,7 +90,7 @@ async def readiness_check(session: AsyncSession = Depends(get_session)):
     return response
 
 
-async def _check_database_health(session: AsyncSession) -> bool:
+async def _check_database_health(session: Session) -> bool:
     """
     Check PostgreSQL database health.
 
@@ -103,7 +103,7 @@ async def _check_database_health(session: AsyncSession) -> bool:
     try:
         from sqlalchemy import text
 
-        result = await session.execute(text("SELECT 1"))
+        result = session.execute(text("SELECT 1"))
         result.scalar()
         return True
     except Exception as e:

@@ -76,9 +76,9 @@ class AuthService:
                 # Create user
                 user_row = await conn.fetchrow(
                     """
-                    INSERT INTO users (email, password_hash, full_name, tier, created_at)
-                    VALUES ($1, $2, $3, 'free', NOW())
-                    RETURNING id, email, full_name, tier, created_at, email_verified
+                    INSERT INTO users (email, password_hash, full_name, tier, role, created_at)
+                    VALUES ($1, $2, $3, 'free', 'user', NOW())
+                    RETURNING id, email, full_name, tier, role, created_at, email_verified
                     """,
                     email.lower(),
                     password_hash,
@@ -123,6 +123,7 @@ class AuthService:
                         else None
                     ),
                     "tier": user_row["tier"],
+                    "role": user_row.get("role", "user"),
                     "email_verified": user_row["email_verified"],
                 },
                 "session": {
@@ -171,7 +172,7 @@ class AuthService:
             # Fetch user
             user_row = await db_manager.fetchrow(
                 """
-                SELECT id, email, password_hash, full_name, tier, 
+                SELECT id, email, password_hash, full_name, tier, role,
                        email_verified, created_at, subscription_end, is_active
                 FROM users
                 WHERE email = $1
@@ -229,6 +230,7 @@ class AuthService:
                     "email": user_row["email"],
                     "full_name": user_row["full_name"],
                     "tier": user_row["tier"],
+                    "role": user_row.get("role", "user"),
                     "email_verified": user_row["email_verified"],
                     "subscription_end": (
                         user_row["subscription_end"].isoformat()
@@ -408,7 +410,7 @@ class AuthService:
         try:
             user_row = await db_manager.fetchrow(
                 """
-                SELECT id, email, full_name, tier, email_verified,
+                SELECT id, email, full_name, tier, role, email_verified,
                        email_verified_at, created_at, subscription_start,
                        subscription_end, last_login
                 FROM users
@@ -425,6 +427,7 @@ class AuthService:
                 "email": user_row["email"],
                 "full_name": user_row["full_name"],
                 "tier": user_row["tier"],
+                "role": user_row.get("role", "user"),
                 "email_verified": user_row["email_verified"],
                 "email_verified_at": (
                     user_row["email_verified_at"].isoformat()

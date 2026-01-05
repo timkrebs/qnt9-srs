@@ -1,0 +1,289 @@
+# Docker Compose for Dokploy Production Deployment
+# Domain: finio.cloud
+# Dokploy URL: admin.finio.cloud
+#
+# This file is optimized for deployment with Dokploy on a VPS.
+# It uses pre-built images from GitHub Container Registry (GHCR).
+#
+# Required Environment Variables (set in Dokploy UI):
+# - DATABASE_URL: PostgreSQL connection string (Supabase)
+# - SUPABASE_URL: Supabase project URL
+# - SUPABASE_KEY: Supabase anon/public key
+# - SUPABASE_SERVICE_ROLE_KEY: Supabase service role key
+# - SUPABASE_JWT_SECRET: JWT secret from Supabase
+# - JWT_SECRET_KEY: Custom JWT secret for auth-service
+# - REDIS_URL: Redis connection string (optional, for caching)
+
+services:
+  # ==================== BACKEND SERVICES ====================
+
+  # Auth Service (Authentication & Authorization)
+  auth-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/auth-service:${IMAGE_TAG:-latest}
+    container_name: finio-auth-service
+    environment:
+      # Database Configuration
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_POOL_SIZE: 10
+      DATABASE_POOL_MIN_SIZE: 2
+      
+      # JWT Configuration
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      
+      # Password Hashing
+      PASSWORD_HASH_ROUNDS: 12
+      
+      # Service Configuration
+      APP_NAME: Finio Auth Service
+      DEBUG: "false"
+      LOG_LEVEL: INFO
+      
+      # CORS Configuration
+      CORS_ORIGINS: https://finio.cloud,https://www.finio.cloud,https://api.finio.cloud
+      
+      # Supabase Configuration
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      # HTTP Router
+      - "traefik.http.routers.auth-service.rule=Host(`api.finio.cloud`) && PathPrefix(`/api/v1/auth`) || Host(`api.finio.cloud`) && PathPrefix(`/api/v1/users`)"
+      - "traefik.http.routers.auth-service.entrypoints=websecure"
+      - "traefik.http.routers.auth-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.auth-service.loadbalancer.server.port=8010"
+      # Health check
+      - "traefik.http.services.auth-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.auth-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # User Service (User Profile & Subscription Management)
+  user-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/user-service:${IMAGE_TAG:-latest}
+    container_name: finio-user-service
+    environment:
+      SERVICE_NAME: user-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8011
+      LOG_LEVEL: INFO
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_POOL_SIZE: 10
+      DATABASE_POOL_MIN_SIZE: 2
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-sk_test_stub}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
+      CORS_ORIGINS: https://finio.cloud,https://www.finio.cloud,https://api.finio.cloud
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.user-service.rule=Host(`api.finio.cloud`) && PathPrefix(`/api/v1/profile`) || Host(`api.finio.cloud`) && PathPrefix(`/api/v1/subscription`)"
+      - "traefik.http.routers.user-service.entrypoints=websecure"
+      - "traefik.http.routers.user-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.user-service.loadbalancer.server.port=8011"
+      - "traefik.http.services.user-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.user-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Watchlist Service (User Watchlist Management)
+  watchlist-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/watchlist-service:${IMAGE_TAG:-latest}
+    container_name: finio-watchlist-service
+    environment:
+      SERVICE_NAME: watchlist-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8012
+      LOG_LEVEL: INFO
+      DEBUG: "false"
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      FREE_TIER_WATCHLIST_LIMIT: 3
+      PAID_TIER_WATCHLIST_LIMIT: 999
+      CORS_ORIGINS: https://finio.cloud,https://www.finio.cloud,https://api.finio.cloud
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.watchlist-service.rule=Host(`api.finio.cloud`) && PathPrefix(`/api/v1/watchlist`)"
+      - "traefik.http.routers.watchlist-service.entrypoints=websecure"
+      - "traefik.http.routers.watchlist-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.watchlist-service.loadbalancer.server.port=8012"
+      - "traefik.http.services.watchlist-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.watchlist-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Search Service (Stock Search API)
+  search-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/search-service:${IMAGE_TAG:-latest}
+    container_name: finio-search-service
+    environment:
+      # Database Configuration
+      DATABASE_URL: ${DATABASE_URL}
+      
+      # Redis Configuration (optional)
+      REDIS_URL: ${REDIS_URL:-}
+      
+      # JWT Configuration
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      
+      # Auth Service URL
+      AUTH_SERVICE_URL: http://auth-service:8010
+      
+      # CORS
+      CORS_ORIGINS: https://finio.cloud,https://www.finio.cloud,https://api.finio.cloud
+      
+      # External APIs
+      YAHOO_FINANCE_TIMEOUT: 5.0
+      YAHOO_FINANCE_MAX_RETRIES: 3
+      YAHOO_FINANCE_RATE_LIMIT: 5
+      
+      # Polygon/Massive API
+      MASSIVE_API_KEY: ${MASSIVE_API_KEY:-}
+      MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
+      
+      # Cache Settings
+      POSTGRES_CACHE_TTL_MINUTES: 5
+      
+      # Circuit Breaker
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
+      CIRCUIT_BREAKER_RECOVERY_TIMEOUT: 60
+      
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+      
+      # Monitoring
+      PROMETHEUS_ENABLED: true
+      METRICS_PORT: 9090
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.search-service.rule=Host(`api.finio.cloud`) && PathPrefix(`/api/v1/search`) || Host(`api.finio.cloud`) && PathPrefix(`/api/v1/stocks`) || Host(`api.finio.cloud`) && PathPrefix(`/api/v1/health`)"
+      - "traefik.http.routers.search-service.entrypoints=websecure"
+      - "traefik.http.routers.search-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.search-service.loadbalancer.server.port=8000"
+      - "traefik.http.services.search-service.loadbalancer.healthcheck.path=/api/v1/health"
+      - "traefik.http.services.search-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/v1/health', timeout=5.0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 256M
+
+  # ==================== FRONTEND ====================
+
+  # Webapp Service (Next.js Modern Frontend)
+  webapp-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/webapp-service:${IMAGE_TAG:-latest}
+    container_name: finio-webapp-service
+    environment:
+      # API Service URLs (client-side - must be public URLs)
+      NEXT_PUBLIC_AUTH_SERVICE_URL: https://api.finio.cloud
+      NEXT_PUBLIC_SEARCH_SERVICE_URL: https://api.finio.cloud
+      NEXT_PUBLIC_WATCHLIST_SERVICE_URL: https://api.finio.cloud
+      NEXT_PUBLIC_USER_SERVICE_URL: https://api.finio.cloud
+      
+      # Supabase (for blog CMS)
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_KEY}
+      
+      # Next.js Configuration
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: 1
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      # Main domain
+      - "traefik.http.routers.webapp-service.rule=Host(`finio.cloud`) || Host(`www.finio.cloud`)"
+      - "traefik.http.routers.webapp-service.entrypoints=websecure"
+      - "traefik.http.routers.webapp-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.webapp-service.loadbalancer.server.port=3000"
+      # WWW redirect
+      - "traefik.http.middlewares.www-redirect.redirectregex.regex=^https://www\\.finio\\.cloud/(.*)"
+      - "traefik.http.middlewares.www-redirect.redirectregex.replacement=https://finio.cloud/$${1}"
+      - "traefik.http.middlewares.www-redirect.redirectregex.permanent=true"
+      - "traefik.http.routers.webapp-service.middlewares=www-redirect"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+networks:
+  dokploy-network:
+    external: true
