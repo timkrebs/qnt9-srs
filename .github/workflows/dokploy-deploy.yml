@@ -1,14 +1,25 @@
-# GitHub Actions Workflow for Dokploy Deployment
+# GitHub Actions Workflow for Dokploy Multi-Environment Deployment
 # Deploys to finio.cloud via Dokploy on VPS
 #
-# This workflow:
-# 1. Builds Docker images for all services
-# 2. Pushes images to GitHub Container Registry (GHCR)
-# 3. Triggers Dokploy to pull and deploy the new images
+# Environments:
+# - production: finio.cloud (main/production branch)
+# - staging: staging.finio.cloud (staging branch)
+# - development: dev.finio.cloud (development branch)
 #
-# Required Secrets:
-# - DOKPLOY_API_TOKEN: API token from Dokploy (Settings > API)
-# - DOKPLOY_COMPOSE_ID: The Compose project ID from Dokploy
+# This workflow:
+# 1. Determines target environment based on branch
+# 2. Builds Docker images for all services
+# 3. Pushes images to GitHub Container Registry (GHCR) with environment tags
+# 4. Triggers Dokploy to pull and deploy the new images
+#
+# Required Secrets (per environment):
+# Production:
+#   - DOKPLOY_API_TOKEN: API token from Dokploy
+#   - DOKPLOY_COMPOSE_ID_PROD: Production Compose project ID
+# Staging:
+#   - DOKPLOY_COMPOSE_ID_STAGING: Staging Compose project ID
+# Development:
+#   - DOKPLOY_COMPOSE_ID_DEV: Development Compose project ID
 
 name: Dokploy Deploy
 
@@ -17,12 +28,25 @@ on:
     branches:
       - main
       - production
+      - staging
+      - development
     paths:
       - 'services/**'
       - 'docker-compose.dokploy.yml'
+      - 'docker-compose.staging.yml'
+      - 'docker-compose.dev.yml'
       - '.github/workflows/dokploy-deploy.yml'
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
       service:
         description: 'Service to deploy (all, webapp, auth, user, watchlist, search)'
         required: false
@@ -33,6 +57,76 @@ env:
   IMAGE_PREFIX: ${{ github.repository }}
 
 jobs:
+  # ============================================================================
+  # DETERMINE ENVIRONMENT
+  # ============================================================================
+  setup:
+    name: Setup Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      domain: ${{ steps.env.outputs.domain }}
+      api_domain: ${{ steps.env.outputs.api_domain }}
+      image_tag: ${{ steps.env.outputs.image_tag }}
+      compose_id_secret: ${{ steps.env.outputs.compose_id_secret }}
+    steps:
+      - name: Determine environment
+        id: env
+        run: |
+          # Determine environment based on branch or manual input
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            case "${{ github.ref_name }}" in
+              main|production)
+                ENV="production"
+                ;;
+              staging)
+                ENV="staging"
+                ;;
+              development|develop|dev)
+                ENV="development"
+                ;;
+              *)
+                echo "Unknown branch: ${{ github.ref_name }}, defaulting to development"
+                ENV="development"
+                ;;
+            esac
+          fi
+          
+          # Set environment-specific variables
+          case "$ENV" in
+            production)
+              DOMAIN="finio.cloud"
+              API_DOMAIN="api.finio.cloud"
+              IMAGE_TAG="latest"
+              COMPOSE_SECRET="DOKPLOY_COMPOSE_ID_PROD"
+              ;;
+            staging)
+              DOMAIN="staging.finio.cloud"
+              API_DOMAIN="api-staging.finio.cloud"
+              IMAGE_TAG="staging"
+              COMPOSE_SECRET="DOKPLOY_COMPOSE_ID_STAGING"
+              ;;
+            development)
+              DOMAIN="dev.finio.cloud"
+              API_DOMAIN="api-dev.finio.cloud"
+              IMAGE_TAG="dev"
+              COMPOSE_SECRET="DOKPLOY_COMPOSE_ID_DEV"
+              ;;
+          esac
+          
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "domain=$DOMAIN" >> $GITHUB_OUTPUT
+          echo "api_domain=$API_DOMAIN" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "compose_id_secret=$COMPOSE_SECRET" >> $GITHUB_OUTPUT
+          
+          echo "🎯 Environment: $ENV"
+          echo "🌐 Domain: $DOMAIN"
+          echo "🔗 API Domain: $API_DOMAIN"
+          echo "🏷️ Image Tag: $IMAGE_TAG"
+
   # ============================================================================
   # DETECT CHANGES
   # ============================================================================
@@ -68,14 +162,16 @@ jobs:
             any_service:
               - 'services/**'
               - 'docker-compose.dokploy.yml'
+              - 'docker-compose.staging.yml'
+              - 'docker-compose.dev.yml'
 
   # ============================================================================
   # BUILD AND PUSH IMAGES
   # ============================================================================
   build-and-push:
-    name: Build ${{ matrix.service }}
+    name: Build ${{ matrix.service }} (${{ needs.setup.outputs.environment }})
     runs-on: ubuntu-latest
-    needs: detect-changes
+    needs: [setup, detect-changes]
     if: |
       needs.detect-changes.outputs.any_service == 'true' ||
       github.event_name == 'workflow_dispatch'
@@ -149,7 +245,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.setup.outputs.image_tag }}
             type=sha,prefix=sha-
             type=ref,event=branch
 
@@ -165,6 +261,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+          build-args: |
+            NODE_ENV=${{ needs.setup.outputs.environment == 'production' && 'production' || 'development' }}
 
       - name: Skip message
         if: steps.should-build.outputs.build != 'true'
@@ -174,25 +272,50 @@ jobs:
   # DEPLOY TO DOKPLOY
   # ============================================================================
   deploy:
-    name: Deploy to Dokploy
+    name: Deploy to ${{ needs.setup.outputs.environment }}
     runs-on: ubuntu-latest
-    needs: build-and-push
+    needs: [setup, build-and-push]
     if: always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped')
     environment:
-      name: production
-      url: https://finio.cloud
+      name: ${{ needs.setup.outputs.environment }}
+      url: https://${{ needs.setup.outputs.domain }}
 
     steps:
+      - name: Get Compose ID
+        id: compose
+        run: |
+          # Get the correct compose ID based on environment
+          case "${{ needs.setup.outputs.environment }}" in
+            production)
+              COMPOSE_ID="${{ secrets.DOKPLOY_COMPOSE_ID_PROD }}"
+              ;;
+            staging)
+              COMPOSE_ID="${{ secrets.DOKPLOY_COMPOSE_ID_STAGING }}"
+              ;;
+            development)
+              COMPOSE_ID="${{ secrets.DOKPLOY_COMPOSE_ID_DEV }}"
+              ;;
+          esac
+          
+          if [[ -z "$COMPOSE_ID" ]]; then
+            echo "❌ No Compose ID found for environment: ${{ needs.setup.outputs.environment }}"
+            echo "Please set the secret: ${{ needs.setup.outputs.compose_id_secret }}"
+            exit 1
+          fi
+          
+          echo "compose_id=$COMPOSE_ID" >> $GITHUB_OUTPUT
+
       - name: Trigger Dokploy Deployment
         run: |
-          echo " Triggering Dokploy deployment..."
+          echo "🚀 Deploying to ${{ needs.setup.outputs.environment }}..."
+          echo "🌐 Target: https://${{ needs.setup.outputs.domain }}"
           
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "https://admin.finio.cloud/api/compose.deploy" \
             -H "accept: application/json" \
             -H "x-api-key: ${{ secrets.DOKPLOY_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"composeId": "${{ secrets.DOKPLOY_COMPOSE_ID }}"}')
+            -d '{"composeId": "${{ steps.compose.outputs.compose_id }}"}')
           
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
@@ -201,41 +324,80 @@ jobs:
           echo "HTTP Code: $http_code"
           
           if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo " Deployment triggered successfully!"
+            echo "✅ Deployment triggered successfully!"
           else
-            echo " Deployment trigger failed!"
+            echo "❌ Deployment trigger failed!"
             exit 1
           fi
 
       - name: Wait for deployment
         run: |
-          echo " Waiting for deployment to complete..."
+          echo "⏳ Waiting for deployment to complete..."
           sleep 60
           
-          echo " Checking service health..."
+          DOMAIN="${{ needs.setup.outputs.domain }}"
+          API_DOMAIN="${{ needs.setup.outputs.api_domain }}"
+          
+          echo "🔍 Checking service health..."
           
           # Check webapp
-          if curl -sf --max-time 10 "https://finio.cloud" > /dev/null; then
-            echo " Webapp is healthy"
+          if curl -sf --max-time 10 "https://$DOMAIN" > /dev/null; then
+            echo "✅ Webapp is healthy at https://$DOMAIN"
           else
-            echo " Webapp health check failed (may still be starting)"
+            echo "⚠️ Webapp health check failed (may still be starting)"
           fi
           
           # Check API
-          if curl -sf --max-time 10 "https://api.finio.cloud/api/v1/health" > /dev/null; then
-            echo " API is healthy"
+          if curl -sf --max-time 10 "https://$API_DOMAIN/api/v1/health" > /dev/null; then
+            echo "✅ API is healthy at https://$API_DOMAIN"
           else
-            echo " API health check failed (may still be starting)"
+            echo "⚠️ API health check failed (may still be starting)"
           fi
 
       - name: Deployment Summary
         run: |
-          echo "##  Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          ENV="${{ needs.setup.outputs.environment }}"
+          DOMAIN="${{ needs.setup.outputs.domain }}"
+          API_DOMAIN="${{ needs.setup.outputs.api_domain }}"
+          
+          # Set emoji based on environment
+          case "$ENV" in
+            production) EMOJI="🚀" ;;
+            staging) EMOJI="🎭" ;;
+            development) EMOJI="🔧" ;;
+          esac
+          
+          echo "## $EMOJI Deployment Complete - ${ENV^}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🌐 URLs" >> $GITHUB_STEP_SUMMARY
           echo "| Service | URL |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| Webapp | https://finio.cloud |" >> $GITHUB_STEP_SUMMARY
-          echo "| API | https://api.finio.cloud |" >> $GITHUB_STEP_SUMMARY
+          echo "| Webapp | https://$DOMAIN |" >> $GITHUB_STEP_SUMMARY
+          echo "| API | https://$API_DOMAIN |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | \`$ENV\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Tag | \`${{ needs.setup.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # NOTIFY ON FAILURE
+  # ============================================================================
+  notify-failure:
+    name: Notify on Failure
+    runs-on: ubuntu-latest
+    needs: [setup, deploy]
+    if: failure()
+    steps:
+      - name: Create failure summary
+        run: |
+          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Environment: **${{ needs.setup.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: **${{ github.ref_name }}**" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Please check the workflow logs for more details." >> $GITHUB_STEP_SUMMARY

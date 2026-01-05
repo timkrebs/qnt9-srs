@@ -1,0 +1,235 @@
+# Docker Compose for Dokploy Staging Deployment
+# Domain: staging.finio.cloud
+# API: api-staging.finio.cloud
+#
+# This file is for the STAGING environment.
+# Uses images tagged with :staging from GHCR.
+
+services:
+  # ==================== BACKEND SERVICES ====================
+
+  # Auth Service (Authentication & Authorization)
+  auth-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/auth-service:${IMAGE_TAG:-staging}
+    container_name: finio-staging-auth-service
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_POOL_SIZE: 5
+      DATABASE_POOL_MIN_SIZE: 1
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      PASSWORD_HASH_ROUNDS: 12
+      APP_NAME: Finio Auth Service (Staging)
+      DEBUG: "true"
+      LOG_LEVEL: DEBUG
+      CORS_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.staging-auth-service.rule=Host(`api-staging.finio.cloud`) && (PathPrefix(`/api/v1/auth`) || PathPrefix(`/api/v1/users`))"
+      - "traefik.http.routers.staging-auth-service.entrypoints=websecure"
+      - "traefik.http.routers.staging-auth-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.staging-auth-service.loadbalancer.server.port=8010"
+      - "traefik.http.services.staging-auth-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.staging-auth-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # User Service
+  user-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/user-service:${IMAGE_TAG:-staging}
+    container_name: finio-staging-user-service
+    environment:
+      SERVICE_NAME: user-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8011
+      LOG_LEVEL: DEBUG
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_POOL_SIZE: 5
+      DATABASE_POOL_MIN_SIZE: 1
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-sk_test_stub}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_stub}
+      CORS_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.staging-user-service.rule=Host(`api-staging.finio.cloud`) && (PathPrefix(`/api/v1/profile`) || PathPrefix(`/api/v1/subscription`))"
+      - "traefik.http.routers.staging-user-service.entrypoints=websecure"
+      - "traefik.http.routers.staging-user-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.staging-user-service.loadbalancer.server.port=8011"
+      - "traefik.http.services.staging-user-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.staging-user-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # Watchlist Service
+  watchlist-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/watchlist-service:${IMAGE_TAG:-staging}
+    container_name: finio-staging-watchlist-service
+    environment:
+      SERVICE_NAME: watchlist-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8012
+      LOG_LEVEL: DEBUG
+      DEBUG: "true"
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      FREE_TIER_WATCHLIST_LIMIT: 3
+      PAID_TIER_WATCHLIST_LIMIT: 999
+      CORS_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.staging-watchlist-service.rule=Host(`api-staging.finio.cloud`) && PathPrefix(`/api/v1/watchlist`)"
+      - "traefik.http.routers.staging-watchlist-service.entrypoints=websecure"
+      - "traefik.http.routers.staging-watchlist-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.staging-watchlist-service.loadbalancer.server.port=8012"
+      - "traefik.http.services.staging-watchlist-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.staging-watchlist-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # Search Service
+  search-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/search-service:${IMAGE_TAG:-staging}
+    container_name: finio-staging-search-service
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      AUTH_SERVICE_URL: http://auth-service:8010
+      CORS_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud
+      YAHOO_FINANCE_TIMEOUT: 5.0
+      YAHOO_FINANCE_MAX_RETRIES: 3
+      YAHOO_FINANCE_RATE_LIMIT: 5
+      MASSIVE_API_KEY: ${MASSIVE_API_KEY:-}
+      MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
+      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
+      POSTGRES_CACHE_TTL_MINUTES: 5
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
+      CIRCUIT_BREAKER_RECOVERY_TIMEOUT: 60
+      LOG_LEVEL: DEBUG
+      LOG_FORMAT: json
+      PROMETHEUS_ENABLED: true
+      METRICS_PORT: 9090
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.staging-search-service.rule=Host(`api-staging.finio.cloud`) && (PathPrefix(`/api/v1/search`) || PathPrefix(`/api/v1/stocks`) || PathPrefix(`/api/v1/health`))"
+      - "traefik.http.routers.staging-search-service.entrypoints=websecure"
+      - "traefik.http.routers.staging-search-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.staging-search-service.loadbalancer.server.port=8000"
+      - "traefik.http.services.staging-search-service.loadbalancer.healthcheck.path=/api/v1/health"
+      - "traefik.http.services.staging-search-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/v1/health', timeout=5.0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # ==================== FRONTEND ====================
+
+  # Webapp Service (Next.js)
+  webapp-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/webapp-service:${IMAGE_TAG:-staging}
+    container_name: finio-staging-webapp-service
+    environment:
+      NEXT_PUBLIC_AUTH_SERVICE_URL: https://api-staging.finio.cloud
+      NEXT_PUBLIC_SEARCH_SERVICE_URL: https://api-staging.finio.cloud
+      NEXT_PUBLIC_WATCHLIST_SERVICE_URL: https://api-staging.finio.cloud
+      NEXT_PUBLIC_USER_SERVICE_URL: https://api-staging.finio.cloud
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_KEY}
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: 1
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.staging-webapp-service.rule=Host(`staging.finio.cloud`)"
+      - "traefik.http.routers.staging-webapp-service.entrypoints=websecure"
+      - "traefik.http.routers.staging-webapp-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.staging-webapp-service.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+networks:
+  dokploy-network:
+    external: true
