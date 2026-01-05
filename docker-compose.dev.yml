@@ -209,12 +209,8 @@ services:
       NEXT_TELEMETRY_DISABLED: 1
     networks:
       - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dev-webapp-service.rule=Host(`dev.finio.cloud`)"
-      - "traefik.http.routers.dev-webapp-service.entrypoints=websecure"
-      - "traefik.http.routers.dev-webapp-service.tls.certResolver=letsencrypt"
-      - "traefik.http.services.dev-webapp-service.loadbalancer.server.port=3000"
+    # Note: Domain routing is managed via Dokploy UI, not Traefik labels
+    # Add domain in Dokploy: Compose -> development -> Domains -> webapp-service -> dev.finio.cloud:3000
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
