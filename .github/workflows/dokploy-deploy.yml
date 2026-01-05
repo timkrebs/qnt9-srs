@@ -305,7 +305,7 @@ jobs:
           esac
           
           if [[ -z "$COMPOSE_ID" ]]; then
-            echo "❌ No Compose ID found for environment: ${{ needs.setup.outputs.environment }}"
+            echo "No Compose ID found for environment: ${{ needs.setup.outputs.environment }}"
             echo "Please set the secret: ${{ needs.setup.outputs.compose_id_secret }}"
             exit 1
           fi
@@ -314,8 +314,8 @@ jobs:
 
       - name: Trigger Dokploy Deployment
         run: |
-          echo "🚀 Deploying to ${{ needs.setup.outputs.environment }}..."
-          echo "🌐 Target: https://${{ needs.setup.outputs.domain }}"
+          echo "Deploying to ${{ needs.setup.outputs.environment }}..."
+          echo "Target: https://${{ needs.setup.outputs.domain }}"
           
           response=$(curl -s -w "\n%{http_code}" -X POST \
             "https://admin.finio.cloud/api/compose.deploy" \
@@ -331,34 +331,34 @@ jobs:
           echo "HTTP Code: $http_code"
           
           if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo "✅ Deployment triggered successfully!"
+            echo "Deployment triggered successfully!"
           else
-            echo "❌ Deployment trigger failed!"
+            echo "Deployment trigger failed!"
             exit 1
           fi
 
       - name: Wait for deployment
         run: |
-          echo "⏳ Waiting for deployment to complete..."
+          echo "Waiting for deployment to complete..."
           sleep 60
           
           DOMAIN="${{ needs.setup.outputs.domain }}"
           API_DOMAIN="${{ needs.setup.outputs.api_domain }}"
           
-          echo "🔍 Checking service health..."
+          echo "Checking service health..."
           
           # Check webapp
           if curl -sf --max-time 10 "https://$DOMAIN" > /dev/null; then
-            echo "✅ Webapp is healthy at https://$DOMAIN"
+            echo "Webapp is healthy at https://$DOMAIN"
           else
-            echo "⚠️ Webapp health check failed (may still be starting)"
+            echo "Webapp health check failed (may still be starting)"
           fi
           
           # Check API
           if curl -sf --max-time 10 "https://$API_DOMAIN/api/v1/health" > /dev/null; then
-            echo "✅ API is healthy at https://$API_DOMAIN"
+            echo "API is healthy at https://$API_DOMAIN"
           else
-            echo "⚠️ API health check failed (may still be starting)"
+            echo "API health check failed (may still be starting)"
           fi
 
       - name: Deployment Summary
@@ -376,13 +376,13 @@ jobs:
           
           echo "## $EMOJI Deployment Complete - ${ENV^}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🌐 URLs" >> $GITHUB_STEP_SUMMARY
+          echo "### URLs" >> $GITHUB_STEP_SUMMARY
           echo "| Service | URL |" >> $GITHUB_STEP_SUMMARY
           echo "|---------|-----|" >> $GITHUB_STEP_SUMMARY
           echo "| Webapp | https://$DOMAIN |" >> $GITHUB_STEP_SUMMARY
           echo "| API | https://$API_DOMAIN |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Build Info" >> $GITHUB_STEP_SUMMARY
+          echo "### Build Info" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Environment | \`$ENV\` |" >> $GITHUB_STEP_SUMMARY
@@ -401,7 +401,7 @@ jobs:
     steps:
       - name: Create failure summary
         run: |
-          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Failed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.setup.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
           echo "Branch: **${{ github.ref_name }}**" >> $GITHUB_STEP_SUMMARY
