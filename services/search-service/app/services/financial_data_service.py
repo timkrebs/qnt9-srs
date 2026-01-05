@@ -20,16 +20,16 @@ logger = logging.getLogger(__name__)
 
 
 class FinancialDataService:
-    """Service for fetching real-time financial data from Polygon.io."""
+    """Service for fetching real-time financial data from Massive API (formerly Polygon.io)."""
 
     def __init__(self):
         """Initialize the financial data service."""
-        self.polygon_api_key = os.getenv("POLYGON_API_KEY", "")
+        self.api_key = os.getenv("MASSIVE_API_KEY", "")
         self.base_url = "https://api.polygon.io"
         self.session: Optional[aiohttp.ClientSession] = None
 
-        if not self.polygon_api_key:
-            logger.warning("POLYGON_API_KEY not set, using mock data")
+        if not self.api_key:
+            logger.warning("MASSIVE_API_KEY not set, using mock data")
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -52,7 +52,7 @@ class FinancialDataService:
         Returns:
             Dictionary containing current price, change, volume, and other data
         """
-        if not self.polygon_api_key:
+        if not self.api_key:
             return self._get_mock_quote(symbol)
 
         try:
@@ -94,7 +94,7 @@ class FinancialDataService:
         """Get previous day's closing data."""
         session = await self.get_session()
         url = f"{self.base_url}/v2/aggs/ticker/{symbol.upper()}/prev"
-        params = {"adjusted": "true", "apiKey": self.polygon_api_key}
+        params = {"adjusted": "true", "apiKey": self.api_key}
 
         try:
             async with session.get(url, params=params, timeout=5) as response:
@@ -119,7 +119,7 @@ class FinancialDataService:
         """Get current snapshot data."""
         session = await self.get_session()
         url = f"{self.base_url}/v2/snapshot/locale/us/markets/stocks/tickers/{symbol.upper()}"
-        params = {"apiKey": self.polygon_api_key}
+        params = {"apiKey": self.api_key}
 
         try:
             async with session.get(url, params=params, timeout=5) as response:
@@ -167,7 +167,7 @@ class FinancialDataService:
         Returns:
             List of OHLCV data points
         """
-        if not self.polygon_api_key:
+        if not self.api_key:
             return await self._get_mock_intraday(symbol)
 
         try:
@@ -177,7 +177,7 @@ class FinancialDataService:
 
             session = await self.get_session()
             url = f"{self.base_url}/v2/aggs/ticker/{symbol.upper()}/range/{multiplier}/{timespan}/{from_date.strftime('%Y-%m-%d')}/{to_date.strftime('%Y-%m-%d')}"
-            params = {"adjusted": "true", "sort": "asc", "apiKey": self.polygon_api_key}
+            params = {"adjusted": "true", "sort": "asc", "apiKey": self.api_key}
 
             async with session.get(url, params=params, timeout=10) as response:
                 if response.status != 200:
@@ -250,7 +250,7 @@ class FinancialDataService:
         Returns:
             List of news articles with title, url, summary, etc.
         """
-        if not self.polygon_api_key:
+        if not self.api_key:
             return self._get_mock_news(symbol, limit)
 
         try:
@@ -260,7 +260,7 @@ class FinancialDataService:
                 "ticker": symbol.upper(),
                 "limit": limit,
                 "order": "desc",
-                "apiKey": self.polygon_api_key,
+                "apiKey": self.api_key,
             }
 
             async with session.get(url, params=params, timeout=10) as response:

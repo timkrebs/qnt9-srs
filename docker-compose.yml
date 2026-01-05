@@ -191,7 +191,6 @@ services:
       # Massive API (formerly Polygon.io) Configuration
       MASSIVE_API_KEY: ${MASSIVE_API_KEY:-E0aTGuCEv454Yrck2CCmFq4acCeTXdpC}
       MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
-      POLYGON_API_KEY: ${POLYGON_API_KEY:-E0aTGuCEv454Yrck2CCmFq4acCeTXdpC}
       
       # Cache Settings (PostgreSQL only - Redis removed)
       POSTGRES_CACHE_TTL_MINUTES: 5

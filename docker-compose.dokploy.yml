@@ -190,7 +190,6 @@ services:
       # Polygon/Massive API
       MASSIVE_API_KEY: ${MASSIVE_API_KEY:-}
       MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
-      POLYGON_API_KEY: ${POLYGON_API_KEY:-}
       
       # Cache Settings
       POSTGRES_CACHE_TTL_MINUTES: 5
