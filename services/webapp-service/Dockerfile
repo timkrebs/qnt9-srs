@@ -30,6 +30,22 @@ WORKDIR /app
 # Enable pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
+# Build arguments for NEXT_PUBLIC_* variables (required at build time)
+ARG NEXT_PUBLIC_AUTH_SERVICE_URL=https://api.finio.cloud/api/v1/auth
+ARG NEXT_PUBLIC_SEARCH_SERVICE_URL=https://api.finio.cloud/api/v1
+ARG NEXT_PUBLIC_USER_SERVICE_URL=https://api.finio.cloud/api/v1/users
+ARG NEXT_PUBLIC_WATCHLIST_SERVICE_URL=https://api.finio.cloud/api/v1/watchlist
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+# Set as environment variables for the build
+ENV NEXT_PUBLIC_AUTH_SERVICE_URL=$NEXT_PUBLIC_AUTH_SERVICE_URL
+ENV NEXT_PUBLIC_SEARCH_SERVICE_URL=$NEXT_PUBLIC_SEARCH_SERVICE_URL
+ENV NEXT_PUBLIC_USER_SERVICE_URL=$NEXT_PUBLIC_USER_SERVICE_URL
+ENV NEXT_PUBLIC_WATCHLIST_SERVICE_URL=$NEXT_PUBLIC_WATCHLIST_SERVICE_URL
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
