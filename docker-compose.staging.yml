@@ -10,7 +10,7 @@ services:
 
   # Auth Service (Authentication & Authorization)
   auth-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/auth-service:${IMAGE_TAG:-staging}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/auth-service:${IMAGE_TAG:-staging}
     container_name: finio-staging-auth-service
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -57,7 +57,7 @@ services:
 
   # User Service
   user-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/user-service:${IMAGE_TAG:-staging}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/user-service:${IMAGE_TAG:-staging}
     container_name: finio-staging-user-service
     environment:
       SERVICE_NAME: user-service
@@ -99,7 +99,7 @@ services:
 
   # Watchlist Service
   watchlist-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/watchlist-service:${IMAGE_TAG:-staging}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/watchlist-service:${IMAGE_TAG:-staging}
     container_name: finio-staging-watchlist-service
     environment:
       SERVICE_NAME: watchlist-service
@@ -142,7 +142,7 @@ services:
 
   # Search Service
   search-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/search-service:${IMAGE_TAG:-staging}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/search-service:${IMAGE_TAG:-staging}
     container_name: finio-staging-search-service
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -193,7 +193,7 @@ services:
 
   # Webapp Service (Next.js)
   webapp-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/webapp-service:${IMAGE_TAG:-staging}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/webapp-service:${IMAGE_TAG:-staging}
     container_name: finio-staging-webapp-service
     environment:
       NEXT_PUBLIC_AUTH_SERVICE_URL: https://api-staging.finio.cloud

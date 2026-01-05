@@ -19,7 +19,7 @@ services:
 
   # Auth Service (Authentication & Authorization)
   auth-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/auth-service:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/auth-service:${IMAGE_TAG:-latest}
     container_name: finio-auth-service
     environment:
       # Database Configuration
@@ -79,7 +79,7 @@ services:
 
   # User Service (User Profile & Subscription Management)
   user-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/user-service:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/user-service:${IMAGE_TAG:-latest}
     container_name: finio-user-service
     environment:
       SERVICE_NAME: user-service
@@ -121,7 +121,7 @@ services:
 
   # Watchlist Service (User Watchlist Management)
   watchlist-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/watchlist-service:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/watchlist-service:${IMAGE_TAG:-latest}
     container_name: finio-watchlist-service
     environment:
       SERVICE_NAME: watchlist-service
@@ -164,7 +164,7 @@ services:
 
   # Search Service (Stock Search API)
   search-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/search-service:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/search-service:${IMAGE_TAG:-latest}
     container_name: finio-search-service
     environment:
       # Database Configuration
@@ -236,7 +236,7 @@ services:
 
   # Webapp Service (Next.js Modern Frontend)
   webapp-service:
-    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs9/qnt9-srs}/webapp-service:${IMAGE_TAG:-latest}
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/webapp-service:${IMAGE_TAG:-latest}
     container_name: finio-webapp-service
     environment:
       # API Service URLs (client-side - must be public URLs)
