@@ -267,7 +267,7 @@ async def migrate_user(
             email_verified=user.get("email_verified", False),
         )
 
-        print(f"  ✓ Created Supabase user: {supabase_user['id']}")
+        print(f"  [OK] Created Supabase user: {supabase_user['id']}")
 
         # Create user profile
         await create_user_profile(
@@ -282,29 +282,29 @@ async def migrate_user(
             metadata=user.get("metadata", {}),
         )
 
-        print("  ✓ Created user profile")
+        print("  [OK] Created user profile")
 
         # Send password reset email
         email_sent = await send_password_reset_email(supabase, email)
         if email_sent:
-            print("  ✓ Sent password reset email")
+            print("  [OK] Sent password reset email")
 
         stats.success_count += 1
         return True
 
     except AuthApiError as e:
         if "already registered" in str(e).lower() or "duplicate" in str(e).lower():
-            print(f"  ⚠ User already exists in Supabase: {email}")
+            print(f"  [WARN] User already exists in Supabase: {email}")
             stats.already_exists_count += 1
             return True
         else:
-            print(f"  ✗ Supabase error: {e}")
+            print(f"  [FAIL] Supabase error: {e}")
             stats.error_count += 1
             stats.errors.append({"email": email, "error": str(e)})
             return False
 
     except Exception as e:
-        print(f"  ✗ Unexpected error: {e}")
+        print(f"  [FAIL] Unexpected error: {e}")
         stats.error_count += 1
         stats.errors.append({"email": email, "error": str(e)})
         return False
@@ -342,12 +342,12 @@ async def run_migration(dry_run: bool = False) -> None:
         # Connect to database
         print("\nConnecting to database...")
         db_conn = await asyncpg.connect(DATABASE_URL)
-        print("✓ Connected to PostgreSQL")
+        print("[OK] Connected to PostgreSQL")
 
         # Initialize Supabase client
         print("Initializing Supabase client...")
         supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        print("✓ Supabase client initialized\n")
+        print("[OK] Supabase client initialized\n")
 
         # Fetch existing users
         print("Fetching existing users...")
@@ -388,7 +388,7 @@ async def run_migration(dry_run: bool = False) -> None:
     finally:
         if "db_conn" in locals():
             await db_conn.close()
-            print("\n✓ Database connection closed")
+            print("\n[OK] Database connection closed")
 
 
 def main():

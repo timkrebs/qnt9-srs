@@ -122,10 +122,10 @@ jobs:
           echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "compose_id_secret=$COMPOSE_SECRET" >> $GITHUB_OUTPUT
           
-          echo "🎯 Environment: $ENV"
-          echo "🌐 Domain: $DOMAIN"
-          echo "🔗 API Domain: $API_DOMAIN"
-          echo "🏷️ Image Tag: $IMAGE_TAG"
+          echo "Environment: $ENV"
+          echo "Domain: $DOMAIN"
+          echo "API Domain: $API_DOMAIN"
+          echo "Image Tag: $IMAGE_TAG"
 
   # ============================================================================
   # DETECT CHANGES
@@ -367,14 +367,14 @@ jobs:
           DOMAIN="${{ needs.setup.outputs.domain }}"
           API_DOMAIN="${{ needs.setup.outputs.api_domain }}"
           
-          # Set emoji based on environment
+          # Set label based on environment
           case "$ENV" in
-            production) EMOJI="🚀" ;;
-            staging) EMOJI="🎭" ;;
-            development) EMOJI="🔧" ;;
+            production) LABEL="[PROD]" ;;
+            staging) LABEL="[STAGING]" ;;
+            development) LABEL="[DEV]" ;;
           esac
           
-          echo "## $EMOJI Deployment Complete - ${ENV^}" >> $GITHUB_STEP_SUMMARY
+          echo "## $LABEL Deployment Complete - ${ENV^}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### URLs" >> $GITHUB_STEP_SUMMARY
           echo "| Service | URL |" >> $GITHUB_STEP_SUMMARY

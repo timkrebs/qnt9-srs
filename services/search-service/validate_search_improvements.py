@@ -38,7 +38,7 @@ async def test_identifier_detection():
 
     for query, expected in test_cases:
         detected = StockIdentifier.detect_type(query.upper())
-        status = "✓" if detected == expected else "✗"
+        status = "[OK]" if detected == expected else "[FAIL]"
 
         if detected == expected:
             passed += 1
@@ -66,13 +66,13 @@ async def test_symbol_search():
 
             if stock:
                 print(
-                    f"✓ {symbol}: {stock.identifier.name} - ${stock.price.current} {stock.price.currency}"
+                    f"[OK] {symbol}: {stock.identifier.name} - ${stock.price.current} {stock.price.currency}"
                 )
             else:
-                print(f"✗ {symbol}: Not found")
+                print(f"[FAIL] {symbol}: Not found")
 
         except Exception as e:
-            print(f"✗ {symbol}: Error - {e}")
+            print(f"[FAIL] {symbol}: Error - {e}")
 
     print()
 
@@ -90,14 +90,14 @@ async def test_name_search():
             results = await client.search_by_name(name, limit=3)
 
             if results:
-                print(f"✓ '{name}' found {len(results)} results:")
+                print(f"[OK] '{name}' found {len(results)} results:")
                 for stock in results[:3]:
                     print(f"  - {stock.identifier.symbol}: {stock.identifier.name}")
             else:
-                print(f"✗ '{name}': No results found")
+                print(f"[FAIL] '{name}': No results found")
 
         except Exception as e:
-            print(f"✗ '{name}': Error - {e}")
+            print(f"[FAIL] '{name}': Error - {e}")
 
     print()
 

@@ -33,7 +33,7 @@ async def test_health_endpoint():
     async with httpx.AsyncClient() as client:
         response = await client.get(f"{BASE_URL}/health")
         assert response.status_code == 200
-        print(f"   ✓ Health endpoint working: {response.json()}")
+        print(f"   [OK] Health endpoint working: {response.json()}")
 
 
 async def test_signup(client):
@@ -52,7 +52,7 @@ async def test_signup(client):
     
     assert response.status_code == 201
     data = response.json()
-    print(f"   ✓ Signup successful: {data['user']['email']}")
+    print(f"   [OK] Signup successful: {data['user']['email']}")
     return data, test_user
 
 
@@ -66,7 +66,7 @@ async def test_signin(client, email, password):
     
     assert response.status_code == 200
     data = response.json()
-    print(f"   ✓ Signin successful: {data['user']['email']}")
+    print(f"   [OK] Signin successful: {data['user']['email']}")
     return data
 
 
@@ -80,7 +80,7 @@ async def test_get_user(client, access_token):
     
     assert response.status_code == 200
     data = response.json()
-    print(f"   ✓ Get user successful: {data['email']}")
+    print(f"   [OK] Get user successful: {data['email']}")
     return data
 
 
@@ -94,7 +94,7 @@ async def test_signout(client, refresh_token):
     
     assert response.status_code == 200
     data = response.json()
-    print(f"   ✓ Signout successful: {data['message']}")
+    print(f"   [OK] Signout successful: {data['message']}")
 
 
 async def check_audit_logs(email):
@@ -115,18 +115,18 @@ async def check_audit_logs(email):
         rows = await conn.fetch(query, email)
         
         if rows:
-            print(f"   ✓ Found {len(rows)} audit log entries:")
+            print(f"   [OK] Found {len(rows)} audit log entries:")
             for row in rows:
                 print(f"      - {row['action']}: success={row['success']}, "
                       f"ip={row['ip_address']}, time={row['created_at']}")
         else:
-            print(f"   ✗ No audit logs found for {email}")
+            print(f"   [FAIL] No audit logs found for {email}")
         
         await conn.close()
         return len(rows) > 0
         
     except Exception as e:
-        print(f"   ✗ Error checking audit logs: {e}")
+        print(f"   [FAIL] Error checking audit logs: {e}")
         return False
 
 
@@ -140,14 +140,14 @@ async def test_metrics():
         # Check for audit metrics
         metrics_text = response.text
         if "audit_events_total" in metrics_text:
-            print("   ✓ Audit metrics found in Prometheus output")
+            print("   [OK] Audit metrics found in Prometheus output")
             
             # Extract audit metrics
             for line in metrics_text.split('\n'):
                 if line.startswith('audit_events_total'):
                     print(f"      {line}")
         else:
-            print("   ✗ Audit metrics not found")
+            print("   [FAIL] Audit metrics not found")
 
 
 async def run_tests():
@@ -185,20 +185,20 @@ async def run_tests():
         
         print("\n" + "=" * 60)
         if audit_logs_exist:
-            print("✓ All tests passed!")
-            print("✓ Audit logging is working")
-            print("✓ API versioning is working")
+            print("[OK] All tests passed!")
+            print("[OK] Audit logging is working")
+            print("[OK] API versioning is working")
         else:
-            print("✗ Some tests failed - check audit logs")
+            print("[FAIL] Some tests failed - check audit logs")
         print("=" * 60)
         
         return 0 if audit_logs_exist else 1
         
     except AssertionError as e:
-        print(f"\n✗ Test failed: {e}")
+        print(f"\n[FAIL] Test failed: {e}")
         return 1
     except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
+        print(f"\n[FAIL] Unexpected error: {e}")
         import traceback
         traceback.print_exc()
         return 1
