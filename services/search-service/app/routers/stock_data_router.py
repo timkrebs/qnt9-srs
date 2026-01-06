@@ -5,15 +5,21 @@ Provides endpoints for:
 - Real-time stock quotes
 - Intraday chart data
 - Company news feed
+
+IMPORTANT: Requires MASSIVE_API_KEY to be configured in the environment.
+No mock data is returned - proper errors are returned if API key is missing.
 """
 
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
-from app.services.financial_data_service import financial_data_service
+from app.services.financial_data_service import (
+    financial_data_service,
+    APIKeyNotConfiguredError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +77,7 @@ async def get_stock_quote(symbol: str) -> StockQuote:
         Real-time quote including price, change, volume, and other data
 
     Raises:
-        HTTPException: If unable to fetch quote data
+        HTTPException: 503 if API key not configured, 404 if no data, 500 for other errors
     """
     try:
         logger.info(f"Fetching quote for symbol: {symbol}")
@@ -79,16 +85,32 @@ async def get_stock_quote(symbol: str) -> StockQuote:
 
         if not quote_data:
             raise HTTPException(
-                status_code=404, detail=f"No quote data available for symbol: {symbol}"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "not_found", "symbol": symbol, "message": f"No quote data available for symbol: {symbol}"}
             )
 
         return StockQuote(**quote_data)
 
+    except APIKeyNotConfiguredError:
+        logger.error("MASSIVE_API_KEY not configured - cannot fetch real stock data")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "api_not_configured", "message": "Stock data service not configured. Please set MASSIVE_API_KEY environment variable."}
+        )
+    except ValueError as e:
+        logger.error(f"No data available for {symbol}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "not_found", "symbol": symbol, "message": str(e)}
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching quote for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch stock quote")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "fetch_failed", "message": f"Failed to fetch stock quote: {str(e)}"}
+        )
 
 
 @router.get(
@@ -113,7 +135,7 @@ async def get_chart_data(
         List of OHLCV data points for the current trading day
 
     Raises:
-        HTTPException: If unable to fetch chart data
+        HTTPException: 503 if API key not configured, 404 if no data, 500 for other errors
     """
     try:
         logger.info(f"Fetching chart data for {symbol}: {multiplier}{timespan}")
@@ -123,16 +145,32 @@ async def get_chart_data(
 
         if not chart_data:
             raise HTTPException(
-                status_code=404, detail=f"No chart data available for symbol: {symbol}"
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"error": "not_found", "symbol": symbol, "message": f"No chart data available for symbol: {symbol}"}
             )
 
         return [ChartDataPoint(**point) for point in chart_data]
 
+    except APIKeyNotConfiguredError:
+        logger.error("MASSIVE_API_KEY not configured - cannot fetch chart data")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "api_not_configured", "message": "Stock data service not configured. Please set MASSIVE_API_KEY environment variable."}
+        )
+    except ValueError as e:
+        logger.error(f"No chart data available for {symbol}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "not_found", "symbol": symbol, "message": str(e)}
+        )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching chart data for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch chart data")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "fetch_failed", "message": f"Failed to fetch chart data: {str(e)}"}
+        )
 
 
 @router.get(
@@ -155,7 +193,7 @@ async def get_company_news(
         List of recent news articles
 
     Raises:
-        HTTPException: If unable to fetch news
+        HTTPException: 503 if API key not configured, 500 for other errors
     """
     try:
         logger.info(f"Fetching news for {symbol}, limit: {limit}")
@@ -166,6 +204,19 @@ async def get_company_news(
 
         return [NewsArticle(**article) for article in news_data]
 
+    except APIKeyNotConfiguredError:
+        logger.error("MASSIVE_API_KEY not configured - cannot fetch news")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "api_not_configured", "message": "Stock data service not configured. Please set MASSIVE_API_KEY environment variable."}
+        )
+    except ValueError as e:
+        logger.error(f"Error fetching news for {symbol}: {e}")
+        # Return empty list for news errors - this is acceptable
+        return []
     except Exception as e:
         logger.error(f"Error fetching news for {symbol}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch company news")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "fetch_failed", "message": f"Failed to fetch company news: {str(e)}"}
+        )

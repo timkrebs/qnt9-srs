@@ -6,6 +6,9 @@ Provides:
 - Intraday price data for charts
 - Company news feed
 - Market statistics
+
+IMPORTANT: This service requires a valid MASSIVE_API_KEY environment variable.
+No mock data is returned - if API key is missing, errors are raised.
 """
 
 import asyncio
@@ -19,6 +22,11 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
+class APIKeyNotConfiguredError(Exception):
+    """Raised when MASSIVE_API_KEY is not configured."""
+    pass
+
+
 class FinancialDataService:
     """Service for fetching real-time financial data from Massive API (formerly Polygon.io)."""
 
@@ -29,7 +37,7 @@ class FinancialDataService:
         self.session: Optional[aiohttp.ClientSession] = None
 
         if not self.api_key:
-            logger.warning("MASSIVE_API_KEY not set, using mock data")
+            logger.error("CRITICAL: MASSIVE_API_KEY not set - real stock data will be unavailable")
 
     async def get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -51,17 +59,21 @@ class FinancialDataService:
 
         Returns:
             Dictionary containing current price, change, volume, and other data
+
+        Raises:
+            APIKeyNotConfiguredError: If MASSIVE_API_KEY is not set
+            ValueError: If no data available for symbol
         """
         if not self.api_key:
-            logger.info(f"No API key configured, using mock data for {symbol}")
-            return self._get_mock_quote(symbol)
+            logger.error(f"Cannot fetch quote for {symbol}: MASSIVE_API_KEY not configured")
+            raise APIKeyNotConfiguredError("MASSIVE_API_KEY environment variable is not configured")
 
         try:
             # Get previous day's close for comparison
             prev_close_data = await self._get_previous_close(symbol)
             if not prev_close_data:
-                logger.warning(f"No previous close data for {symbol}, using mock data")
-                return self._get_mock_quote(symbol)
+                logger.error(f"No previous close data available for {symbol}")
+                raise ValueError(f"No previous close data available for symbol: {symbol}")
 
             # Get current snapshot for real-time data
             snapshot_data = await self._get_snapshot(symbol)
@@ -69,10 +81,10 @@ class FinancialDataService:
             if snapshot_data:
                 current_price = snapshot_data.get("last", {}).get("price")
                 
-                # If price is missing or zero, use mock data
+                # If price is missing or zero, raise an error
                 if current_price is None or current_price == 0:
-                    logger.warning(f"Invalid price data for {symbol} (price={current_price}), using mock data")
-                    return self._get_mock_quote(symbol)
+                    logger.error(f"Invalid price data for {symbol} (price={current_price})")
+                    raise ValueError(f"Invalid or missing price data for symbol: {symbol}")
                 
                 prev_close = prev_close_data.get("close", current_price)
                 change = current_price - prev_close
@@ -93,12 +105,14 @@ class FinancialDataService:
                     "timestamp": datetime.utcnow().isoformat(),
                 }
             else:
-                logger.warning(f"No snapshot data for {symbol}, using mock data")
-                return self._get_mock_quote(symbol)
+                logger.error(f"No snapshot data available for {symbol}")
+                raise ValueError(f"No snapshot data available for symbol: {symbol}")
 
+        except (APIKeyNotConfiguredError, ValueError):
+            raise
         except Exception as e:
             logger.error(f"Error fetching quote for {symbol}: {e}")
-            return self._get_mock_quote(symbol)
+            raise ValueError(f"Failed to fetch quote for {symbol}: {str(e)}")
 
     async def _get_previous_close(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get previous day's closing data."""
@@ -141,30 +155,6 @@ class FinancialDataService:
             logger.error(f"Error fetching snapshot for {symbol}: {e}")
             return None
 
-    def _get_mock_quote(self, symbol: str) -> Dict[str, Any]:
-        """Return mock data for development/testing."""
-        import random
-
-        base_price = random.uniform(50, 500)
-        change = random.uniform(-10, 10)
-        prev_close = base_price - change
-        change_percent = (change / prev_close * 100) if prev_close != 0 else 0
-
-        return {
-            "symbol": symbol.upper(),
-            "name": symbol.upper(),  # Add name for frontend compatibility
-            "price": round(base_price, 2),
-            "change": round(change, 2),
-            "change_percent": round(change_percent, 2),  # Return as number
-            "volume": random.randint(1000000, 50000000),
-            "open": round(prev_close + random.uniform(-2, 2), 2),
-            "high": round(base_price + abs(change), 2),
-            "low": round(base_price - abs(change) * 1.5, 2),
-            "previous_close": round(prev_close, 2),
-            "market_cap": random.randint(10, 3000) * 1000000000,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-
     async def get_intraday_data(
         self, symbol: str, timespan: str = "minute", multiplier: int = 5
     ) -> List[Dict[str, Any]]:
@@ -178,9 +168,14 @@ class FinancialDataService:
 
         Returns:
             List of OHLCV data points
+
+        Raises:
+            APIKeyNotConfiguredError: If MASSIVE_API_KEY is not set
+            ValueError: If no data available
         """
         if not self.api_key:
-            return await self._get_mock_intraday(symbol)
+            logger.error(f"Cannot fetch intraday data for {symbol}: MASSIVE_API_KEY not configured")
+            raise APIKeyNotConfiguredError("MASSIVE_API_KEY environment variable is not configured")
 
         try:
             # Get data for last trading day
@@ -193,14 +188,15 @@ class FinancialDataService:
 
             async with session.get(url, params=params, timeout=10) as response:
                 if response.status != 200:
-                    logger.warning(f"Failed to fetch intraday data: {response.status}")
-                    return await self._get_mock_intraday(symbol)
+                    logger.error(f"Failed to fetch intraday data: HTTP {response.status}")
+                    raise ValueError(f"Failed to fetch intraday data for {symbol}: HTTP {response.status}")
 
                 data = await response.json()
                 results = data.get("results", [])
 
                 if not results:
-                    return await self._get_mock_intraday(symbol)
+                    logger.error(f"No intraday data available for {symbol}")
+                    raise ValueError(f"No intraday data available for symbol: {symbol}")
 
                 chart_data = []
                 for bar in results[-100:]:  # Last 100 data points
@@ -218,38 +214,11 @@ class FinancialDataService:
 
                 return chart_data
 
+        except (APIKeyNotConfiguredError, ValueError):
+            raise
         except Exception as e:
             logger.error(f"Error fetching intraday data for {symbol}: {e}")
-            return await self._get_mock_intraday(symbol)
-
-    async def _get_mock_intraday(self, symbol: str) -> List[Dict[str, Any]]:
-        """Generate mock intraday data for testing."""
-        import random
-
-        data = []
-        base_price = random.uniform(100, 500)
-        now = datetime.utcnow()
-
-        for i in range(78):  # 6.5 hours of 5-minute intervals
-            timestamp = now - timedelta(minutes=5 * (78 - i))
-            price_change = random.uniform(-2, 2)
-            open_price = base_price
-            close_price = base_price + price_change
-
-            data.append(
-                {
-                    "timestamp": timestamp.isoformat(),
-                    "open": round(open_price, 2),
-                    "high": round(max(open_price, close_price) + random.uniform(0, 1), 2),
-                    "low": round(min(open_price, close_price) - random.uniform(0, 1), 2),
-                    "close": round(close_price, 2),
-                    "volume": random.randint(10000, 100000),
-                }
-            )
-
-            base_price = close_price
-
-        return data
+            raise ValueError(f"Failed to fetch intraday data for {symbol}: {str(e)}")
 
     async def get_company_news(self, symbol: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
@@ -261,9 +230,14 @@ class FinancialDataService:
 
         Returns:
             List of news articles with title, url, summary, etc.
+
+        Raises:
+            APIKeyNotConfiguredError: If MASSIVE_API_KEY is not set
+            ValueError: If no news available
         """
         if not self.api_key:
-            return self._get_mock_news(symbol, limit)
+            logger.error(f"Cannot fetch news for {symbol}: MASSIVE_API_KEY not configured")
+            raise APIKeyNotConfiguredError("MASSIVE_API_KEY environment variable is not configured")
 
         try:
             session = await self.get_session()
@@ -277,10 +251,15 @@ class FinancialDataService:
 
             async with session.get(url, params=params, timeout=10) as response:
                 if response.status != 200:
-                    return self._get_mock_news(symbol, limit)
+                    logger.error(f"Failed to fetch news for {symbol}: HTTP {response.status}")
+                    raise ValueError(f"Failed to fetch news for {symbol}: HTTP {response.status}")
 
                 data = await response.json()
                 results = data.get("results", [])
+
+                if not results:
+                    logger.warning(f"No news articles available for {symbol}")
+                    return []  # Return empty list for news - this is acceptable
 
                 news_items = []
                 for item in results[:limit]:
@@ -297,27 +276,11 @@ class FinancialDataService:
 
                 return news_items
 
+        except (APIKeyNotConfiguredError, ValueError):
+            raise
         except Exception as e:
             logger.error(f"Error fetching news for {symbol}: {e}")
-            return self._get_mock_news(symbol, limit)
-
-    def _get_mock_news(self, symbol: str, limit: int) -> List[Dict[str, Any]]:
-        """Generate mock news data."""
-        news = []
-        sources = ["Financial Times", "Bloomberg", "Reuters", "CNBC", "Wall Street Journal"]
-
-        for i in range(limit):
-            news.append(
-                {
-                    "title": f"{symbol} Stock Analysis: Key Market Developments {i+1}",
-                    "url": f"https://example.com/news/{symbol.lower()}-{i+1}",
-                    "summary": f"Latest market analysis and insights on {symbol} stock performance, including expert opinions and technical indicators.",
-                    "source": sources[i % len(sources)],
-                    "published_at": (datetime.utcnow() - timedelta(hours=i * 2)).isoformat(),
-                    "image_url": "",
-                }
-            )
-        return news
+            raise ValueError(f"Failed to fetch news for {symbol}: {str(e)}")
 
 
 # Singleton instance

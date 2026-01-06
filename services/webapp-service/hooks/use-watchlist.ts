@@ -7,7 +7,7 @@ import {
   type WatchlistCreate,
   type WatchlistResponse,
 } from '@/lib/api/watchlist'
-import { searchService, type StockQuote } from '@/lib/api/search'
+import { stockService } from '@/lib/api/stock'
 import { ApiError } from '@/lib/api/client'
 import { useAuth } from '@/lib/auth/auth-context'
 
@@ -46,13 +46,22 @@ export const useWatchlist = (): UseWatchlistReturn => {
   const fetchPriceForItem = useCallback(
     async (item: WatchlistItem): Promise<WatchlistItemWithPrice> => {
       try {
-        const quote: StockQuote = await searchService.getQuote(item.symbol)
+        // Use stockService.getPrice for consistency with Market Overview
+        const priceData = await stockService.getPrice(item.symbol)
+        // Also get ticker details for the name
+        let name = item.symbol
+        try {
+          const details = await stockService.getTickerDetails(item.symbol)
+          name = details.data?.name || item.symbol
+        } catch {
+          // Name fetch is not critical
+        }
         return {
           ...item,
-          price: quote.price,
-          change: quote.change,
-          change_percent: quote.change_percent,
-          name: quote.name,
+          price: priceData.price ?? undefined,
+          change: priceData.change ?? undefined,
+          change_percent: priceData.change_percent ?? undefined,
+          name,
           priceLoading: false,
         }
       } catch {
