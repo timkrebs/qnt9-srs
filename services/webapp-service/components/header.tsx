@@ -34,18 +34,6 @@ const NAV_LINKS = [
   { label: "About", href: "/about" },
 ]
 
-const MOBILE_NAV_LINKS = [
-  { label: "Research", href: "/research" },
-  { label: "Safety", href: "/safety" },
-  { label: "For Business", href: "/for-business" },
-  { label: "For Developers", href: "/for-developers" },
-  { label: "ChatGPT", href: "/chatgpt" },
-  { label: "Sora", href: "/sora" },
-  { label: "Stories", href: "/stories" },
-  { label: "Company", href: "/company" },
-  { label: "News", href: "/news" },
-]
-
 const getInitials = (name?: string, email?: string): string => {
   if (name && name.trim()) {
     const parts = name.trim().split(' ')
@@ -205,8 +193,8 @@ export default function Header() {
               <Image 
                 src="/logo.png" 
                 alt="finio" 
-                width={28} 
-                height={28} 
+                width={36} 
+                height={36} 
                 className="rounded-sm"
               />
               <span className="text-xl font-semibold text-black">finio</span>
@@ -266,8 +254,8 @@ export default function Header() {
                 <Image 
                   src="/logo.png" 
                   alt="finio" 
-                  width={24} 
-                  height={24} 
+                  width={32} 
+                  height={32} 
                   className="rounded-sm"
                 />
                 <span className="text-lg font-semibold">finio</span>
@@ -320,32 +308,11 @@ export default function Header() {
 
             {/* Main Navigation */}
             <nav className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-1 mb-6">
+              <div className="space-y-1">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                   Navigation
                 </p>
                 {NAV_LINKS.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={handleCloseMobileMenu}
-                    className={cn(
-                      "block py-2.5 text-sm transition-colors",
-                      pathname === link.href
-                        ? "text-black font-medium"
-                        : "text-gray-600"
-                    )}
-                  >
-                    {link.label}
-                  </Link>
-                ))}
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                  Explore
-                </p>
-                {MOBILE_NAV_LINKS.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
