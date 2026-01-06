@@ -21,7 +21,7 @@ export default function PrivacyContent() {
       <section className="max-w-4xl mx-auto px-6 md:px-8 py-12">
         <div className="prose prose-gray max-w-none">
           <p className="text-gray-600 leading-relaxed mb-8">
-            At Finio, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our stock research platform.
+            At finio, we take your privacy seriously. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our stock research platform.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-12 mb-4">

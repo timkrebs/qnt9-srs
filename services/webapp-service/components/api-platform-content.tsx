@@ -41,16 +41,16 @@ export default function ApiPlatformContent() {
   ]
 
   return (
-    <main className="ml-64 pt-14 flex-1">
-      <div className="max-w-6xl mx-auto px-8 py-16">
+    <main className="md:ml-64 pt-14 flex-1">
+      <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-16">
         {/* Hero Section */}
-        <section className="text-center mb-20">
-          <h1 className="text-6xl font-normal mb-8 tracking-tight">
+        <section className="text-center mb-12 md:mb-20">
+          <h1 className="text-3xl md:text-5xl lg:text-6xl font-normal mb-6 md:mb-8 tracking-tight">
             Build leading AI products
-            <br />
-            on OpenAI's platform
+            <br className="hidden md:block" />
+            <span className="md:hidden"> </span>on OpenAI's platform
           </h1>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-3 md:gap-4">
             <Button className="bg-black text-white hover:bg-gray-800 rounded-full px-6 h-11">Contact sales</Button>
             <Button
               variant="ghost"
@@ -74,18 +74,18 @@ export default function ApiPlatformContent() {
         </section>
 
         {/* Powered by Models Section */}
-        <section className="mb-20">
-          <div className="text-center mb-12">
-            <h2 className="text-5xl font-normal mb-6 tracking-tight">Powered by our frontier models</h2>
-            <p className="text-gray-700 max-w-2xl mx-auto text-lg">
+        <section className="mb-12 md:mb-20">
+          <div className="text-center mb-8 md:mb-12">
+            <h2 className="text-2xl md:text-4xl lg:text-5xl font-normal mb-4 md:mb-6 tracking-tight">Powered by our frontier models</h2>
+            <p className="text-gray-700 max-w-2xl mx-auto text-base md:text-lg">
               Our industry-leading models are designed for real-world utility,
-              <br />
-              delivering advanced intelligence and multimodal capabilities.
+              <br className="hidden md:block" />
+              <span className="md:hidden"> </span>delivering advanced intelligence and multimodal capabilities.
             </p>
           </div>
 
           {/* Model Cards */}
-          <div className="grid grid-cols-3 gap-6 mt-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mt-8 md:mt-16">
             {models.map((model, index) => (
               <div
                 key={index}

@@ -38,20 +38,20 @@ export default function AgentsContent() {
   ]
 
   return (
-    <main className="ml-64 pt-14 flex-1">
-      <div className="max-w-7xl mx-auto px-8 py-16">
+    <main className="md:ml-64 pt-14 flex-1">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 md:py-16">
         {/* Hero Section */}
-        <section className="grid grid-cols-2 gap-16 mb-32 items-center">
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 mb-16 md:mb-32 items-center">
           <div>
-            <h1 className="text-6xl font-normal mb-8 leading-tight tracking-tight">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-normal mb-6 md:mb-8 leading-tight tracking-tight">
               Build every step of agents on one platform
             </h1>
-            <p className="text-gray-700 text-lg mb-8">
+            <p className="text-gray-700 text-base md:text-lg mb-6 md:mb-8">
               Ship production-ready agents faster and more reliably across your products
-              <br />
-              and organization.
+              <br className="hidden md:block" />
+              <span className="md:hidden"> </span>and organization.
             </p>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
               <Button variant="ghost" className="bg-gray-100 text-black hover:bg-gray-200 rounded-full px-6 h-11">
                 Contact sales
               </Button>
@@ -104,11 +104,11 @@ export default function AgentsContent() {
 
         {/* Testimonials Section */}
         <section>
-          <h2 className="text-5xl font-normal text-center mb-16 tracking-tight">
+          <h2 className="text-2xl md:text-4xl lg:text-5xl font-normal text-center mb-8 md:mb-16 tracking-tight">
             Leading organizations build agents with OpenAI
           </h2>
 
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {testimonials.slice(0, 3).map((item, index) => (
               <div
                 key={index}

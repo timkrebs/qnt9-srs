@@ -42,7 +42,7 @@ export default function AboutContent() {
                 Empowering investors with data
               </h1>
               <p className="text-xl text-gray-600 mb-8 leading-relaxed">
-                Finio is a stock research platform built for individual investors who want professional-grade market data without the enterprise price tag.
+                finio is a stock research platform built for individual investors who want professional-grade market data without the enterprise price tag.
               </p>
               <div className="flex items-center gap-4">
                 <Link href="/signup">
@@ -61,7 +61,7 @@ export default function AboutContent() {
             <div className="relative aspect-square max-w-md mx-auto lg:mx-0">
               <div className="absolute inset-0 bg-gradient-to-br from-blue-100 via-purple-50 to-pink-100 rounded-3xl" />
               <div className="absolute inset-4 bg-white rounded-2xl shadow-sm flex items-center justify-center">
-                <span className="text-6xl font-bold text-gray-900">Finio</span>
+                <span className="text-6xl font-bold text-gray-900">finio</span>
               </div>
             </div>
           </div>
@@ -141,7 +141,7 @@ export default function AboutContent() {
             Ready to start your research?
           </h2>
           <p className="text-gray-400 mb-8 max-w-xl mx-auto">
-            Join thousands of investors using Finio to make better investment decisions.
+            Join thousands of investors using finio to make better investment decisions.
           </p>
           <Link href="/signup">
             <Button className="bg-white text-gray-900 hover:bg-gray-100 px-8">

@@ -201,24 +201,24 @@ export default function SettingsPage() {
       <Header />
       <Sidebar />
 
-      <main className="pl-64 pt-14">
-        <div className="max-w-6xl mx-auto px-12 py-12">
-          <h1 className="text-4xl font-normal text-black mb-2">Settings</h1>
-          <p className="text-gray-600 mb-12">Manage your account settings and preferences</p>
+      <main className="md:pl-64 pt-14">
+        <div className="max-w-6xl mx-auto px-4 md:px-12 py-8 md:py-12">
+          <h1 className="text-3xl md:text-4xl font-normal text-black mb-2">Settings</h1>
+          <p className="text-gray-600 mb-8 md:mb-12">Manage your account settings and preferences</p>
 
-          <div className="flex gap-12">
-            {/* Settings Navigation */}
-            <nav className="w-48 flex-shrink-0">
-              <div className="space-y-1">
+          <div className="flex flex-col md:flex-row gap-6 md:gap-12">
+            {/* Settings Navigation - Horizontal scroll on mobile, vertical on desktop */}
+            <nav className="w-full md:w-48 flex-shrink-0">
+              <div className="flex md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full text-left px-4 py-2 text-sm rounded-lg transition-colors ${
+                    className={`whitespace-nowrap px-4 py-2.5 text-sm rounded-lg transition-colors min-h-[44px] ${
                       activeTab === tab.id
                         ? "bg-gray-100 text-black font-medium"
                         : "text-gray-600 hover:text-black hover:bg-gray-50"
-                    }`}
+                    } md:w-full md:text-left`}
                   >
                     {tab.label}
                   </button>
@@ -227,7 +227,7 @@ export default function SettingsPage() {
             </nav>
 
             {/* Settings Content */}
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               {activeTab === "general" && (
                 <div className="space-y-8">
                   <div>

@@ -295,7 +295,7 @@ export default function HomeContent() {
       <main className="flex-1 pt-14 bg-gray-50 min-h-screen">
         {/* Dashboard Header */}
         <section className="bg-white border-b border-gray-100">
-          <div className="max-w-6xl mx-auto px-8 py-8">
+          <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
             <div className="flex items-start justify-between">
               <div>
                 <h1 className="text-2xl font-semibold text-gray-900">
@@ -405,7 +405,7 @@ export default function HomeContent() {
         </section>
 
         {/* Dashboard Content */}
-        <div className="max-w-6xl mx-auto px-8 py-8">
+        <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 md:py-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Content - 2 columns */}
             <div className="lg:col-span-2 space-y-6">
@@ -685,12 +685,12 @@ export default function HomeContent() {
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50 via-transparent to-transparent opacity-60" />
-        <div className="relative max-w-6xl mx-auto px-6 md:px-8 py-20">
+        <div className="relative max-w-6xl mx-auto px-4 md:px-8 py-12 md:py-20">
           <div className="flex flex-col items-center text-center">
-            <h1 className="text-5xl font-semibold tracking-tight text-gray-900 mb-4">
+            <h1 className="text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight text-gray-900 mb-4">
               Stock Research Platform
             </h1>
-            <p className="text-xl text-gray-600 mb-10 max-w-2xl">
+            <p className="text-lg md:text-xl text-gray-600 mb-8 md:mb-10 max-w-2xl">
               Professional-grade market data, real-time quotes, and comprehensive
               analytics for informed investment decisions.
             </p>

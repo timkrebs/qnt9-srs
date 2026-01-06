@@ -57,7 +57,7 @@ export default function SignupPage() {
       })
       toast({
         title: 'Account created',
-        description: 'Welcome to Finio! Your account has been created.',
+        description: 'Welcome to finio! Your account has been created.',
       })
       router.push('/')
     } catch (error) {
@@ -86,7 +86,7 @@ export default function SignupPage() {
               Create your account
             </h1>
             <p className="text-sm text-gray-600">
-              Start building with Finio&apos;s platform
+              Start building with finio&apos;s platform
             </p>
           </div>
 

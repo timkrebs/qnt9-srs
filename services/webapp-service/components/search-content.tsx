@@ -109,7 +109,7 @@ export default function SearchContent() {
   }
 
   return (
-    <main className="pt-14 min-h-screen px-8 pb-16">
+    <main className="pt-14 min-h-screen px-4 md:px-8 pb-16">
       <div className="max-w-4xl mx-auto">
         {/* Back Button */}
         <div className="pt-8 pb-4">

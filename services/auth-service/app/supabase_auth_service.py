@@ -414,6 +414,7 @@ class SupabaseAuthService:
         user_id: str,
         email: Optional[str] = None,
         full_name: Optional[str] = None,
+        password: Optional[str] = None,
         user_metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
@@ -423,6 +424,7 @@ class SupabaseAuthService:
             user_id: User UUID
             email: New email (if changing)
             full_name: New full name
+            password: New password (if changing)
             user_metadata: Additional user metadata
 
         Returns:
@@ -438,6 +440,8 @@ class SupabaseAuthService:
             update_data = {}
             if email:
                 update_data["email"] = email.lower()
+            if password:
+                update_data["password"] = password
             if user_metadata:
                 update_data["data"] = user_metadata
 
@@ -446,11 +450,8 @@ class SupabaseAuthService:
                     user_id, update_data
                 )
                 _ = user_response.user  # noqa: F841
-            else:
-                user_response = self.supabase.auth.admin.get_user_by_id(user_id)
-                _ = user_response.user  # noqa: F841
-
-            # Update user profile using Supabase client
+            
+            # Update user profile using Supabase client (for full_name)
             if full_name is not None:
                 from datetime import datetime
 

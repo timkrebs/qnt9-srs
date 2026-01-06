@@ -23,7 +23,7 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       REFRESH_TOKEN_EXPIRE_DAYS: 30
       PASSWORD_HASH_ROUNDS: 10
-      APP_NAME: Finio Auth Service (Dev)
+      APP_NAME: finio Auth Service (Dev)
       DEBUG: "true"
       LOG_LEVEL: DEBUG
       CORS_ORIGINS: https://dev.finio.cloud,https://api-dev.finio.cloud,http://localhost:3000,http://localhost:8010

@@ -1,9 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { Search, Settings, User, LogOut, FileEdit } from 'lucide-react'
+import { Search, Settings, User, LogOut, FileEdit, Menu, Star, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -14,6 +15,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetClose,
+} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/auth/auth-context'
 import { useToast } from '@/hooks/use-toast'
@@ -24,6 +32,18 @@ const NAV_LINKS = [
   { label: "Pricing", href: "/pricing" },
   { label: "Docs", href: "/docs" },
   { label: "About", href: "/about" },
+]
+
+const MOBILE_NAV_LINKS = [
+  { label: "Research", href: "/research" },
+  { label: "Safety", href: "/safety" },
+  { label: "For Business", href: "/for-business" },
+  { label: "For Developers", href: "/for-developers" },
+  { label: "ChatGPT", href: "/chatgpt" },
+  { label: "Sora", href: "/sora" },
+  { label: "Stories", href: "/stories" },
+  { label: "Company", href: "/company" },
+  { label: "News", href: "/news" },
 ]
 
 const getInitials = (name?: string, email?: string): string => {
@@ -45,10 +65,16 @@ export default function Header() {
   const router = useRouter()
   const { user, isLoading, isAuthenticated, logout, canManageBlog } = useAuth()
   const { toast } = useToast()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const isAuthPage = pathname === '/login' || pathname === '/signup'
 
+  const handleCloseMobileMenu = () => {
+    setMobileMenuOpen(false)
+  }
+
   const handleLogout = async () => {
+    handleCloseMobileMenu()
     try {
       await logout()
       toast({
@@ -160,60 +186,239 @@ export default function Header() {
   }
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200">
-      <div className="max-w-6xl mx-auto flex items-center justify-between px-6 md:px-8 h-14">
-        <div className="flex items-center gap-8">
-          <Link href="/" className="flex items-center gap-2">
-            <Image 
-              src="/logo.png" 
-              alt="Finio" 
-              width={28} 
-              height={28} 
-              className="rounded-sm"
-            />
-            <span className="text-xl font-semibold text-black">Finio</span>
-          </Link>
-          
-          {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-6">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "text-sm font-medium transition-colors hover:text-gray-900",
-                  pathname === link.href ? "text-gray-900" : "text-gray-500"
-                )}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link href="/search">
+    <>
+      <header className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200">
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 md:px-8 h-14">
+          <div className="flex items-center gap-4 md:gap-8">
+            {/* Mobile Menu Button */}
             <Button
               variant="ghost"
               size="icon"
-              className="w-8 h-8"
-              aria-label="Search"
+              className="md:hidden w-10 h-10"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open menu"
             >
-              <Search className="w-4 h-4" />
+              <Menu className="w-5 h-5" />
             </Button>
-          </Link>
 
-          {!isAuthPage && renderAuthSection()}
+            <Link href="/" className="flex items-center gap-2">
+              <Image 
+                src="/logo.png" 
+                alt="finio" 
+                width={28} 
+                height={28} 
+                className="rounded-sm"
+              />
+              <span className="text-xl font-semibold text-black">finio</span>
+            </Link>
+            
+            {/* Desktop Navigation Links */}
+            <nav className="hidden md:flex items-center gap-6">
+              {NAV_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    "text-sm font-medium transition-colors hover:text-gray-900",
+                    pathname === link.href ? "text-gray-900" : "text-gray-500"
+                  )}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
 
-          {isAuthPage && !isAuthenticated && (
-            <Link href="/login">
-              <Button variant="ghost" className="text-sm font-normal">
-                Log in
+          <div className="flex items-center gap-1 md:gap-2">
+            <Link href="/search">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-10 h-10"
+                aria-label="Search"
+              >
+                <Search className="w-5 h-5" />
               </Button>
             </Link>
-          )}
+
+            {/* Desktop Auth Section */}
+            <div className="hidden md:flex items-center">
+              {!isAuthPage && renderAuthSection()}
+
+              {isAuthPage && !isAuthenticated && (
+                <Link href="/login">
+                  <Button variant="ghost" className="text-sm font-normal">
+                    Log in
+                  </Button>
+                </Link>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+
+      {/* Mobile Navigation Drawer */}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-80 p-0">
+          <SheetHeader className="p-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <SheetTitle className="flex items-center gap-2">
+                <Image 
+                  src="/logo.png" 
+                  alt="finio" 
+                  width={24} 
+                  height={24} 
+                  className="rounded-sm"
+                />
+                <span className="text-lg font-semibold">finio</span>
+              </SheetTitle>
+            </div>
+          </SheetHeader>
+
+          <div className="flex flex-col h-[calc(100%-65px)]">
+            {/* User Info for Mobile */}
+            {isAuthenticated && user && (
+              <div className="p-4 border-b border-gray-200 bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback className="bg-black text-white text-sm font-medium">
+                      {getInitials(user.full_name, user.email)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    {user.full_name && (
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {user.full_name}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 truncate">
+                      {user.email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Watchlist Link for Authenticated Users */}
+            {isAuthenticated && (
+              <div className="p-4 border-b border-gray-200">
+                <Link
+                  href="/watchlist"
+                  onClick={handleCloseMobileMenu}
+                  className={cn(
+                    "flex items-center gap-3 py-2 text-sm transition-colors",
+                    pathname === "/watchlist"
+                      ? "text-black font-medium"
+                      : "text-gray-600"
+                  )}
+                >
+                  <Star className="w-5 h-5" />
+                  <span>My Watchlist</span>
+                </Link>
+              </div>
+            )}
+
+            {/* Main Navigation */}
+            <nav className="flex-1 overflow-y-auto p-4">
+              <div className="space-y-1 mb-6">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Navigation
+                </p>
+                {NAV_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={handleCloseMobileMenu}
+                    className={cn(
+                      "block py-2.5 text-sm transition-colors",
+                      pathname === link.href
+                        ? "text-black font-medium"
+                        : "text-gray-600"
+                    )}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                  Explore
+                </p>
+                {MOBILE_NAV_LINKS.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={handleCloseMobileMenu}
+                    className={cn(
+                      "block py-2.5 text-sm transition-colors",
+                      pathname === link.href
+                        ? "text-black font-medium"
+                        : "text-gray-600"
+                    )}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </nav>
+
+            {/* Mobile Footer Actions */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50">
+              {isAuthenticated ? (
+                <div className="space-y-2">
+                  <Link
+                    href="/profile"
+                    onClick={handleCloseMobileMenu}
+                    className="flex items-center gap-3 py-2.5 text-sm text-gray-600"
+                  >
+                    <User className="w-5 h-5" />
+                    Profile
+                  </Link>
+                  <Link
+                    href="/settings"
+                    onClick={handleCloseMobileMenu}
+                    className="flex items-center gap-3 py-2.5 text-sm text-gray-600"
+                  >
+                    <Settings className="w-5 h-5" />
+                    Settings
+                  </Link>
+                  {canManageBlog && (
+                    <Link
+                      href="/admin/blog"
+                      onClick={handleCloseMobileMenu}
+                      className="flex items-center gap-3 py-2.5 text-sm text-gray-600"
+                    >
+                      <FileEdit className="w-5 h-5" />
+                      Blog Admin
+                    </Link>
+                  )}
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-3 py-2.5 text-sm text-red-600 w-full"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    Sign out
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Link href="/login" onClick={handleCloseMobileMenu}>
+                    <Button variant="outline" className="w-full h-11">
+                      Log in
+                    </Button>
+                  </Link>
+                  <Link href="/signup" onClick={handleCloseMobileMenu}>
+                    <Button className="w-full h-11 bg-black text-white hover:bg-gray-800">
+                      Sign up
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   )
 }

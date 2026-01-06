@@ -21,6 +21,7 @@ export default function Sidebar() {
     { label: "News", href: "/news" },
   ]
 
+  // Hide sidebar on specific pages and on mobile (mobile uses header drawer instead)
   if (
     pathname === "/search" ||
     pathname === "/login" ||
@@ -33,7 +34,7 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="fixed left-0 top-14 w-64 h-[calc(100vh-3.5rem)] bg-white border-r border-gray-200 pt-8 px-6">
+    <aside className="hidden md:block fixed left-0 top-14 w-64 h-[calc(100vh-3.5rem)] bg-white border-r border-gray-200 pt-8 px-6">
       {/* Watchlist Link for Authenticated Users */}
       {isAuthenticated && (
         <div className="mb-6 pb-6 border-b border-gray-200">

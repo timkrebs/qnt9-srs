@@ -21,7 +21,7 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
       REFRESH_TOKEN_EXPIRE_DAYS: 7
       PASSWORD_HASH_ROUNDS: 12
-      APP_NAME: Finio Auth Service (Staging)
+      APP_NAME: finio Auth Service (Staging)
       DEBUG: "true"
       LOG_LEVEL: DEBUG
       CORS_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud

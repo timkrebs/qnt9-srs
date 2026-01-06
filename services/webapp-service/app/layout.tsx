@@ -8,9 +8,9 @@ import { AuthProvider } from '@/lib/auth/auth-context'
 import { Toaster } from '@/components/ui/toaster'
 
 export const metadata: Metadata = {
-  title: 'Finio - Stock Research Platform',
+  title: 'finio - Stock Research Platform',
   description:
-    'Finio is a stock research and analysis platform. Search stocks by ISIN, WKN, or symbol and build your watchlist.',
+    'finio is a stock research and analysis platform. Search stocks by ISIN, WKN, or symbol and build your watchlist.',
   icons: {
     icon: [
       {

@@ -29,7 +29,7 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
             <Link href="/" className="text-xl font-semibold text-gray-900">
-              Finio
+              finio
             </Link>
             <p className="mt-3 text-sm text-gray-500 leading-relaxed">
               Professional stock research platform with real-time market data and analytics.
@@ -91,7 +91,7 @@ export default function Footer() {
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-gray-100 flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-gray-500">
-            {currentYear} Finio. All rights reserved.
+            {currentYear} finio. All rights reserved.
           </p>
           <div className="flex items-center gap-6">
             <Link

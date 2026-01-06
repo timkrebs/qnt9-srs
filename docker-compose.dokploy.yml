@@ -37,7 +37,7 @@ services:
       PASSWORD_HASH_ROUNDS: 12
       
       # Service Configuration
-      APP_NAME: Finio Auth Service
+      APP_NAME: finio Auth Service
       DEBUG: "false"
       LOG_LEVEL: INFO
       
