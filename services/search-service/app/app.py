@@ -1758,48 +1758,30 @@ async def global_exception_handler(request, exc):
     )
 
 
-# Register search routers using importlib to avoid __init__.py circular import issues
-import importlib.util
-import os
-
-def load_router_module(module_name: str, file_name: str):
-    """Load a router module directly without triggering __init__.py imports."""
-    try:
-        spec = importlib.util.spec_from_file_location(
-            module_name,
-            f"/app/app/routers/{file_name}"
-        )
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            return module
-    except Exception as e:
-        logger.error(f"Failed to load router module {module_name}: {e}")
-    return None
+# Register search routers using direct imports
+# Note: Dynamic loading with importlib.util.spec_from_file_location breaks relative imports
 
 # Load and register instant search router
-instant_search_module = load_router_module("instant_search_router", "instant_search_router.py")
-if instant_search_module:
-    app.include_router(instant_search_module.router)
+try:
+    from .routers.instant_search_router import router as instant_search_router
+    app.include_router(instant_search_router)
     logger.info("Instant search router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register instant_search_router: {e}")
 
 # Load and register autocomplete router  
-autocomplete_module = load_router_module("autocomplete_router", "autocomplete_router.py")
-if autocomplete_module:
-    app.include_router(autocomplete_module.router)
+try:
+    from .routers.autocomplete_router import router as autocomplete_router
+    app.include_router(autocomplete_router)
     logger.info("Autocomplete router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register autocomplete_router: {e}")
 
 
 # Register additional routers - stock data endpoints
 try:
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "stock_data_router",
-        "/app/app/routers/stock_data_router.py"
-    )
-    stock_data_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(stock_data_module)
-    app.include_router(stock_data_module.router)
+    from .routers.stock_data_router import router as stock_data_router
+    app.include_router(stock_data_router)
     logger.info("Stock data router registered successfully")
 except Exception as e:
     logger.error(f"Failed to register stock data router: {e}")
