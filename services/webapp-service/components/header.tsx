@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
 import { Search, Settings, User, LogOut, FileEdit } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -163,7 +164,14 @@ export default function Header() {
       <div className="max-w-6xl mx-auto flex items-center justify-between px-6 md:px-8 h-14">
         <div className="flex items-center gap-8">
           <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-semibold text-black">QNT9</span>
+            <Image 
+              src="/logo.png" 
+              alt="Finio" 
+              width={28} 
+              height={28} 
+              className="rounded-sm"
+            />
+            <span className="text-xl font-semibold text-black">Finio</span>
           </Link>
           
           {/* Navigation Links */}

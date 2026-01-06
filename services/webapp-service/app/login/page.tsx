@@ -75,7 +75,7 @@ export default function LoginPage() {
             <h1 className="text-3xl font-normal text-black mb-2">
               Welcome back
             </h1>
-            <p className="text-sm text-gray-600">Log in to your QNT9 account</p>
+            <p className="text-sm text-gray-600">Log in to your Finio account</p>
           </div>
 
           <Form {...form}>

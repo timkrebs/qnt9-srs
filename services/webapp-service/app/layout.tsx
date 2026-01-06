@@ -4,37 +4,21 @@ import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
-import { Geist_Mono, Geist_Mono as V0_Font_Geist_Mono } from 'next/font/google'
-
 import { AuthProvider } from '@/lib/auth/auth-context'
 import { Toaster } from '@/components/ui/toaster'
 
-const _geistMono = V0_Font_Geist_Mono({
-  subsets: ['latin'],
-  weight: ['100', '200', '300', '400', '500', '600', '700', '800', '900'],
-})
-
 export const metadata: Metadata = {
-  title: 'QNT9 - Stock Research Platform',
+  title: 'Finio - Stock Research Platform',
   description:
-    'QNT9 is a stock research and analysis platform. Search stocks by ISIN, WKN, or symbol and build your watchlist.',
-  generator: 'v0.app',
+    'Finio is a stock research and analysis platform. Search stocks by ISIN, WKN, or symbol and build your watchlist.',
   icons: {
     icon: [
       {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
+        url: '/logo.png',
+        type: 'image/png',
       },
     ],
-    apple: '/apple-icon.png',
+    apple: '/logo.png',
   },
 }
 
@@ -45,6 +29,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://rsms.me/" />
+        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+      </head>
       <body className="font-sans antialiased">
         <AuthProvider>
           {children}

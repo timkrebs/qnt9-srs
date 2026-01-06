@@ -249,5 +249,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Documetaiton
-docs/
+# Documentation (only root docs folder, not webapp app/docs page)
+/docs/**
+!/services/webapp-service/app/docs/
+!/services/webapp-service/app/docs/**

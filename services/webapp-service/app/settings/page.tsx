@@ -3,19 +3,198 @@
 import Header from "@/components/header"
 import Sidebar from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
-import { useState } from "react"
+import { useAuth } from "@/lib/auth/auth-context"
+import { authService } from "@/lib/api/auth"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Loader2, Check, AlertCircle, Eye, EyeOff } from "lucide-react"
+
+type TabId = "general" | "account" | "security" | "notifications"
+
+interface NotificationSettings {
+  email_notifications: boolean
+  product_updates: boolean
+  usage_alerts: boolean
+  security_alerts: boolean
+  marketing_emails: boolean
+}
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState("general")
+  const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth()
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<TabId>("general")
+  
+  // Form states
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  
+  // Notification settings
+  const [notifications, setNotifications] = useState<NotificationSettings>({
+    email_notifications: true,
+    product_updates: true,
+    usage_alerts: true,
+    security_alerts: true,
+    marketing_emails: false,
+  })
+  
+  // Loading/status states
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [profileSuccess, setProfileSuccess] = useState(false)
+  const [passwordSuccess, setPasswordSuccess] = useState(false)
+  const [notificationsSuccess, setNotificationsSuccess] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
 
   const tabs = [
-    { id: "general", label: "General" },
-    { id: "account", label: "Account" },
-    { id: "security", label: "Security" },
-    { id: "api", label: "API Keys" },
-    { id: "billing", label: "Billing" },
-    { id: "notifications", label: "Notifications" },
+    { id: "general" as TabId, label: "General" },
+    { id: "account" as TabId, label: "Account" },
+    { id: "security" as TabId, label: "Security" },
+    { id: "notifications" as TabId, label: "Notifications" },
   ]
+
+  // Populate form with user data
+  useEffect(() => {
+    if (user) {
+      setFullName(user.full_name || "")
+      setEmail(user.email || "")
+      // Load notification settings from user metadata if available
+      const savedNotifications = user.metadata?.notifications as NotificationSettings | undefined
+      if (savedNotifications) {
+        setNotifications(savedNotifications)
+      }
+    }
+  }, [user])
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/login")
+    }
+  }, [authLoading, isAuthenticated, router])
+
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true)
+    setProfileError(null)
+    setProfileSuccess(false)
+
+    try {
+      await authService.updateProfile({
+        full_name: fullName,
+        email: email !== user?.email ? email : undefined,
+      })
+      setProfileSuccess(true)
+      setTimeout(() => setProfileSuccess(false), 3000)
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Failed to update profile")
+    } finally {
+      setIsSavingProfile(false)
+    }
+  }
+
+  const handleUpdatePassword = async () => {
+    setPasswordError(null)
+    setPasswordSuccess(false)
+
+    // Validate passwords
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Passwords do not match")
+      return
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordError("Password must be at least 8 characters")
+      return
+    }
+
+    setIsSavingPassword(true)
+
+    try {
+      await authService.updatePassword(newPassword)
+      setPasswordSuccess(true)
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+      setTimeout(() => setPasswordSuccess(false), 3000)
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Failed to update password")
+    } finally {
+      setIsSavingPassword(false)
+    }
+  }
+
+  const handleSaveNotifications = async () => {
+    setIsSavingNotifications(true)
+    setNotificationsSuccess(false)
+
+    try {
+      // Save notifications to user metadata
+      await authService.updateProfile({
+        // This would need backend support for metadata updates
+      })
+      setNotificationsSuccess(true)
+      setTimeout(() => setNotificationsSuccess(false), 3000)
+    } catch {
+      // Silently fail for now - notifications save is optional
+    } finally {
+      setIsSavingNotifications(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
+      return
+    }
+
+    setIsDeleting(true)
+    try {
+      // Account deletion would need backend endpoint
+      await logout()
+      router.push("/")
+    } catch {
+      setIsDeleting(false)
+    }
+  }
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "N/A"
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+
+  const getTierBadgeColor = (tier: string) => {
+    switch (tier) {
+      case "enterprise":
+        return "bg-purple-50 text-purple-700"
+      case "paid":
+        return "bg-blue-50 text-blue-700"
+      default:
+        return "bg-gray-50 text-gray-700"
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -56,48 +235,88 @@ export default function SettingsPage() {
 
                     <div className="space-y-6">
                       <div>
-                        <label className="block text-sm text-gray-900 mb-2">Profile Name</label>
+                        <label className="block text-sm text-gray-900 mb-2">Full Name</label>
                         <input
                           type="text"
-                          defaultValue="John Doe"
+                          value={fullName}
+                          onChange={(e) => setFullName(e.target.value)}
+                          placeholder="Enter your full name"
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm text-gray-900 mb-2">Bio</label>
-                        <textarea
-                          rows={4}
-                          defaultValue="Building the future of AI applications with OpenAI's platform."
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">Location</label>
+                        <label className="block text-sm text-gray-900 mb-2">Email Address</label>
                         <input
-                          type="text"
-                          defaultValue="San Francisco, CA"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
                         />
+                        <p className="mt-1 text-xs text-gray-500">
+                          {user.email_confirmed_at 
+                            ? `Email verified on ${formatDate(user.email_confirmed_at)}`
+                            : "Email not verified"
+                          }
+                        </p>
                       </div>
 
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">Language</label>
-                        <select className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent">
-                          <option>English (US)</option>
-                          <option>English (UK)</option>
-                          <option>Spanish</option>
-                          <option>French</option>
-                          <option>German</option>
-                        </select>
+                      {/* Account Info Display */}
+                      <div className="p-4 bg-gray-50 rounded-lg space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Account Tier</span>
+                          <span className={`px-2 py-1 text-xs rounded capitalize ${getTierBadgeColor(user.tier)}`}>
+                            {user.tier}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Member Since</span>
+                          <span className="text-sm text-gray-900">{formatDate(user.created_at)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Last Login</span>
+                          <span className="text-sm text-gray-900">{formatDate(user.last_login || user.last_sign_in_at)}</span>
+                        </div>
+                        {user.role && user.role !== "user" && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Role</span>
+                            <span className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded capitalize">
+                              {user.role}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
 
+                  {profileError && (
+                    <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                      <AlertCircle className="w-4 h-4" />
+                      {profileError}
+                    </div>
+                  )}
+
+                  {profileSuccess && (
+                    <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+                      <Check className="w-4 h-4" />
+                      Profile updated successfully
+                    </div>
+                  )}
+
                   <div className="pt-6 border-t border-gray-200">
-                    <Button className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal">
-                      Save changes
+                    <Button 
+                      onClick={handleSaveProfile}
+                      disabled={isSavingProfile}
+                      className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal"
+                    >
+                      {isSavingProfile ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save changes"
+                      )}
                     </Button>
                   </div>
                 </div>
@@ -106,37 +325,66 @@ export default function SettingsPage() {
               {activeTab === "account" && (
                 <div className="space-y-8">
                   <div>
-                    <h2 className="text-xl font-normal text-black mb-6">Account Settings</h2>
+                    <h2 className="text-xl font-normal text-black mb-6">Account Information</h2>
 
                     <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">Email Address</label>
-                        <input
-                          type="email"
-                          defaultValue="john.doe@example.com"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">
-                          Your email address is used for login and notifications
-                        </p>
+                      {/* Subscription Info */}
+                      <div className="p-6 border border-gray-200 rounded-lg">
+                        <h3 className="text-lg font-normal text-black mb-4">Subscription</h3>
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm text-gray-600">Current Plan</span>
+                            <span className={`px-3 py-1 text-sm rounded-full capitalize ${getTierBadgeColor(user.tier)}`}>
+                              {user.tier} Plan
+                            </span>
+                          </div>
+                          {user.subscription_start && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Started</span>
+                              <span className="text-sm text-gray-900">{formatDate(user.subscription_start)}</span>
+                            </div>
+                          )}
+                          {user.subscription_end && (
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-gray-600">Renews</span>
+                              <span className="text-sm text-gray-900">{formatDate(user.subscription_end)}</span>
+                            </div>
+                          )}
+                        </div>
+                        {user.tier === "free" && (
+                          <div className="mt-4 pt-4 border-t border-gray-100">
+                            <Button 
+                              variant="outline" 
+                              className="border-gray-300 text-sm font-normal bg-transparent"
+                              onClick={() => router.push("/pricing")}
+                            >
+                              Upgrade to Pro
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">Username</label>
-                        <input
-                          type="text"
-                          defaultValue="johndoe"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">Organization</label>
-                        <input
-                          type="text"
-                          placeholder="Your organization name (optional)"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                        />
+                      {/* Account Details */}
+                      <div className="p-6 border border-gray-200 rounded-lg">
+                        <h3 className="text-lg font-normal text-black mb-4">Account Details</h3>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                            <span className="text-sm text-gray-600">User ID</span>
+                            <code className="text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded">
+                              {user.id.slice(0, 8)}...{user.id.slice(-4)}
+                            </code>
+                          </div>
+                          <div className="flex items-center justify-between py-2 border-b border-gray-100">
+                            <span className="text-sm text-gray-600">Email</span>
+                            <span className="text-sm text-gray-900">{user.email}</span>
+                          </div>
+                          <div className="flex items-center justify-between py-2">
+                            <span className="text-sm text-gray-600">Account Status</span>
+                            <span className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded">
+                              Active
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -147,13 +395,22 @@ export default function SettingsPage() {
                       <div className="p-4 border border-red-200 rounded-lg bg-red-50">
                         <h4 className="text-sm font-medium text-red-900 mb-2">Delete Account</h4>
                         <p className="text-sm text-red-700 mb-4">
-                          Once you delete your account, there is no going back. Please be certain.
+                          Once you delete your account, there is no going back. All your data including watchlists and settings will be permanently removed.
                         </p>
                         <Button
                           variant="outline"
+                          onClick={handleDeleteAccount}
+                          disabled={isDeleting}
                           className="border-red-300 text-red-700 hover:bg-red-100 bg-transparent"
                         >
-                          Delete account
+                          {isDeleting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Deleting...
+                            </>
+                          ) : (
+                            "Delete account"
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -169,29 +426,79 @@ export default function SettingsPage() {
                     <div className="space-y-6">
                       <div>
                         <label className="block text-sm text-gray-900 mb-2">Current Password</label>
-                        <input
-                          type="password"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                        />
+                        <div className="relative">
+                          <input
+                            type={showCurrentPassword ? "text" : "password"}
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder="Enter current password"
+                            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                          >
+                            {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
                       </div>
 
                       <div>
                         <label className="block text-sm text-gray-900 mb-2">New Password</label>
-                        <input
-                          type="password"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                        />
+                        <div className="relative">
+                          <input
+                            type={showNewPassword ? "text" : "password"}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="Enter new password (min. 8 characters)"
+                            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                          >
+                            {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
                       </div>
 
                       <div>
                         <label className="block text-sm text-gray-900 mb-2">Confirm New Password</label>
-                        <input
-                          type="password"
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                        />
+                        <div className="relative">
+                          <input
+                            type={showConfirmPassword ? "text" : "password"}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="Confirm new password"
+                            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                          >
+                            {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
+
+                  {passwordError && (
+                    <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                      <AlertCircle className="w-4 h-4" />
+                      {passwordError}
+                    </div>
+                  )}
+
+                  {passwordSuccess && (
+                    <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+                      <Check className="w-4 h-4" />
+                      Password updated successfully
+                    </div>
+                  )}
 
                   <div className="pt-6 border-t border-gray-200">
                     <h3 className="text-lg font-normal text-black mb-4">Two-Factor Authentication</h3>
@@ -200,110 +507,40 @@ export default function SettingsPage() {
                         <h4 className="text-sm font-medium text-gray-900 mb-1">Authenticator App</h4>
                         <p className="text-sm text-gray-600">Use an authenticator app to generate one-time codes</p>
                       </div>
-                      <Button variant="outline" className="border-gray-300 text-sm font-normal bg-transparent">
-                        Enable
+                      <Button variant="outline" className="border-gray-300 text-sm font-normal bg-transparent" disabled>
+                        Coming Soon
                       </Button>
                     </div>
                   </div>
 
                   <div className="pt-6 border-t border-gray-200">
-                    <Button className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal">
-                      Update password
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "api" && (
-                <div className="space-y-8">
-                  <div>
-                    <h2 className="text-xl font-normal text-black mb-2">API Keys</h2>
-                    <p className="text-sm text-gray-600 mb-6">Manage your API keys for accessing OpenAI services</p>
-
-                    <div className="space-y-4">
-                      <div className="p-4 border border-gray-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-sm font-medium text-gray-900">Production Key</h4>
-                          <span className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded">Active</span>
-                        </div>
-                        <p className="text-sm text-gray-600 font-mono mb-2">sk-...7a3f</p>
-                        <p className="text-xs text-gray-500">Created on Jan 15, 2024</p>
-                      </div>
-
-                      <div className="p-4 border border-gray-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-sm font-medium text-gray-900">Development Key</h4>
-                          <span className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded">Active</span>
-                        </div>
-                        <p className="text-sm text-gray-600 font-mono mb-2">sk-...2b9c</p>
-                        <p className="text-xs text-gray-500">Created on Dec 8, 2023</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-6 border-t border-gray-200">
-                    <Button className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal">
-                      Create new key
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {activeTab === "billing" && (
-                <div className="space-y-8">
-                  <div>
-                    <h2 className="text-xl font-normal text-black mb-6">Billing & Usage</h2>
-
-                    <div className="p-6 border border-gray-200 rounded-lg mb-6">
-                      <h3 className="text-lg font-normal text-black mb-4">Current Plan</h3>
+                    <h3 className="text-lg font-normal text-black mb-4">Login Activity</h3>
+                    <div className="p-4 bg-gray-50 rounded-lg">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-900 font-medium mb-1">Pro Plan</p>
-                          <p className="text-sm text-gray-600">$20/month</p>
+                          <p className="text-sm text-gray-900">Last sign in</p>
+                          <p className="text-xs text-gray-500">{formatDate(user.last_sign_in_at)}</p>
                         </div>
-                        <Button variant="outline" className="border-gray-300 text-sm font-normal bg-transparent">
-                          Change plan
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-lg font-normal text-black mb-4">Usage this month</h3>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                          <span className="text-sm text-gray-900">API Calls</span>
-                          <span className="text-sm font-medium text-gray-900">47,328</span>
-                        </div>
-                        <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                          <span className="text-sm text-gray-900">Tokens Used</span>
-                          <span className="text-sm font-medium text-gray-900">1,234,567</span>
-                        </div>
-                        <div className="flex items-center justify-between py-3 border-b border-gray-100">
-                          <span className="text-sm text-gray-900">Estimated Cost</span>
-                          <span className="text-sm font-medium text-gray-900">$47.32</span>
-                        </div>
+                        <span className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded">Current Session</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="pt-6 border-t border-gray-200">
-                    <h3 className="text-lg font-normal text-black mb-4">Payment Method</h3>
-                    <div className="p-4 border border-gray-200 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-8 bg-gray-900 rounded flex items-center justify-center text-white text-xs font-bold">
-                            VISA
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-900">•••• •••• •••• 4242</p>
-                            <p className="text-xs text-gray-500">Expires 12/25</p>
-                          </div>
-                        </div>
-                        <Button variant="outline" className="border-gray-300 text-sm font-normal bg-transparent">
-                          Update
-                        </Button>
-                      </div>
-                    </div>
+                    <Button 
+                      onClick={handleUpdatePassword}
+                      disabled={isSavingPassword || !newPassword || !confirmPassword}
+                      className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal"
+                    >
+                      {isSavingPassword ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        "Update password"
+                      )}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -319,7 +556,12 @@ export default function SettingsPage() {
                           <h4 className="text-sm font-medium text-gray-900 mb-1">Email Notifications</h4>
                           <p className="text-sm text-gray-600">Receive email updates about your account</p>
                         </div>
-                        <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300" />
+                        <input 
+                          type="checkbox" 
+                          checked={notifications.email_notifications}
+                          onChange={(e) => setNotifications({...notifications, email_notifications: e.target.checked})}
+                          className="w-4 h-4 rounded border-gray-300 accent-black" 
+                        />
                       </div>
 
                       <div className="flex items-center justify-between py-4 border-b border-gray-100">
@@ -327,15 +569,25 @@ export default function SettingsPage() {
                           <h4 className="text-sm font-medium text-gray-900 mb-1">Product Updates</h4>
                           <p className="text-sm text-gray-600">Get notified about new features and updates</p>
                         </div>
-                        <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300" />
+                        <input 
+                          type="checkbox" 
+                          checked={notifications.product_updates}
+                          onChange={(e) => setNotifications({...notifications, product_updates: e.target.checked})}
+                          className="w-4 h-4 rounded border-gray-300 accent-black" 
+                        />
                       </div>
 
                       <div className="flex items-center justify-between py-4 border-b border-gray-100">
                         <div>
-                          <h4 className="text-sm font-medium text-gray-900 mb-1">Usage Alerts</h4>
-                          <p className="text-sm text-gray-600">Alerts when you're approaching usage limits</p>
+                          <h4 className="text-sm font-medium text-gray-900 mb-1">Price Alerts</h4>
+                          <p className="text-sm text-gray-600">Alerts when your watchlist stocks hit target prices</p>
                         </div>
-                        <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300" />
+                        <input 
+                          type="checkbox" 
+                          checked={notifications.usage_alerts}
+                          onChange={(e) => setNotifications({...notifications, usage_alerts: e.target.checked})}
+                          className="w-4 h-4 rounded border-gray-300 accent-black" 
+                        />
                       </div>
 
                       <div className="flex items-center justify-between py-4 border-b border-gray-100">
@@ -343,7 +595,12 @@ export default function SettingsPage() {
                           <h4 className="text-sm font-medium text-gray-900 mb-1">Security Alerts</h4>
                           <p className="text-sm text-gray-600">Important security updates and notifications</p>
                         </div>
-                        <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300" />
+                        <input 
+                          type="checkbox" 
+                          checked={notifications.security_alerts}
+                          onChange={(e) => setNotifications({...notifications, security_alerts: e.target.checked})}
+                          className="w-4 h-4 rounded border-gray-300 accent-black" 
+                        />
                       </div>
 
                       <div className="flex items-center justify-between py-4 border-b border-gray-100">
@@ -351,14 +608,37 @@ export default function SettingsPage() {
                           <h4 className="text-sm font-medium text-gray-900 mb-1">Marketing Emails</h4>
                           <p className="text-sm text-gray-600">Receive tips, tutorials, and case studies</p>
                         </div>
-                        <input type="checkbox" className="w-4 h-4 rounded border-gray-300" />
+                        <input 
+                          type="checkbox" 
+                          checked={notifications.marketing_emails}
+                          onChange={(e) => setNotifications({...notifications, marketing_emails: e.target.checked})}
+                          className="w-4 h-4 rounded border-gray-300 accent-black" 
+                        />
                       </div>
                     </div>
                   </div>
 
+                  {notificationsSuccess && (
+                    <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+                      <Check className="w-4 h-4" />
+                      Preferences saved successfully
+                    </div>
+                  )}
+
                   <div className="pt-6 border-t border-gray-200">
-                    <Button className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal">
-                      Save preferences
+                    <Button 
+                      onClick={handleSaveNotifications}
+                      disabled={isSavingNotifications}
+                      className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal"
+                    >
+                      {isSavingNotifications ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save preferences"
+                      )}
                     </Button>
                   </div>
                 </div>

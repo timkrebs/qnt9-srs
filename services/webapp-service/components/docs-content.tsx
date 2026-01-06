@@ -17,7 +17,7 @@ const DOC_CATEGORIES: DocCategory[] = [
   {
     icon: <Book className="w-6 h-6" />,
     title: "Getting Started",
-    description: "Learn the basics of using QNT9 for stock research.",
+    description: "Learn the basics of using Finio for stock research.",
     articles: [
       { title: "Quick Start Guide", href: "/docs" },
       { title: "Creating Your Account", href: "/docs" },
@@ -28,7 +28,7 @@ const DOC_CATEGORIES: DocCategory[] = [
   {
     icon: <Code className="w-6 h-6" />,
     title: "API Reference",
-    description: "Integrate QNT9 data into your applications.",
+    description: "Integrate Finio data into your applications.",
     articles: [
       { title: "Authentication", href: "/docs" },
       { title: "Stock Quotes Endpoint", href: "/docs" },
@@ -70,7 +70,7 @@ const FALLBACK_BLOG_POSTS: BlogPost[] = [
     content: "",
     category: "Product",
     author_id: null,
-    author_name: "QNT9 Team",
+    author_name: "Finio Team",
     image_url: null,
     published: true,
     featured: true,
@@ -86,7 +86,7 @@ const FALLBACK_BLOG_POSTS: BlogPost[] = [
     content: "",
     category: "Education",
     author_id: null,
-    author_name: "QNT9 Team",
+    author_name: "Finio Team",
     image_url: null,
     published: true,
     featured: false,
@@ -102,7 +102,7 @@ const FALLBACK_BLOG_POSTS: BlogPost[] = [
     content: "",
     category: "API",
     author_id: null,
-    author_name: "QNT9 Team",
+    author_name: "Finio Team",
     image_url: null,
     published: true,
     featured: false,
@@ -143,7 +143,7 @@ export default function DocsContent() {
               Documentation
             </h1>
             <p className="text-xl text-gray-600">
-              Learn how to use QNT9 for stock research, integrate our API, and make the most of the platform.
+              Learn how to use Finio for stock research, integrate our API, and make the most of the platform.
             </p>
           </div>
         </div>

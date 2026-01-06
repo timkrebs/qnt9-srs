@@ -138,4 +138,41 @@ export const authService = {
     )
     return response
   },
+
+  updateProfile: async (data: { email?: string; full_name?: string }): Promise<UserResponse> => {
+    const response = await apiRequest<UserResponse>(
+      'auth',
+      '/api/v1/users/me',
+      {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      },
+    )
+    return response
+  },
+
+  updatePassword: async (password: string): Promise<MessageResponse> => {
+    const response = await apiRequest<MessageResponse>(
+      'auth',
+      '/api/v1/users/me/password',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ password }),
+      },
+    )
+    return response
+  },
+
+  requestPasswordReset: async (email: string): Promise<MessageResponse> => {
+    const response = await apiRequest<MessageResponse>(
+      'auth',
+      '/api/v1/users/reset-password',
+      {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+        skipAuth: true,
+      },
+    )
+    return response
+  },
 }

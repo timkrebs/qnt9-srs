@@ -21,7 +21,7 @@ export default function TermsContent() {
       <section className="max-w-4xl mx-auto px-6 md:px-8 py-12">
         <div className="prose prose-gray max-w-none">
           <p className="text-gray-600 leading-relaxed mb-8">
-            Welcome to QNT9. These Terms of Service govern your use of our stock research platform and services. By accessing or using QNT9, you agree to be bound by these terms.
+            Welcome to Finio. These Terms of Service govern your use of our stock research platform and services. By accessing or using Finio, you agree to be bound by these terms.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-12 mb-4">
@@ -35,7 +35,7 @@ export default function TermsContent() {
             2. Description of Service
           </h2>
           <p className="text-gray-600 leading-relaxed mb-8">
-            QNT9 provides a stock research platform that includes real-time market data, company information, news feeds, watchlist management, and related analytical tools. Our services are provided for informational purposes only and should not be considered as financial advice.
+            Finio provides a stock research platform that includes real-time market data, company information, news feeds, watchlist management, and related analytical tools. Our services are provided for informational purposes only and should not be considered as financial advice.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-12 mb-4">
@@ -77,21 +77,21 @@ export default function TermsContent() {
             6. Intellectual Property
           </h2>
           <p className="text-gray-600 leading-relaxed mb-8">
-            All content, trademarks, and intellectual property on QNT9 are owned by us or our licensors. You may not use, copy, or distribute any content without our express written permission, except for personal, non-commercial use of the services.
+            All content, trademarks, and intellectual property on Finio are owned by us or our licensors. You may not use, copy, or distribute any content without our express written permission, except for personal, non-commercial use of the services.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-12 mb-4">
             7. Disclaimer of Warranties
           </h2>
           <p className="text-gray-600 leading-relaxed mb-8">
-            QNT9 is provided &quot;as is&quot; without warranties of any kind, either express or implied. We do not guarantee the accuracy, completeness, or timeliness of any information provided. Market data may be delayed or inaccurate. We are not responsible for any investment decisions made based on our platform.
+            Finio is provided &quot;as is&quot; without warranties of any kind, either express or implied. We do not guarantee the accuracy, completeness, or timeliness of any information provided. Market data may be delayed or inaccurate. We are not responsible for any investment decisions made based on our platform.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-12 mb-4">
             8. Limitation of Liability
           </h2>
           <p className="text-gray-600 leading-relaxed mb-8">
-            To the maximum extent permitted by law, QNT9 and its affiliates shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of profits, data, or other intangible losses, resulting from your use of the service.
+            To the maximum extent permitted by law, Finio and its affiliates shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to loss of profits, data, or other intangible losses, resulting from your use of the service.
           </p>
 
           <h2 className="text-2xl font-semibold text-gray-900 mt-12 mb-4">
@@ -112,7 +112,7 @@ export default function TermsContent() {
             11. Contact Information
           </h2>
           <p className="text-gray-600 leading-relaxed mb-8">
-            If you have any questions about these Terms of Service, please contact us at legal@qnt9.com.
+            If you have any questions about these Terms of Service, please contact us at legal@finio.cloud.
           </p>
         </div>
       </section>
