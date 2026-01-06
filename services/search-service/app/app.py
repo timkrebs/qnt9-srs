@@ -1806,6 +1806,15 @@ except Exception as e:
 
 # Register Massive API routers - ticker search, stock snapshots, charts, websocket
 # Using direct imports since dynamic loading breaks relative imports
+
+# Health router - CRITICAL for Traefik health checks
+try:
+    from .routers.health_router import router as health_router
+    app.include_router(health_router)
+    logger.info("health_router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register health_router: {e}")
+
 try:
     from .routers.ticker_router import router as ticker_router
     app.include_router(ticker_router)
