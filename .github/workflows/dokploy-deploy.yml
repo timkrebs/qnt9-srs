@@ -264,10 +264,10 @@ jobs:
           no-cache: ${{ github.event_name == 'workflow_dispatch' }}
           build-args: |
             NODE_ENV=${{ needs.setup.outputs.environment == 'production' && 'production' || 'development' }}
-            NEXT_PUBLIC_AUTH_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}/api/v1/auth
-            NEXT_PUBLIC_SEARCH_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}/api/v1
-            NEXT_PUBLIC_USER_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}/api/v1/users
-            NEXT_PUBLIC_WATCHLIST_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}/api/v1/watchlist
+            NEXT_PUBLIC_AUTH_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}
+            NEXT_PUBLIC_SEARCH_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}
+            NEXT_PUBLIC_USER_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}
+            NEXT_PUBLIC_WATCHLIST_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
