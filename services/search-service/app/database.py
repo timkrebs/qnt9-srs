@@ -7,12 +7,14 @@ Simplified configuration using environment variables for maximum performance.
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Generator
+from typing import AsyncGenerator, Generator
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
@@ -153,6 +155,44 @@ ReadSessionLocal = (
     if read_engine
     else None
 )
+
+# Create async engine and session factory
+# Convert postgresql:// to postgresql+asyncpg://
+async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+# Remove sslmode from URL for asyncpg (it uses ssl= instead)
+if "?" in async_db_url:
+    async_db_url = async_db_url.split("?")[0]
+
+try:
+    async_engine = create_async_engine(
+        async_db_url,
+        pool_pre_ping=POOL_PRE_PING,
+        pool_recycle=POOL_RECYCLE_SECONDS,
+        pool_size=POOL_SIZE,
+        max_overflow=MAX_OVERFLOW,
+        echo=False,
+    )
+    _async_session_factory = async_sessionmaker(
+        async_engine, class_=AsyncSession, expire_on_commit=False
+    )
+except Exception as e:
+    logger.warning(f"Async engine not available: {e}")
+    async_engine = None
+    _async_session_factory = None
+
+
+@asynccontextmanager
+async def AsyncSessionLocal() -> AsyncGenerator[AsyncSession, None]:
+    """Async context manager for database sessions."""
+    if _async_session_factory is None:
+        raise RuntimeError("Async database not configured")
+    async with _async_session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 def init_db() -> None:
