@@ -5,7 +5,7 @@ Validates JWT tokens from auth-service and implements tier-based access control.
 """
 
 import os
-from typing import Optional
+from typing import Optional, TypedDict
 
 import jwt
 import structlog
@@ -18,6 +18,19 @@ security = HTTPBearer(auto_error=False)
 # JWT Configuration
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
+
+
+# Type alias for user context dict (used by some routers)
+class UserContext(TypedDict, total=False):
+    """User context as a dictionary for flexible usage."""
+    id: str
+    email: str
+    tier: str
+    is_authenticated: bool
+
+
+# Default for optional user context (returns None for unauthenticated)
+get_current_user_optional = None
 
 
 class User:
