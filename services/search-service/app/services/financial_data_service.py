@@ -53,28 +53,37 @@ class FinancialDataService:
             Dictionary containing current price, change, volume, and other data
         """
         if not self.api_key:
+            logger.info(f"No API key configured, using mock data for {symbol}")
             return self._get_mock_quote(symbol)
 
         try:
             # Get previous day's close for comparison
             prev_close_data = await self._get_previous_close(symbol)
             if not prev_close_data:
+                logger.warning(f"No previous close data for {symbol}, using mock data")
                 return self._get_mock_quote(symbol)
 
             # Get current snapshot for real-time data
             snapshot_data = await self._get_snapshot(symbol)
 
             if snapshot_data:
-                current_price = snapshot_data.get("last", {}).get("price", 0)
+                current_price = snapshot_data.get("last", {}).get("price")
+                
+                # If price is missing or zero, use mock data
+                if current_price is None or current_price == 0:
+                    logger.warning(f"Invalid price data for {symbol} (price={current_price}), using mock data")
+                    return self._get_mock_quote(symbol)
+                
                 prev_close = prev_close_data.get("close", current_price)
                 change = current_price - prev_close
                 change_percent = (change / prev_close * 100) if prev_close != 0 else 0
 
                 return {
                     "symbol": symbol.upper(),
+                    "name": symbol.upper(),  # Add name field for frontend compatibility
                     "price": round(current_price, 2),
                     "change": round(change, 2),
-                    "change_percent": f"{change_percent:.2f}",
+                    "change_percent": round(change_percent, 2),  # Return as number, not string
                     "volume": snapshot_data.get("day", {}).get("volume", 0),
                     "open": snapshot_data.get("day", {}).get("open", 0),
                     "high": snapshot_data.get("day", {}).get("high", 0),
@@ -84,6 +93,7 @@ class FinancialDataService:
                     "timestamp": datetime.utcnow().isoformat(),
                 }
             else:
+                logger.warning(f"No snapshot data for {symbol}, using mock data")
                 return self._get_mock_quote(symbol)
 
         except Exception as e:
@@ -138,12 +148,14 @@ class FinancialDataService:
         base_price = random.uniform(50, 500)
         change = random.uniform(-10, 10)
         prev_close = base_price - change
+        change_percent = (change / prev_close * 100) if prev_close != 0 else 0
 
         return {
             "symbol": symbol.upper(),
+            "name": symbol.upper(),  # Add name for frontend compatibility
             "price": round(base_price, 2),
             "change": round(change, 2),
-            "change_percent": f"{(change/prev_close*100):.2f}",
+            "change_percent": round(change_percent, 2),  # Return as number
             "volume": random.randint(1000000, 50000000),
             "open": round(prev_close + random.uniform(-2, 2), 2),
             "high": round(base_price + abs(change), 2),

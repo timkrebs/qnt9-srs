@@ -24,9 +24,10 @@ class StockQuote(BaseModel):
     """Real-time stock quote model."""
 
     symbol: str = Field(..., description="Stock ticker symbol")
+    name: str = Field(..., description="Stock name")
     price: float = Field(..., description="Current price")
     change: float = Field(..., description="Price change from previous close")
-    change_percent: str = Field(..., description="Percentage change")
+    change_percent: float = Field(..., description="Percentage change")
     volume: int = Field(..., description="Trading volume")
     open: float = Field(..., description="Opening price")
     high: float = Field(..., description="Day's high price")
