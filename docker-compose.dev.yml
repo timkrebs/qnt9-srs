@@ -218,6 +218,7 @@ services:
       - "traefik.http.routers.finio-dev-webapp.rule=Host(`dev.finio.cloud`)"
       - "traefik.http.routers.finio-dev-webapp.entrypoints=websecure"
       - "traefik.http.routers.finio-dev-webapp.tls.certResolver=letsencrypt"
+      - "traefik.http.routers.finio-dev-webapp.service=finio-dev-webapp"
       - "traefik.http.services.finio-dev-webapp.loadbalancer.server.port=3000"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
