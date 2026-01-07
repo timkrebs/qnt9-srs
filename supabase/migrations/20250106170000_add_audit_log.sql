@@ -23,6 +23,11 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON public.audit_log(created_
 -- RLS policies
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "Service role can insert audit logs" ON public.audit_log;
+DROP POLICY IF EXISTS "Service role can read audit logs" ON public.audit_log;
+DROP POLICY IF EXISTS "Users can read own audit logs" ON public.audit_log;
+
 -- Only service role can insert (from backend services)
 CREATE POLICY "Service role can insert audit logs"
     ON public.audit_log
