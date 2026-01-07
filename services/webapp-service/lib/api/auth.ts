@@ -151,13 +151,16 @@ export const authService = {
     return response
   },
 
-  updatePassword: async (password: string): Promise<MessageResponse> => {
+  updatePassword: async (currentPassword: string, newPassword: string): Promise<MessageResponse> => {
     const response = await apiRequest<MessageResponse>(
       'auth',
       '/api/v1/users/me/password',
       {
         method: 'PATCH',
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
       },
     )
     return response

@@ -734,6 +734,60 @@ class SupabaseAuthService:
             logger.error(f"Unexpected error during password update: {e}")
             raise AuthError(f"Password update failed: {str(e)}", "internal_error")
 
+    async def validate_and_change_password(
+        self, email: str, current_password: str, new_password: str
+    ) -> bool:
+        """
+        Validate current password and change to new password.
+
+        First attempts to sign in with current password to verify user knows it.
+        If validation succeeds, updates to new password.
+
+        Args:
+            email: User email
+            current_password: Current password for verification
+            new_password: New password to set
+
+        Returns:
+            True if password change succeeded
+
+        Raises:
+            AuthError: If current password is invalid or password change fails
+        """
+        try:
+            logger.info(f"Validating current password and changing password for: {email}")
+
+            # First, validate the current password by attempting sign-in
+            try:
+                response = self.supabase.auth.sign_in_with_password(
+                    {"email": email.lower(), "password": current_password}
+                )
+                if not response.user:
+                    raise AuthError("Invalid current password", "invalid_password")
+            except AuthApiError as e:
+                logger.warning(f"Current password validation failed for {email}")
+                if "invalid" in e.message.lower() or "unauthorized" in e.message.lower():
+                    raise AuthError("Invalid current password", "invalid_password")
+                raise AuthError(f"Password validation failed: {e.message}", "auth_failed")
+
+            # Current password is valid, now update to new password
+            # Use the access token from the sign-in to update password
+            self.supabase.auth.update_user({"password": new_password})
+
+            logger.info(f"Password changed successfully for: {email}")
+            return True
+
+        except AuthError:
+            raise
+        except AuthApiError as e:
+            logger.error(f"Supabase auth error during password change: {e.message}")
+            if "invalid" in e.message.lower():
+                raise AuthError("Invalid current password", "invalid_password")
+            raise AuthError(f"Password change failed: {e.message}", "supabase_error")
+        except Exception as e:
+            logger.error(f"Unexpected error during password change: {e}")
+            raise AuthError(f"Password change failed: {str(e)}", "internal_error")
+
     async def delete_user(self, user_id: str) -> bool:
         """
         Delete a user account from Supabase.

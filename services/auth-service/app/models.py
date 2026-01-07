@@ -76,6 +76,22 @@ class PasswordUpdate(BaseModel):
         return v
 
 
+class PasswordChangeRequest(BaseModel):
+    """Model for changing password with current password verification."""
+
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """Validate new password meets complexity requirements."""
+        is_valid, error_message = PasswordValidator.validate(v)
+        if not is_valid:
+            raise ValueError(error_message)
+        return v
+
+
 class PasswordResetRequest(BaseModel):
     """Model for requesting password reset."""
 

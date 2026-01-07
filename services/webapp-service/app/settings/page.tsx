@@ -104,6 +104,12 @@ export default function SettingsPage() {
     setPasswordError(null)
     setPasswordSuccess(false)
 
+    // Validate current password is provided
+    if (!currentPassword.trim()) {
+      setPasswordError("Current password is required")
+      return
+    }
+
     // Validate passwords
     if (newPassword !== confirmPassword) {
       setPasswordError("Passwords do not match")
@@ -118,7 +124,7 @@ export default function SettingsPage() {
     setIsSavingPassword(true)
 
     try {
-      await authService.updatePassword(newPassword)
+      await authService.updatePassword(currentPassword, newPassword)
       setPasswordSuccess(true)
       setCurrentPassword("")
       setNewPassword("")

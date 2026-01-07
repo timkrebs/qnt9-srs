@@ -12,7 +12,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from ...audit import AuditAction, audit_service
 from ...dependencies import get_current_user_from_token
 from ...middleware import check_password_reset_rate_limit
-from ...models import (MessageResponse, PasswordResetRequest, PasswordUpdate,
+from ...models import (MessageResponse, PasswordChangeRequest,
+                       PasswordResetRequest, PasswordUpdate,
                        UserResponse, UserTierResponse, UserTierUpdate,
                        UserUpdate)
 from ...supabase_auth_service import AuthError, auth_service
@@ -178,7 +179,7 @@ async def update_current_user(
     summary="Update password",
 )
 async def update_password(
-    password_update: PasswordUpdate,
+    password_data: PasswordChangeRequest,
     request: Request,
     current_user: dict = Depends(get_current_user_from_token),
 ):
@@ -186,9 +187,10 @@ async def update_password(
     Update current user's password.
 
     Requires a valid access token in the Authorization header.
+    The current password must be provided and validated before the new password is set.
 
     Args:
-        password_update: New password
+        password_data: Current password and new password
         request: FastAPI request object for IP/user-agent capture
         current_user: Injected user data from token
 
@@ -203,9 +205,10 @@ async def update_password(
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
 
-        await auth_service.update_user(
-            user_id=current_user["user_id"],
-            password=password_update.password,
+        await auth_service.validate_and_change_password(
+            email=current_user.get("email"),
+            current_password=password_data.current_password,
+            new_password=password_data.new_password,
         )
 
         # Log successful password change
@@ -240,6 +243,11 @@ async def update_password(
             details={"error": e.message},
         )
 
+        if e.code == "invalid_password":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Current password is incorrect",
+            )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Password update failed: {e.message}",
