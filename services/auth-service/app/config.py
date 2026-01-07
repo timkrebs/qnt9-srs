@@ -80,8 +80,8 @@ class Settings(BaseSettings):
     EMAIL_VERIFICATION_ENABLED: bool = False
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
 
-    # Frontend URL for email links
-    FRONTEND_URL: str = "http://localhost:8080"
+    # Frontend URL for email links (password reset redirect, etc.)
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # Supabase Configuration
     SUPABASE_URL: str = ""

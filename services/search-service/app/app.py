@@ -101,6 +101,49 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize Redis: {e}")
         raise
 
+    # Initialize StockSearchService and register with container
+    try:
+        from .database import SessionLocal
+        from .repositories.postgres_repository import (
+            PostgresStockRepository,
+            PostgresSearchHistoryRepository,
+        )
+        from .repositories.redis_repository import RedisStockRepository
+        from .infrastructure.yahoo_finance_client import YahooFinanceClient
+        from .services.stock_service import StockSearchService
+        from .dependencies import get_service_container
+
+        # Get database session
+        db = SessionLocal()
+
+        # Get Redis client
+        redis_client = await redis_manager.get_client()
+
+        # Create repositories
+        postgres_repo = PostgresStockRepository(db)
+        redis_repo = RedisStockRepository(redis_client)
+        history_repo = PostgresSearchHistoryRepository(db)
+
+        # Create API client
+        api_client = YahooFinanceClient()
+
+        # Create and register service
+        stock_service = StockSearchService(
+            redis_repo=redis_repo,
+            postgres_repo=postgres_repo,
+            api_client=api_client,
+            history_repo=history_repo,
+        )
+        get_service_container().register_stock_service(stock_service)
+
+        # Store db session for cleanup
+        app.state.db_session = db
+
+        logger.info("StockSearchService initialized and registered successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize StockSearchService: {e}")
+        # Don't raise - allow service to start, but search_router will return 503
+
     # Setup graceful shutdown handlers
     async def cleanup_redis():
         """Clean up Redis connections."""
@@ -1824,6 +1867,14 @@ try:
     logger.info("ws_router registered successfully")
 except Exception as e:
     logger.error(f"Failed to register ws_router: {e}")
+
+# Search router - contains /popular endpoint for data pipeline
+try:
+    from .routers.search_router import router as search_router
+    app.include_router(search_router)
+    logger.info("search_router registered successfully")
+except Exception as e:
+    logger.error(f"Failed to register search_router: {e}")
 
 
 if __name__ == "__main__":

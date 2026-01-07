@@ -1,50 +1,31 @@
 services:
   # ==================== DATABASE & CACHE ====================
-  
-  # ==================== MESSAGING ====================
-  
-  # Zookeeper for Kafka
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: qnt9-zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    networks:
-      - qnt9-network
-    healthcheck:
-      test: ["CMD", "echo", "ruok", "|", "nc", "localhost", "2181"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # Kafka for Event Streaming
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: qnt9-kafka
-    depends_on:
-      zookeeper:
-        condition: service_healthy
+  # ==================== MESSAGING ====================
+
+  # Prefect Server (Orchestration UI & API)
+  prefect-server:
+    image: prefecthq/prefect:2-latest
+    container_name: qnt9-prefect-server
+    command: prefect server start
     ports:
-      - "9092:9092"
+      - "4200:4200"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CREATE_TOPICS: "raw-stock-data:3:1,processed-stock-data:3:1,ml-features:3:1,raw-news:3:1,enriched-news:3:1"
+      # URL for the UI to access the API (transpiled to browser)
+      PREFECT_UI_API_URL: http://localhost:4200/api
+      # Bind to all interfaces
+      PREFECT_SERVER_API_HOST: 0.0.0.0
     networks:
       - qnt9-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
-      interval: 10s
+      test: [ "CMD", "curl", "-f", "http://localhost:4200/api/health" ]
+      interval: 30s
       timeout: 10s
-      retries: 5
-      start_period: 30s
+      retries: 3
 
   # ==================== BACKEND SERVICES ====================
-  
+
   # User Service (User Profile & Subscription Management)
   user-service:
     build:
@@ -66,7 +47,7 @@ services:
     ports:
       - "8011:8011"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8011/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -86,24 +67,24 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_POOL_SIZE: 20
       DATABASE_POOL_MIN_SIZE: 5
-      
+
       # JWT Configuration
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
       JWT_ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
       REFRESH_TOKEN_EXPIRE_DAYS: 7
-      
+
       # Password Hashing
       PASSWORD_HASH_ROUNDS: 12
-      
+
       # Service Configuration
       APP_NAME: QNT9 Auth Service
       DEBUG: "true"
       LOG_LEVEL: DEBUG
-      
+
       # CORS Configuration
       CORS_ORIGINS: http://localhost:8080,http://localhost:3000
-      
+
       # Redis Configuration
       REDIS_URL: ${REDIS_URL}
       REDIS_MAX_CONNECTIONS: 50
@@ -112,16 +93,19 @@ services:
       RATE_LIMIT_PREFIX: "qnt9:auth:ratelimit:"
       RATE_LIMIT_WINDOW_SECONDS: 60
       RATE_LIMIT_MAX_REQUESTS: 60
-      
+
       # Supabase Configuration
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_KEY: ${SUPABASE_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+
+      # Frontend URL for password reset emails
+      FRONTEND_URL: http://localhost:3000
     ports:
       - "8010:8010"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8010/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -152,7 +136,70 @@ services:
     ports:
       - "8012:8012"
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
+      test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - qnt9-network
+    restart: unless-stopped
+
+  # Data Service (Data Ingestion & ETL)
+  data-service:
+    build:
+      context: ./services/data-service
+      dockerfile: Dockerfile
+    container_name: qnt9-data-service
+    environment:
+      SERVICE_NAME: data-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8013
+      LOG_LEVEL: INFO
+      DATABASE_URL: ${DATABASE_URL}
+      MASSIVE_API_KEY: ${MASSIVE_API_KEY}
+      MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
+      MASSIVE_S3_ACCESS_KEY_ID: ${MASSIVE_S3_ACCESS_KEY_ID}
+      MASSIVE_S3_SECRET_ACCESS_KEY: ${MASSIVE_S3_SECRET_ACCESS_KEY}
+      MASSIVE_S3_ENDPOINT: ${MASSIVE_S3_ENDPOINT}
+      MASSIVE_S3_BUCKET: ${MASSIVE_S3_BUCKET}
+      SUPABASE_S3_STORAGE_URL: ${SUPABASE_S3_STORAGE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      PREFECT_API_URL: http://prefect-server:4200/api
+      SEARCH_SERVICE_URL: http://search-service:8000
+    ports:
+      - "8013:8000"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - qnt9-network
+    restart: unless-stopped
+
+  # ML Service (Model Training & Inference)
+  ml-service:
+    build:
+      context: ./services/ml-service
+      dockerfile: Dockerfile
+    container_name: qnt9-ml-service
+    environment:
+      SERVICE_NAME: ml-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8014
+      LOG_LEVEL: INFO
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_BUCKET_MODELS: "qnt9-models"
+    ports:
+      - "8014:8000"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -170,52 +217,52 @@ services:
     environment:
       # Database Configuration
       DATABASE_URL: ${DATABASE_URL}
-      
+
       # Redis Configuration
       REDIS_URL: ${REDIS_URL}
-      
+
       # JWT Configuration (must match auth-service)
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
-      
+
       # Auth Service URL (for user tier checking)
       AUTH_SERVICE_URL: http://auth-service:8010
-      
+
       # CORS
       CORS_ORIGINS: http://localhost:8080,http://localhost:3000
-      
+
       # External APIs
       YAHOO_FINANCE_TIMEOUT: 5.0
       YAHOO_FINANCE_MAX_RETRIES: 3
       YAHOO_FINANCE_RATE_LIMIT: 5
-      
+
       # Massive API (formerly Polygon.io) Configuration
       MASSIVE_API_KEY: ${MASSIVE_API_KEY:-E0aTGuCEv454Yrck2CCmFq4acCeTXdpC}
       MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
-      
+
       # Cache Settings (PostgreSQL only - Redis removed)
       POSTGRES_CACHE_TTL_MINUTES: 5
-      
+
       # Circuit Breaker
       CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
       CIRCUIT_BREAKER_RECOVERY_TIMEOUT: 60
-      
+
       # Logging
       LOG_LEVEL: DEBUG
       LOG_FORMAT: text
-      
+
       # Monitoring
       PROMETHEUS_ENABLED: true
       METRICS_PORT: 9090
     ports:
       - "8000:8000"
-      - "9090:9090"  # Prometheus metrics
+      - "9090:9090" # Prometheus metrics
     volumes:
       # Mount source code for hot-reload
       - ./services/search-service/app:/app/app:ro
       - ./services/search-service/alembic:/app/alembic:ro
       - ./services/search-service/alembic.ini:/app/alembic.ini:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5.0)"]
+      test: [ "CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5.0)" ]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -240,7 +287,9 @@ services:
       NEXT_PUBLIC_SEARCH_SERVICE_URL: http://localhost:8000
       NEXT_PUBLIC_WATCHLIST_SERVICE_URL: http://localhost:8012
       NEXT_PUBLIC_USER_SERVICE_URL: http://localhost:8011
-      
+      NEXT_PUBLIC_DATA_SERVICE_URL: http://localhost:8013
+      NEXT_PUBLIC_ML_SERVICE_URL: http://localhost:8014
+
       # Next.js Configuration
       NODE_ENV: development
       PORT: 3000
@@ -262,6 +311,10 @@ services:
       user-service:
         condition: service_healthy
       watchlist-service:
+        condition: service_healthy
+      data-service:
+        condition: service_healthy
+      ml-service:
         condition: service_healthy
     networks:
       - qnt9-network

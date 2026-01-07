@@ -600,3 +600,38 @@ async def get_rate_limit_stats():
         raise HTTPException(
             status_code=500, detail="Failed to retrieve rate limit statistics"
         )
+
+
+@router.get(
+    "/popular",
+    response_model=dict,
+    summary="Get most popular searched stocks",
+    description="Returns the top N most searched stock symbols for data pipeline prioritization.",
+)
+async def get_popular_stocks(
+    limit: int = Query(10, ge=1, le=50, description="Number of top stocks to return"),
+    service: StockSearchService = Depends(get_stock_service),
+):
+    """
+    Get the most popular searched stock symbols.
+    
+    Used by data-service to determine which stocks to fetch from flatfiles.
+    Returns symbols ordered by search count (descending).
+    """
+    try:
+        popular = await service.history_repo.get_popular_searches(limit=limit)
+        
+        # Extract just the symbols for easy consumption
+        symbols = [entry.get("query", "").upper() for entry in popular if entry.get("query")]
+        
+        return {
+            "success": True,
+            "count": len(symbols),
+            "symbols": symbols,
+            "details": popular,
+        }
+    except Exception as e:
+        logger.error(f"Error fetching popular stocks: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve popular stocks"
+        )

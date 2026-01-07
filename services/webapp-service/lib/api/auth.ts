@@ -176,6 +176,33 @@ export const authService = {
     return response
   },
 
+  updatePasswordWithToken: async (accessToken: string, password: string): Promise<MessageResponse> => {
+    // This endpoint uses the reset token from Supabase email link
+    // The token is passed in Authorization header instead of using stored token
+    const baseUrl = process.env.NEXT_PUBLIC_AUTH_SERVICE_URL || 'http://localhost:8010'
+    const response = await fetch(`${baseUrl}/api/v1/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ password }),
+    })
+
+    if (!response.ok) {
+      let errorData
+      try {
+        errorData = await response.json()
+      } catch {
+        errorData = { message: response.statusText }
+      }
+      throw new ApiError(response.status, errorData)
+    }
+
+    return response.json()
+  },
+
   deleteAccount: async (): Promise<MessageResponse> => {
     const response = await apiRequest<MessageResponse>(
       'auth',
