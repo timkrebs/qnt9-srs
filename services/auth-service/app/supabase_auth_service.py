@@ -453,18 +453,44 @@ class SupabaseAuthService:
             
             # Update user profile using Supabase client (for full_name)
             if full_name is not None:
-                from datetime import datetime
-
-                self.supabase.table("user_profiles").update(
-                    {
-                        "full_name": full_name,
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }
-                ).eq("id", user_id).execute()
+                # Ensure user profile exists before updating
+                profile_check = (
+                    self.supabase.table("user_profiles")
+                    .select("id")
+                    .eq("id", user_id)
+                    .execute()
+                )
+                
+                if not profile_check.data:
+                    # Create user profile if it doesn't exist
+                    logger.info(f"Creating missing user profile for user {user_id}")
+                    now = datetime.utcnow().isoformat()
+                    self.supabase.table("user_profiles").insert(
+                        {
+                            "id": user_id,
+                            "full_name": full_name,
+                            "tier": "free",
+                            "created_at": now,
+                            "updated_at": now,
+                        }
+                    ).execute()
+                else:
+                    # Update existing profile
+                    self.supabase.table("user_profiles").update(
+                        {
+                            "full_name": full_name,
+                            "updated_at": datetime.utcnow().isoformat(),
+                        }
+                    ).eq("id", user_id).execute()
 
             logger.info(f"User profile updated successfully: {user_id}")
 
-            return await self.get_user(user_id)
+            # Fetch updated user data
+            updated_user = await self.get_user(user_id)
+            if updated_user is None:
+                raise AuthError("Failed to retrieve updated user data", "user_not_found")
+            
+            return updated_user
 
         except AuthApiError as e:
             logger.error(f"Supabase auth error during user update: {e.message}")
