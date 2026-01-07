@@ -57,9 +57,9 @@ export default function SignupPage() {
       })
       toast({
         title: 'Account created',
-        description: 'Welcome to finio! Your account has been created.',
+        description: 'Check your email to confirm your account before logging in.',
       })
-      router.push('/')
+      router.push('/login')
     } catch (error) {
       const message =
         error instanceof ApiError

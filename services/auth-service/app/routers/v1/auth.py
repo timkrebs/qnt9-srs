@@ -63,12 +63,12 @@ async def sign_up(user_data: UserSignUp, request: Request):
             ip_address=ip_address,
             user_agent=user_agent,
             success=True,
-            details={"tier": result["user"]["tier"]},
+            details={"tier": result["user"]["tier"], "requires_email_confirmation": result["session"] is None},
         )
 
         return AuthResponse(
             user=UserResponse(**result["user"]),
-            session=SessionResponse(**result["session"]),
+            session=SessionResponse(**result["session"]) if result["session"] else None,
         )
 
     except AuthError as e:
@@ -149,7 +149,7 @@ async def sign_in(credentials: UserSignIn, request: Request):
 
         return AuthResponse(
             user=UserResponse(**result["user"]),
-            session=SessionResponse(**result["session"]),
+            session=SessionResponse(**result["session"]) if result["session"] else None,
         )
 
     except AuthError as e:
