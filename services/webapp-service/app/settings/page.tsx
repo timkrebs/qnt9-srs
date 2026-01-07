@@ -156,10 +156,14 @@ export default function SettingsPage() {
 
     setIsDeleting(true)
     try {
-      // Account deletion would need backend endpoint
+      // Delete account from backend
+      await authService.deleteAccount()
+      // Clear local session
       await logout()
       router.push("/")
-    } catch {
+    } catch (error) {
+      console.error("Failed to delete account:", error)
+      setProfileError(error instanceof Error ? error.message : "Failed to delete account")
       setIsDeleting(false)
     }
   }

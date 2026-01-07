@@ -185,14 +185,29 @@ class SupabaseAuthService:
 
             logger.info(f"User signed in successfully: {email} (id: {user.id})")
 
+            # Fetch user profile data from user_profiles table
+            profile = None
+            try:
+                profile_result = (
+                    self.supabase.table("user_profiles")
+                    .select(
+                        "tier, role, full_name, subscription_start, subscription_end, "
+                        "stripe_customer_id, stripe_subscription_id, metadata, last_login"
+                    )
+                    .eq("id", user.id)
+                    .execute()
+                )
+                profile = profile_result.data[0] if profile_result.data else None
+            except Exception as e:
+                logger.warning(f"Failed to fetch user profile: {e}")
+
             # Update last_login in user_profiles using Supabase client
             try:
-                from datetime import datetime
-
+                now = datetime.utcnow().isoformat()
                 self.supabase.table("user_profiles").update(
                     {
-                        "last_login": datetime.utcnow().isoformat(),
-                        "updated_at": datetime.utcnow().isoformat(),
+                        "last_login": now,
+                        "updated_at": now,
                     }
                 ).eq("id", user.id).execute()
             except Exception as e:
@@ -207,6 +222,16 @@ class SupabaseAuthService:
                     "last_sign_in_at": user.last_sign_in_at,
                     "user_metadata": user.user_metadata or {},
                     "app_metadata": user.app_metadata or {},
+                    # Include profile data
+                    "tier": profile["tier"] if profile else "free",
+                    "role": profile.get("role", "user") if profile else "user",
+                    "full_name": profile["full_name"] if profile else None,
+                    "subscription_start": profile["subscription_start"] if profile else None,
+                    "subscription_end": profile["subscription_end"] if profile else None,
+                    "stripe_customer_id": profile["stripe_customer_id"] if profile else None,
+                    "stripe_subscription_id": profile["stripe_subscription_id"] if profile else None,
+                    "metadata": profile["metadata"] if profile else {},
+                    "last_login": profile["last_login"] if profile else None,
                 },
                 "session": {
                     "access_token": session.access_token,
@@ -708,6 +733,47 @@ class SupabaseAuthService:
         except Exception as e:
             logger.error(f"Unexpected error during password update: {e}")
             raise AuthError(f"Password update failed: {str(e)}", "internal_error")
+
+    async def delete_user(self, user_id: str) -> bool:
+        """
+        Delete a user account from Supabase.
+
+        This method deletes the user from Supabase Auth and removes their profile
+        from the user_profiles table.
+
+        Args:
+            user_id: User UUID to delete
+
+        Returns:
+            True if deletion was successful
+
+        Raises:
+            AuthError: If deletion fails
+        """
+        try:
+            logger.info(f"Attempting to delete user: {user_id}")
+
+            # First, delete the user profile from user_profiles table
+            try:
+                self.supabase.table("user_profiles").delete().eq(
+                    "id", user_id
+                ).execute()
+                logger.info(f"Deleted user profile for: {user_id}")
+            except Exception as e:
+                logger.warning(f"Failed to delete user profile (may not exist): {e}")
+
+            # Delete user from Supabase Auth using admin API
+            self.supabase.auth.admin.delete_user(user_id)
+
+            logger.info(f"User deleted successfully: {user_id}")
+            return True
+
+        except AuthApiError as e:
+            logger.error(f"Supabase auth error during user deletion: {e.message}")
+            raise AuthError(f"Account deletion failed: {e.message}", "deletion_failed")
+        except Exception as e:
+            logger.error(f"Unexpected error during user deletion: {e}")
+            raise AuthError(f"Account deletion failed: {str(e)}", "internal_error")
 
 
 # Global auth service instance

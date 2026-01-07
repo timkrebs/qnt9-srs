@@ -175,4 +175,15 @@ export const authService = {
     )
     return response
   },
+
+  deleteAccount: async (): Promise<MessageResponse> => {
+    const response = await apiRequest<MessageResponse>(
+      'auth',
+      '/api/v1/users/me',
+      {
+        method: 'DELETE',
+      },
+    )
+    return response
+  },
 }

@@ -403,7 +403,7 @@ async def update_user_tier(
 
         # Log tier update
         await audit_service.log_data_change(
-            action=AuditAction.TIER_UPDATE,
+            action=AuditAction.USER_TIER_UPDATE,
             user_id=current_user["user_id"],
             email=current_user.get("email"),
             ip_address=ip_address,
@@ -430,7 +430,7 @@ async def update_user_tier(
         ip_address = request.client.host if request.client else None
         user_agent = request.headers.get("user-agent")
         await audit_service.log_auth_event(
-            action=AuditAction.TIER_UPDATE,
+            action=AuditAction.USER_TIER_UPDATE,
             user_id=current_user["user_id"],
             email=current_user.get("email"),
             ip_address=ip_address,
@@ -448,4 +448,88 @@ async def update_user_tier(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update tier",
+        )
+
+
+@router.delete(
+    "/me",
+    response_model=MessageResponse,
+    summary="Delete current user account",
+)
+async def delete_current_user(
+    request: Request,
+    current_user: dict = Depends(get_current_user_from_token),
+):
+    """
+    Delete the current user's account.
+
+    This permanently deletes the user account from Supabase Auth and removes
+    their profile data. This action cannot be undone.
+
+    Requires a valid access token in the Authorization header.
+
+    Args:
+        request: FastAPI request object for IP/user-agent capture
+        current_user: Injected user data from token
+
+    Returns:
+        Success message
+
+    Raises:
+        HTTPException: If deletion fails
+    """
+    try:
+        # Capture client info for audit
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+
+        user_id = current_user["user_id"]
+        email = current_user.get("email")
+
+        logger.info(f"User {email} requested account deletion")
+
+        # Delete the user
+        await auth_service.delete_user(user_id)
+
+        # Log successful deletion
+        await audit_service.log_auth_event(
+            action=AuditAction.USER_DELETE,
+            user_id=user_id,
+            email=email,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=True,
+            details={"deleted_by": "user_request"},
+        )
+
+        return MessageResponse(
+            message="Account deleted successfully",
+            success=True,
+        )
+
+    except AuthError as e:
+        logger.error(f"Account deletion failed: {e.message}")
+
+        # Log failed deletion attempt
+        ip_address = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
+        await audit_service.log_auth_event(
+            action=AuditAction.USER_DELETE,
+            user_id=current_user["user_id"],
+            email=current_user.get("email"),
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=False,
+            details={"error": e.message},
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Account deletion failed: {e.message}",
+        )
+    except Exception as e:
+        logger.exception(f"Unexpected error during account deletion: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred during account deletion",
         )

@@ -40,6 +40,7 @@ class AuditAction(str, Enum):
 
     # User profile
     USER_UPDATE = "user.update"
+    USER_DELETE = "user.delete"
     USER_TIER_UPDATE = "user.tier.update"
 
     # Session management
