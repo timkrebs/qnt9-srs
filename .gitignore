@@ -252,4 +252,6 @@ __marimo__/
 # Documentation (only root docs folder, not webapp app/docs page)
 /docs/**
 !/services/webapp-service/app/docs/
-!/services/webapp-service/app/docs/**
+!/services/webapp-service/app/docs/**# Sensitive files with secrets
+research/colab_training.ipynb
+.env
