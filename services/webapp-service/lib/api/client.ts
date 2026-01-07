@@ -4,6 +4,8 @@ const API_CONFIG = {
   user: process.env.NEXT_PUBLIC_USER_SERVICE_URL || 'http://localhost:8011',
   watchlist:
     process.env.NEXT_PUBLIC_WATCHLIST_SERVICE_URL || 'http://localhost:8012',
+  notifications:
+    process.env.NEXT_PUBLIC_NOTIFICATION_SERVICE_URL || 'http://localhost:8040',
 } as const
 
 export type ServiceType = keyof typeof API_CONFIG

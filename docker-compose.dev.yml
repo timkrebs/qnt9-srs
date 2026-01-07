@@ -193,6 +193,52 @@ services:
           cpus: '0.1'
           memory: 128M
 
+  # Notification Service
+  notification-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/notification-service:${IMAGE_TAG:-dev}
+    pull_policy: always
+    container_name: finio-dev-notification-service
+    environment:
+      SERVICE_NAME: notification-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8040
+      LOG_LEVEL: INFO
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM_EMAIL: noreply@qnt9.com
+      RESEND_FROM_NAME: QNT9 Stock Research
+      SEARCH_SERVICE_URL: http://search-service:8000
+      NOTIFICATION_CHECK_INTERVAL: 3600
+      PRICE_ALERT_SEND_HOUR: 8
+      ALERT_COOLDOWN_HOURS: 24
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dev-notification-service.rule=Host(`api-dev.finio.cloud`) && PathPrefix(`/api/v1/preferences`,`/api/v1/admin`)"
+      - "traefik.http.routers.dev-notification-service.entrypoints=websecure"
+      - "traefik.http.routers.dev-notification-service.tls.certResolver=letsencrypt"
+      - "traefik.http.services.dev-notification-service.loadbalancer.server.port=8040"
+      - "traefik.http.services.dev-notification-service.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.dev-notification-service.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8040/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
   # ==================== FRONTEND ====================
 
   # Webapp Service (Next.js)
@@ -205,6 +251,7 @@ services:
       NEXT_PUBLIC_SEARCH_SERVICE_URL: https://api-dev.finio.cloud
       NEXT_PUBLIC_WATCHLIST_SERVICE_URL: https://api-dev.finio.cloud
       NEXT_PUBLIC_USER_SERVICE_URL: https://api-dev.finio.cloud
+      NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: https://api-dev.finio.cloud
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_KEY}
       NODE_ENV: development

@@ -271,6 +271,39 @@ services:
       - qnt9-network
     restart: unless-stopped
 
+  # Notification Service (Email Notifications & Price Alerts)
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: qnt9-notification-service
+    environment:
+      SERVICE_NAME: notification-service
+      SERVICE_HOST: 0.0.0.0
+      SERVICE_PORT: 8040
+      LOG_LEVEL: INFO
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM_EMAIL: noreply@qnt9.com
+      RESEND_FROM_NAME: QNT9 Stock Research
+      SEARCH_SERVICE_URL: http://search-service:8000
+      NOTIFICATION_CHECK_INTERVAL: 3600
+      PRICE_ALERT_SEND_HOUR: 8
+      ALERT_COOLDOWN_HOURS: 24
+    ports:
+      - "8040:8040"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8040/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - qnt9-network
+    restart: unless-stopped
+
   # ==================== FRONTEND ====================
 
   # Webapp Service (Next.js Modern Frontend)
@@ -289,6 +322,7 @@ services:
       NEXT_PUBLIC_USER_SERVICE_URL: http://localhost:8011
       NEXT_PUBLIC_DATA_SERVICE_URL: http://localhost:8013
       NEXT_PUBLIC_ML_SERVICE_URL: http://localhost:8014
+      NEXT_PUBLIC_NOTIFICATION_SERVICE_URL: http://localhost:8040
 
       # Next.js Configuration
       NODE_ENV: development

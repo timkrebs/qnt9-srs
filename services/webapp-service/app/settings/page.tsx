@@ -5,6 +5,7 @@ import Sidebar from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth/auth-context"
 import { authService } from "@/lib/api/auth"
+import { notificationService } from "@/lib/api/notifications"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2, Check, AlertCircle, Eye, EyeOff } from "lucide-react"
@@ -48,11 +49,13 @@ export default function SettingsPage() {
   const [isSavingPassword, setIsSavingPassword] = useState(false)
   const [isSavingNotifications, setIsSavingNotifications] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false)
   const [profileSuccess, setProfileSuccess] = useState(false)
   const [passwordSuccess, setPasswordSuccess] = useState(false)
   const [notificationsSuccess, setNotificationsSuccess] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [notificationsError, setNotificationsError] = useState<string | null>(null)
 
   const tabs = [
     { id: "general" as TabId, label: "General" },
@@ -61,16 +64,30 @@ export default function SettingsPage() {
     { id: "notifications" as TabId, label: "Notifications" },
   ]
 
+  // Load notification preferences from API
+  useEffect(() => {
+    const loadNotificationPreferences = async () => {
+      if (user && isAuthenticated) {
+        setIsLoadingNotifications(true)
+        try {
+          const prefs = await notificationService.getPreferences()
+          setNotifications(prefs)
+        } catch (error) {
+          console.error("Failed to load notification preferences:", error)
+        } finally {
+          setIsLoadingNotifications(false)
+        }
+      }
+    }
+
+    loadNotificationPreferences()
+  }, [user, isAuthenticated])
+
   // Populate form with user data
   useEffect(() => {
     if (user) {
       setFullName(user.full_name || "")
       setEmail(user.email || "")
-      // Load notification settings from user metadata if available
-      const savedNotifications = user.metadata?.notifications as NotificationSettings | undefined
-      if (savedNotifications) {
-        setNotifications(savedNotifications)
-      }
     }
   }, [user])
 
@@ -140,16 +157,15 @@ export default function SettingsPage() {
   const handleSaveNotifications = async () => {
     setIsSavingNotifications(true)
     setNotificationsSuccess(false)
+    setNotificationsError(null)
 
     try {
-      // Save notifications to user metadata
-      await authService.updateProfile({
-        // This would need backend support for metadata updates
-      })
+      await notificationService.updatePreferences(notifications)
       setNotificationsSuccess(true)
       setTimeout(() => setNotificationsSuccess(false), 3000)
-    } catch {
-      // Silently fail for now - notifications save is optional
+    } catch (error) {
+      setNotificationsError(error instanceof Error ? error.message : "Failed to save notification preferences")
+      setTimeout(() => setNotificationsError(null), 5000)
     } finally {
       setIsSavingNotifications(false)
     }
@@ -635,10 +651,24 @@ export default function SettingsPage() {
                     </div>
                   )}
 
+                  {notificationsError && (
+                    <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                      <AlertCircle className="w-4 h-4" />
+                      {notificationsError}
+                    </div>
+                  )}
+
+                  {isLoadingNotifications && (
+                    <div className="flex items-center gap-2 p-3 bg-blue-50 text-blue-700 rounded-lg text-sm">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading preferences...
+                    </div>
+                  )}
+
                   <div className="pt-6 border-t border-gray-200">
                     <Button 
                       onClick={handleSaveNotifications}
-                      disabled={isSavingNotifications}
+                      disabled={isSavingNotifications || isLoadingNotifications}
                       className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal"
                     >
                       {isSavingNotifications ? (
