@@ -1,5 +1,5 @@
 """
-User Service for QNT9-SRS.
+User Service for Finio Stock Research.
 
 Manages user profiles, subscription tiers, and tier-based access control.
 """

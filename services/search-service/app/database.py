@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Database configuration
 # Default for local development (overridden by environment variables)
-DEFAULT_DATABASE_URL = "postgresql://qnt9_user:qnt9_password@localhost:5432/qnt9_search"
+DEFAULT_DATABASE_URL = "postgresql://finio_user:finio_password@localhost:5432/finio_search"
 
 # Connection Pool Settings (Phase 5 Optimization)
 POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "20"))

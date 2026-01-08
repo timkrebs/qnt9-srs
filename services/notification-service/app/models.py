@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field, field_validator
 from uuid import UUID
 
@@ -9,9 +9,9 @@ class NotificationType(str, Enum):
     """Types of notifications."""
 
     PRICE_ALERT = "price_alert"
+    DAILY_SUMMARY = "daily_summary"
     MARKETING = "marketing"
     PRODUCT_UPDATE = "product_update"
-    SECURITY_ALERT = "security_alert"
     WELCOME = "welcome"
 
 
@@ -38,7 +38,7 @@ class NotificationPreferences(BaseModel):
     email_notifications: bool = True
     product_updates: bool = True
     usage_alerts: bool = True
-    security_alerts: bool = True
+    stock_news: bool = True
     marketing_emails: bool = False
 
 
@@ -48,7 +48,7 @@ class NotificationPreferencesUpdate(BaseModel):
     email_notifications: Optional[bool] = None
     product_updates: Optional[bool] = None
     usage_alerts: Optional[bool] = None
-    security_alerts: Optional[bool] = None
+    stock_news: Optional[bool] = None
     marketing_emails: Optional[bool] = None
 
 
@@ -112,3 +112,40 @@ class MessageResponse(BaseModel):
 
     message: str
     success: bool = True
+
+
+class StockQuote(BaseModel):
+    """Stock quote data for daily summary."""
+
+    symbol: str
+    current_price: float
+    change: float
+    change_percent: float
+    volume: Optional[int] = None
+
+
+class StockNews(BaseModel):
+    """Stock news item."""
+
+    title: str
+    url: str
+    summary: Optional[str] = None
+    source: Optional[str] = None
+    published_at: Optional[str] = None
+
+
+class StockSummaryData(BaseModel):
+    """Combined stock data for daily summary email."""
+
+    symbol: str
+    quote: Optional[StockQuote] = None
+    news: List[StockNews] = Field(default_factory=list)
+
+
+class DailySummaryData(BaseModel):
+    """Data for daily summary email."""
+
+    user_email: str
+    user_name: Optional[str] = None
+    stocks: List[StockSummaryData] = Field(default_factory=list)
+    summary_date: str

@@ -16,7 +16,7 @@ interface NotificationSettings {
   email_notifications: boolean
   product_updates: boolean
   usage_alerts: boolean
-  security_alerts: boolean
+  stock_news: boolean
   marketing_emails: boolean
 }
 
@@ -40,7 +40,7 @@ export default function SettingsPage() {
     email_notifications: true,
     product_updates: true,
     usage_alerts: true,
-    security_alerts: true,
+    stock_news: true,
     marketing_emails: false,
   })
   
@@ -449,82 +449,119 @@ export default function SettingsPage() {
                   <div>
                     <h2 className="text-xl font-normal text-black mb-6">Security Settings</h2>
 
-                    <div className="space-y-6">
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">Current Password</label>
-                        <div className="relative">
-                          <input
-                            type={showCurrentPassword ? "text" : "password"}
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                            placeholder="Enter current password"
-                            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                          >
-                            {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
+                    {/* Check if user signed in with OAuth provider (Google, Apple, etc.) */}
+                    {user?.app_metadata?.provider && user.app_metadata.provider !== 'email' ? (
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+                          <div>
+                            <h4 className="text-sm font-medium text-blue-900 mb-1">
+                              Signed in with {String(user.app_metadata.provider).charAt(0).toUpperCase() + String(user.app_metadata.provider).slice(1)}
+                            </h4>
+                            <p className="text-sm text-blue-700">
+                              Password management is not available for accounts using social sign-in. 
+                              Your account security is managed through your {String(user.app_metadata.provider).charAt(0).toUpperCase() + String(user.app_metadata.provider).slice(1)} account.
+                            </p>
+                          </div>
                         </div>
                       </div>
+                    ) : (
+                      <>
+                        <div className="space-y-6">
+                          <div>
+                            <label className="block text-sm text-gray-900 mb-2">Current Password</label>
+                            <div className="relative">
+                              <input
+                                type={showCurrentPassword ? "text" : "password"}
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                placeholder="Enter current password"
+                                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                              >
+                                {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                              </button>
+                            </div>
+                          </div>
 
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">New Password</label>
-                        <div className="relative">
-                          <input
-                            type={showNewPassword ? "text" : "password"}
-                            value={newPassword}
-                            onChange={(e) => setNewPassword(e.target.value)}
-                            placeholder="Enter new password (min. 8 characters)"
-                            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowNewPassword(!showNewPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                          >
-                            {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
-                        </div>
-                      </div>
+                          <div>
+                            <label className="block text-sm text-gray-900 mb-2">New Password</label>
+                            <div className="relative">
+                              <input
+                                type={showNewPassword ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder="Enter new password (min. 8 characters)"
+                                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowNewPassword(!showNewPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                              >
+                                {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                              </button>
+                            </div>
+                          </div>
 
-                      <div>
-                        <label className="block text-sm text-gray-900 mb-2">Confirm New Password</label>
-                        <div className="relative">
-                          <input
-                            type={showConfirmPassword ? "text" : "password"}
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            placeholder="Confirm new password"
-                            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                          >
-                            {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                          </button>
+                          <div>
+                            <label className="block text-sm text-gray-900 mb-2">Confirm New Password</label>
+                            <div className="relative">
+                              <input
+                                type={showConfirmPassword ? "text" : "password"}
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                placeholder="Confirm new password"
+                                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                              >
+                                {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
+
+                        {passwordError && (
+                          <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+                            <AlertCircle className="w-4 h-4" />
+                            {passwordError}
+                          </div>
+                        )}
+
+                        {passwordSuccess && (
+                          <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+                            <Check className="w-4 h-4" />
+                            Password updated successfully
+                          </div>
+                        )}
+
+                        <div className="pt-6 border-t border-gray-200">
+                          <Button 
+                            onClick={handleUpdatePassword}
+                            disabled={isSavingPassword || !newPassword || !confirmPassword}
+                            className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal"
+                          >
+                            {isSavingPassword ? (
+                              <>
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                Updating...
+                              </>
+                            ) : (
+                              "Update password"
+                            )}
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
-
-                  {passwordError && (
-                    <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-                      <AlertCircle className="w-4 h-4" />
-                      {passwordError}
-                    </div>
-                  )}
-
-                  {passwordSuccess && (
-                    <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
-                      <Check className="w-4 h-4" />
-                      Password updated successfully
-                    </div>
-                  )}
 
                   <div className="pt-6 border-t border-gray-200">
                     <h3 className="text-lg font-normal text-black mb-4">Two-Factor Authentication</h3>
@@ -550,23 +587,6 @@ export default function SettingsPage() {
                         <span className="px-2 py-1 text-xs bg-green-50 text-green-700 rounded">Current Session</span>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="pt-6 border-t border-gray-200">
-                    <Button 
-                      onClick={handleUpdatePassword}
-                      disabled={isSavingPassword || !newPassword || !confirmPassword}
-                      className="bg-black text-white hover:bg-gray-800 px-6 text-sm font-normal"
-                    >
-                      {isSavingPassword ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Updating...
-                        </>
-                      ) : (
-                        "Update password"
-                      )}
-                    </Button>
                   </div>
                 </div>
               )}
@@ -618,13 +638,13 @@ export default function SettingsPage() {
 
                       <div className="flex items-center justify-between py-4 border-b border-gray-100">
                         <div>
-                          <h4 className="text-sm font-medium text-gray-900 mb-1">Security Alerts</h4>
-                          <p className="text-sm text-gray-600">Important security updates and notifications</p>
+                          <h4 className="text-sm font-medium text-gray-900 mb-1">Stock News</h4>
+                          <p className="text-sm text-gray-600">Daily morning summary with stock news and prices</p>
                         </div>
                         <input 
                           type="checkbox" 
-                          checked={notifications.security_alerts}
-                          onChange={(e) => setNotifications({...notifications, security_alerts: e.target.checked})}
+                          checked={notifications.stock_news}
+                          onChange={(e) => setNotifications({...notifications, stock_news: e.target.checked})}
                           className="w-4 h-4 rounded border-gray-300 accent-black" 
                         />
                       </div>

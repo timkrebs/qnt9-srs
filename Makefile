@@ -1,4 +1,4 @@
-# QNT9-SRS Root Makefile
+# Finio Stock Research Root Makefile
 # Convenience targets for the entire project
 
 .PHONY: help test-docker-local test-source test-build test-runtime test-all lint-all clean install-dev
@@ -6,8 +6,8 @@
 
 # Default target
 help:
-	@echo "QNT9-SRS Project Commands"
-	@echo "=========================="
+	@echo "Finio Stock Research Project Commands"
+	@echo "======================================"
 	@echo ""
 	@echo "  Docker Compose (Local Development):"
 	@echo "  make up                 - Start all services (frontend, search, postgres, redis)"
@@ -157,10 +157,10 @@ health: ## Check health of all services
 	@curl -sf http://localhost:8000/api/v1/health | jq '.' 2>/dev/null || echo "  Not responding"
 	@echo ""
 	@echo "PostgreSQL:"
-	@docker-compose exec -T postgres pg_isready -U qnt9_user -d qnt9_search 2>/dev/null || echo "  Not responding"
+	@docker-compose exec -T postgres pg_isready -U finio_user -d finio_search 2>/dev/null || echo "  Not responding"
 	@echo ""
 	@echo "Redis:"
-	@docker-compose exec -T redis redis-cli -a qnt9_redis_password ping 2>/dev/null || echo "  Not responding"
+	@docker-compose exec -T redis redis-cli -a finio_redis_password ping 2>/dev/null || echo "  Not responding"
 	@echo ""
 
 # Shell Access
@@ -171,10 +171,10 @@ shell-webapp: ## Open shell in webapp service container
 	docker-compose exec webapp-service /bin/sh
 
 shell-db: ## Open PostgreSQL shell
-	docker-compose exec postgres psql -U qnt9_user -d qnt9_search
+	docker-compose exec postgres psql -U finio_user -d finio_search
 
 shell-redis: ## Open Redis CLI
-	docker-compose exec redis redis-cli -a qnt9_redis_password
+	docker-compose exec redis redis-cli -a finio_redis_password
 
 # Database Operations
 migrate: ## Run database migrations
@@ -194,7 +194,7 @@ db-reset: ## Reset database (destroys data!)
 	@echo "WARNING: This will delete all database data. Press Ctrl+C to cancel, or Enter to continue..."
 	@read dummy
 	docker-compose down postgres
-	docker volume rm qnt9-srs_postgres_data || true
+	docker volume rm finio-srs_postgres_data || true
 	docker-compose up -d postgres
 	@echo "Waiting for PostgreSQL to be ready..."
 	@sleep 5

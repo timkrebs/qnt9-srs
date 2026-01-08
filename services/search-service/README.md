@@ -222,7 +222,7 @@ Erstelle eine `.env` Datei:
 
 ```bash
 # Database
-DATABASE_URL=postgresql://user:password@localhost:5432/qnt9_search
+DATABASE_URL=postgresql://user:password@localhost:5432/finio_search
 
 # Redis (optional)
 REDIS_URL=redis://localhost:6379/0
@@ -255,13 +255,13 @@ uvicorn app.app_v2:app --reload --host 0.0.0.0 --port 8000
 
 ```bash
 # Build
-docker build -t qnt9-search-service .
+docker build -t finio-search-service .
 
 # Run
 docker run -p 8000:8000 \
   -e DATABASE_URL=postgresql://... \
   -e REDIS_URL=redis://... \
-  qnt9-search-service
+  finio-search-service
 ```
 
 ## Testing
@@ -462,7 +462,7 @@ MIT
 
 ## Contributors
 
-QNT9 Development Team
+Finio Development Team
 
 ---
 

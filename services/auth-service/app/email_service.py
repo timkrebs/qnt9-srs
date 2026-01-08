@@ -59,7 +59,7 @@ class EmailService:
         try:
             verification_link = f"{self.frontend_url}/verify-email?token={token}"
 
-            subject = "Verify your QNT9 account"
+            subject = "Verify your Finio account"
 
             # Create HTML email body
             html_body = self._create_verification_email_html(
@@ -112,7 +112,7 @@ class EmailService:
         try:
             reset_link = f"{self.frontend_url}/reset-password?token={token}"
 
-            subject = "Reset your QNT9 password"
+            subject = "Reset your Finio password"
 
             # Create HTML email body
             html_body = self._create_password_reset_email_html(
@@ -213,11 +213,11 @@ class EmailService:
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px;">
-        <h1 style="color: #007bff; margin-top: 0;">Welcome to QNT9 Stock Research</h1>
+        <h1 style="color: #007bff; margin-top: 0;">Welcome to Finio Stock Research</h1>
         
         <p>{greeting}</p>
         
-        <p>Thank you for signing up for QNT9 Stock Research System. To complete your registration and start analyzing stocks, please verify your email address.</p>
+        <p>Thank you for signing up for Finio Stock Research. To complete your registration and start analyzing stocks, please verify your email address.</p>
         
         <div style="text-align: center; margin: 30px 0;">
             <a href="{verification_link}" 
@@ -234,12 +234,12 @@ class EmailService:
         <hr style="border: none; border-top: 1px solid #dee2e6; margin: 20px 0;">
         
         <p style="font-size: 12px; color: #6c757d;">
-            If you didn't create an account with QNT9, you can safely ignore this email.
+            If you didn't create an account with Finio, you can safely ignore this email.
         </p>
         
         <p style="font-size: 12px; color: #6c757d;">
             Best regards,<br>
-            The QNT9 Team
+            The Finio Team
         </p>
     </div>
 </body>
@@ -254,17 +254,17 @@ class EmailService:
 
         return f"""{greeting}
 
-Thank you for signing up for QNT9 Stock Research System. To complete your registration and start analyzing stocks, please verify your email address.
+Thank you for signing up for Finio Stock Research. To complete your registration and start analyzing stocks, please verify your email address.
 
 Verify your email by clicking this link:
 {verification_link}
 
 This verification link will expire in 24 hours.
 
-If you didn't create an account with QNT9, you can safely ignore this email.
+If you didn't create an account with Finio, you can safely ignore this email.
 
 Best regards,
-The QNT9 Team
+The Finio Team
 """
 
     def _create_password_reset_email_html(
@@ -286,7 +286,7 @@ The QNT9 Team
         
         <p>{greeting}</p>
         
-        <p>We received a request to reset the password for your QNT9 account ({email}).</p>
+        <p>We received a request to reset the password for your Finio account ({email}).</p>
         
         <div style="text-align: center; margin: 30px 0;">
             <a href="{reset_link}" 
@@ -308,7 +308,7 @@ The QNT9 Team
         
         <p style="font-size: 12px; color: #6c757d;">
             Best regards,<br>
-            The QNT9 Team
+            The Finio Team
         </p>
     </div>
 </body>
@@ -323,7 +323,7 @@ The QNT9 Team
 
         return f"""{greeting}
 
-We received a request to reset the password for your QNT9 account ({email}).
+We received a request to reset the password for your Finio account ({email}).
 
 Reset your password by clicking this link:
 {reset_link}
@@ -333,7 +333,7 @@ This password reset link will expire in 1 hour.
 If you didn't request a password reset, you can safely ignore this email. Your password will remain unchanged.
 
 Best regards,
-The QNT9 Team
+The Finio Team
 """
 
 

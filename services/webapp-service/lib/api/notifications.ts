@@ -4,7 +4,7 @@ export interface NotificationPreferences {
   email_notifications: boolean
   product_updates: boolean
   usage_alerts: boolean
-  security_alerts: boolean
+  stock_news: boolean
   marketing_emails: boolean
 }
 
@@ -12,7 +12,7 @@ export interface NotificationPreferencesUpdate {
   email_notifications?: boolean
   product_updates?: boolean
   usage_alerts?: boolean
-  security_alerts?: boolean
+  stock_news?: boolean
   marketing_emails?: boolean
 }
 

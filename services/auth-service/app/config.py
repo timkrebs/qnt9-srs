@@ -19,14 +19,14 @@ class Settings(BaseSettings):
     """
 
     # Service Configuration
-    APP_NAME: str = "QNT9 Auth Service"
+    APP_NAME: str = "Finio Auth Service"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
     HOST: str = "0.0.0.0"
     PORT: int = 8010
 
     # Database Configuration
-    DATABASE_URL: str = "postgresql://qnt9:qnt9_secret_password@localhost:5432/qnt9_db"
+    DATABASE_URL: str = "postgresql://finio:finio_secret_password@localhost:5432/finio_db"
     DATABASE_POOL_SIZE: int = 20
     DATABASE_POOL_MIN_SIZE: int = 5
 
@@ -64,9 +64,9 @@ class Settings(BaseSettings):
     # Redis Configuration
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_MAX_CONNECTIONS: int = 50
-    CACHE_PREFIX: str = "qnt9:auth:cache:"
+    CACHE_PREFIX: str = "finio:auth:cache:"
     CACHE_DEFAULT_TTL: int = 300
-    RATE_LIMIT_PREFIX: str = "qnt9:auth:ratelimit:"
+    RATE_LIMIT_PREFIX: str = "finio:auth:ratelimit:"
     RATE_LIMIT_WINDOW_SECONDS: int = 60
     RATE_LIMIT_MAX_REQUESTS: int = 60
 
@@ -75,8 +75,8 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
-    SMTP_FROM_EMAIL: str = "noreply@qnt9.com"
-    SMTP_FROM_NAME: str = "QNT9 Stock Research"
+    SMTP_FROM_EMAIL: str = "noreply@finio.cloud"
+    SMTP_FROM_NAME: str = "Finio Stock Research"
     EMAIL_VERIFICATION_ENABLED: bool = False
     EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
 

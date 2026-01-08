@@ -43,10 +43,10 @@ lint:
 	mypy app/
 
 docker-build:
-	docker build -t qnt9-auth-service .
+	docker build -t finio-auth-service .
 
 docker-run:
-	docker run -d -p 8001:8001 --env-file .env --name auth-service qnt9-auth-service
+	docker run -d -p 8001:8001 --env-file .env --name auth-service finio-auth-service
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

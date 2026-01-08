@@ -2,7 +2,7 @@
 Auth Service - Main FastAPI Application.
 
 Provides authentication endpoints using PostgreSQL with JWT for secure user management.
-Integrates with the QNT9 Stock Recommendation System.
+Integrates with the Finio Stock Research System.
 """
 
 from contextlib import asynccontextmanager
@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 # Configure OpenTelemetry tracing
 configure_opentelemetry(
     service_name="auth-service",
-    service_version="3.0.0",
+    service_version="1.0.0",
     enable_tracing=not settings.DEBUG,
 )
 
@@ -77,8 +77,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Authentication service using PostgreSQL with JWT for QNT9 SRS",
-    version="3.0.0",
+    description="Authentication service using PostgreSQL with JWT for Finio Stock Research",
+    version="1.0.0",
     docs_url="/api/docs" if settings.DEBUG else None,
     redoc_url="/api/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
@@ -189,7 +189,7 @@ def get_token_from_header(authorization: str = Header(None)) -> str:
 async def root() -> dict:
     """Root endpoint with service information."""
     return {
-        "service": "QNT9 Auth Service",
+        "service": "Finio Auth Service",
         "version": "3.0.0",
         "status": "active",
         "auth_provider": "PostgreSQL + JWT",

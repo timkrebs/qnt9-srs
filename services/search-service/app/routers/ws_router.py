@@ -60,18 +60,18 @@ class ClientConnection:
 
 class MassiveWebSocketManager:
     """
-    Manages WebSocket connections to Polygon.io API and client broadcasts.
+    Manages WebSocket connections to Massive API and client broadcasts.
     
     Features:
-    - Single upstream connection to Polygon (shared across clients)
+    - Single upstream connection to Massive (shared across clients)
     - Client subscription management
     - Automatic reconnection on disconnect
     - Message filtering by subscription
     """
     
-    # Polygon.io WebSocket URLs (Massive API uses Polygon infrastructure)
-    REALTIME_URL = "wss://socket.polygon.io/stocks"
-    DELAYED_URL = "wss://delayed.polygon.io/stocks"
+    # Massive WebSocket URLs
+    REALTIME_URL = "wss://socket.massive.com/stocks"
+    DELAYED_URL = "wss://delayed.massive.com/stocks"
     
     def __init__(self, use_realtime: bool = False):
         """
@@ -336,14 +336,14 @@ class MassiveWebSocketManager:
             logger.debug(f"Upstream {action}: T.{ticker}")
 
     async def _process_upstream_message(self, raw_message: str) -> None:
-        """Process message from Polygon.io WebSocket."""
+        """Process message from Massive WebSocket."""
         try:
             data = json.loads(raw_message)
             logger.debug(f"Received upstream message: {raw_message[:200]}")
             
             # Handle different message formats
             if isinstance(data, list):
-                # Array of events (Polygon.io format)
+                # Array of events (Massive format)
                 for event in data:
                     await self._process_event(event)
             elif isinstance(data, dict):
@@ -356,7 +356,7 @@ class MassiveWebSocketManager:
             logger.error(f"Error processing upstream message: {e}")
 
     async def _process_event(self, event: dict) -> None:
-        """Process a single event from Polygon.io."""
+        """Process a single event from Massive."""
         event_type = event.get("ev")
         status = event.get("status")
         message = event.get("message", "")
@@ -365,19 +365,19 @@ class MassiveWebSocketManager:
         if event_type == "status" or status:
             status_value = status or message
             if status_value in ("connected", "auth_success", "success"):
-                logger.info(f"Polygon.io WebSocket: {status_value} - {message}")
+                logger.info(f"Massive WebSocket: {status_value} - {message}")
                 return
             elif "not authorized" in str(message).lower():
                 # Subscription not authorized - plan limitation
-                logger.warning(f"Polygon.io subscription not authorized: {message}")
+                logger.warning(f"Massive subscription not authorized: {message}")
                 # Notify all clients that real-time data isn't available
                 await self._notify_clients_no_realtime()
                 return
             elif status_value == "error" or "error" in str(message).lower():
-                logger.error(f"Polygon.io error: {message or event}")
+                logger.error(f"Massive error: {message or event}")
                 return
             else:
-                logger.info(f"Polygon.io status: {event}")
+                logger.info(f"Massive status: {event}")
                 return
         
         if event_type == "T":  # Trade

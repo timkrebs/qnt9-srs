@@ -129,7 +129,7 @@ class TestHealthEndpoints:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["service"] == "QNT9 Auth Service"
+        assert data["service"] == "Finio Auth Service"
         assert data["version"] == "3.0.0"
         assert data["status"] == "active"
         assert data["auth_provider"] == "PostgreSQL + JWT"

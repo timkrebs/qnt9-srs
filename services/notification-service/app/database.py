@@ -18,9 +18,10 @@ class Database:
         try:
             self.pool = await asyncpg.create_pool(
                 dsn=settings.DATABASE_URL,
-                min_size=5,
-                max_size=20,
+                min_size=2,
+                max_size=10,
                 command_timeout=60,
+                statement_cache_size=0,
             )
             logger.info("Database connection pool created")
         except Exception as e:

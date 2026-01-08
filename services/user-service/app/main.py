@@ -57,24 +57,29 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="User Service",
-    description="User profile and subscription management for QNT9-SRS",
+    title="Finio User Service",
+    description="User profile and subscription management for Finio Stock Research",
     version="1.0.0",
+    docs_url="/docs" if settings.DEBUG else None,
+    redoc_url="/redoc" if settings.DEBUG else None,
     lifespan=lifespan,
 )
 
-# Configure CORS
-cors_origins = [
-    "http://localhost:8080",
-    "http://localhost:3000",
-    "http://webapp-service:3000",
-]
+# CORS middleware with restricted permissions for production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+    ],
+    expose_headers=["Content-Length", "X-Request-ID"],
+    max_age=600,
 )
 
 # Add Prometheus metrics middleware

@@ -1,6 +1,6 @@
 # Notification Service
 
-QNT9 Notification Service handles email notifications for price alerts and marketing campaigns.
+Finio Notification Service handles email notifications for price alerts and marketing campaigns.
 
 ## Features
 
@@ -121,6 +121,6 @@ pytest
 
 Run with Docker:
 ```bash
-docker build -t qnt9-notification-service .
-docker run -p 8040:8040 --env-file .env qnt9-notification-service
+docker build -t finio-notification-service .
+docker run -p 8040:8040 --env-file .env finio-notification-service
 ```

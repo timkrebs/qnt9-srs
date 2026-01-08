@@ -1,16 +1,27 @@
+"""Finio Data Service - Main FastAPI Application.
+
+Provides data ingestion and ETL functionality for market data and news.
+"""
+
 import logging
+import os
 import sys
 from datetime import date
-from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
+
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 import structlog
 
 from app.database import get_db, engine, Base
 from app.services.ingestion import IngestionService
 
+# Configuration
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
 # Configure logging - output to stdout for Docker visibility
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, LOG_LEVEL.upper()),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout)
@@ -41,7 +52,13 @@ Base.metadata.create_all(bind=engine)
 logger = structlog.get_logger(__name__)
 logger.info("Data Service starting up...")
 
-app = FastAPI(title="Data Service", version="0.1.0")
+app = FastAPI(
+    title="Finio Data Service",
+    description="Data ingestion and ETL service for market data and news",
+    version="1.0.0",
+    docs_url="/docs" if DEBUG else None,
+    redoc_url="/redoc" if DEBUG else None,
+)
 
 @app.get("/health")
 async def health_check():

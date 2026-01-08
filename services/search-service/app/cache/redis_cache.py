@@ -289,7 +289,7 @@ async def get_redis_cache() -> RedisCache:
         from .config import settings
 
         redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
-        cache_prefix = getattr(settings, "CACHE_PREFIX", "qnt9:cache:")
+        cache_prefix = getattr(settings, "CACHE_PREFIX", "finio:cache:")
         default_ttl = getattr(settings, "CACHE_DEFAULT_TTL", 300)
 
         _cache_instance = RedisCache(

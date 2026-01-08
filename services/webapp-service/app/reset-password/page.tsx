@@ -22,6 +22,7 @@ import { useToast } from '@/hooks/use-toast'
 import { authService } from '@/lib/api/auth'
 import { ApiError } from '@/lib/api/client'
 import { getPasswordStrength } from '@/lib/validations/auth'
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { ArrowLeft, CheckCircle, XCircle, KeyRound, AlertTriangle } from 'lucide-react'
 
 const passwordSchema = z
@@ -59,6 +60,13 @@ function extractTokensFromUrl(): TokenData {
     return { accessToken: null, refreshToken: null, type: null, error: null }
   }
 
+  // DEBUG: Log full URL details
+  console.log('=== PASSWORD RESET URL DEBUG ===')
+  console.log('Full URL:', window.location.href)
+  console.log('Hash:', window.location.hash)
+  console.log('Search:', window.location.search)
+  console.log('Pathname:', window.location.pathname)
+
   // Supabase sends tokens in URL hash fragment for PKCE flow
   // Format: #access_token=xxx&refresh_token=xxx&type=recovery&...
   const hash = window.location.hash.substring(1)
@@ -72,6 +80,15 @@ function extractTokensFromUrl(): TokenData {
   const type = params.get('type') || searchParams.get('type')
   const error = params.get('error') || searchParams.get('error')
   const errorDescription = params.get('error_description') || searchParams.get('error_description')
+
+  // DEBUG: Log extracted values
+  console.log('Extracted values:')
+  console.log('  accessToken:', accessToken ? `${accessToken.substring(0, 20)}...` : 'null')
+  console.log('  refreshToken:', refreshToken ? `${refreshToken.substring(0, 20)}...` : 'null')
+  console.log('  type:', type)
+  console.log('  error:', error)
+  console.log('  errorDescription:', errorDescription)
+  console.log('=== END DEBUG ===')
 
   return {
     accessToken,
@@ -103,36 +120,101 @@ function ResetPasswordContent() {
   const password = form.watch('password')
   const passwordStrength = getPasswordStrength(password || '')
 
-  // Extract tokens on mount
+  // Extract tokens on mount - try Supabase client first, then URL extraction
   useEffect(() => {
-    const tokens = extractTokensFromUrl()
+    const initializeAuth = async () => {
+      console.log('=== PASSWORD RESET INIT ===')
+      console.log('Full URL:', window.location.href)
+      console.log('Hash:', window.location.hash)
+      console.log('Search:', window.location.search)
+      
+      // Method 1: Try Supabase client to handle the auth callback
+      if (isSupabaseConfigured && supabase) {
+        try {
+          console.log('Attempting Supabase session recovery...')
+          
+          // Check if there's a hash with tokens (Supabase PKCE flow)
+          if (window.location.hash && window.location.hash.includes('access_token')) {
+            // Let Supabase handle the hash parsing
+            const { data, error } = await supabase.auth.getSession()
+            
+            if (error) {
+              console.error('Supabase session error:', error)
+            }
+            
+            if (data?.session?.access_token) {
+              console.log('✅ Got session from Supabase client')
+              setAccessToken(data.session.access_token)
+              setIsLoading(false)
+              // Clean up URL
+              window.history.replaceState(null, '', window.location.pathname)
+              return
+            }
+          }
+          
+          // Also check for existing recovery session
+          const { data: sessionData } = await supabase.auth.getSession()
+          if (sessionData?.session?.access_token) {
+            // Check if this is from a recovery flow
+            const user = sessionData.session.user
+            if (user?.recovery_sent_at) {
+              console.log('✅ Found existing recovery session')
+              setAccessToken(sessionData.session.access_token)
+              setIsLoading(false)
+              return
+            }
+          }
+        } catch (err) {
+          console.error('Supabase client error:', err)
+        }
+      }
+      
+      // Method 2: Manual URL extraction as fallback
+      const tokens = extractTokensFromUrl()
+      console.log('Manual extraction result:', {
+        hasAccessToken: !!tokens.accessToken,
+        type: tokens.type,
+        error: tokens.error
+      })
 
-    if (tokens.error) {
-      setTokenError(tokens.error)
+      if (tokens.error) {
+        setTokenError(tokens.error)
+        setIsLoading(false)
+        return
+      }
+
+      if (!tokens.accessToken) {
+        // Check if we have error params from Supabase
+        const urlParams = new URLSearchParams(window.location.search)
+        const errorCode = urlParams.get('error')
+        const errorDesc = urlParams.get('error_description')
+        
+        if (errorCode) {
+          setTokenError(errorDesc || `Authentication error: ${errorCode}`)
+        } else {
+          setTokenError('Invalid or missing reset link. Please request a new password reset.')
+        }
+        setIsLoading(false)
+        return
+      }
+
+      // Verify this is a recovery token
+      if (tokens.type && tokens.type !== 'recovery') {
+        setTokenError('Invalid reset link type. Please request a new password reset.')
+        setIsLoading(false)
+        return
+      }
+
+      setAccessToken(tokens.accessToken)
       setIsLoading(false)
-      return
-    }
 
-    if (!tokens.accessToken) {
-      setTokenError('Invalid or missing reset link. Please request a new password reset.')
-      setIsLoading(false)
-      return
+      // Clean up URL hash to prevent token exposure in browser history
+      if (window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname)
+      }
     }
-
-    // Verify this is a recovery token
-    if (tokens.type && tokens.type !== 'recovery') {
-      setTokenError('Invalid reset link type. Please request a new password reset.')
-      setIsLoading(false)
-      return
-    }
-
-    setAccessToken(tokens.accessToken)
-    setIsLoading(false)
-
-    // Clean up URL hash to prevent token exposure in browser history
-    if (window.location.hash) {
-      window.history.replaceState(null, '', window.location.pathname)
-    }
+    
+    initializeAuth()
   }, [searchParams])
 
   const handleSubmit = async (data: ResetPasswordFormData) => {
@@ -143,6 +225,25 @@ function ResetPasswordContent() {
 
     setIsSubmitting(true)
     try {
+      // Try using Supabase client directly first (more reliable)
+      if (isSupabaseConfigured && supabase) {
+        const { error } = await supabase.auth.updateUser({
+          password: data.password
+        })
+        
+        if (error) {
+          throw new Error(error.message)
+        }
+        
+        setIsSuccess(true)
+        toast({
+          title: 'Password updated',
+          description: 'Your password has been successfully reset.',
+        })
+        return
+      }
+      
+      // Fallback to auth service
       await authService.updatePasswordWithToken(accessToken, data.password)
       setIsSuccess(true)
       toast({
@@ -152,6 +253,8 @@ function ResetPasswordContent() {
     } catch (error) {
       const message =
         error instanceof ApiError
+          ? error.message
+          : error instanceof Error
           ? error.message
           : 'Failed to reset password. Please try again.'
       

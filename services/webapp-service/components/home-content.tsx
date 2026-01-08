@@ -174,8 +174,11 @@ export default function HomeContent() {
       const allNews = responses
         .filter((r) => r.success)
         .flatMap((r) => r.articles || [])
-        .slice(0, 6)
-      setPersonalizedNews(allNews)
+      // Deduplicate articles by id to avoid React key warnings
+      const uniqueNews = Array.from(
+        new Map(allNews.map((article) => [article.id, article])).values()
+      ).slice(0, 6)
+      setPersonalizedNews(uniqueNews)
     } catch {
       console.error("Failed to fetch personalized news")
     } finally {

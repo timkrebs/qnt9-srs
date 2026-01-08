@@ -159,7 +159,7 @@ class AggregateBar:
 
 class MassiveClient:
     """
-    Massive API client with fault tolerance (uses Polygon.io infrastructure).
+    Massive API client with fault tolerance.
 
     Features:
     - Circuit breaker for failure protection
@@ -167,10 +167,10 @@ class MassiveClient:
     - Automatic retry with exponential backoff
     - Async HTTP requests with connection pooling
     
-    API Base URL: https://api.polygon.io
+    API Base URL: https://api.massive.com
     """
 
-    BASE_URL = "https://api.polygon.io"
+    BASE_URL = "https://api.massive.com"
     
     def __init__(
         self,
@@ -222,7 +222,7 @@ class MassiveClient:
                 timeout=self.timeout,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
-                    "User-Agent": "QNT9-Search-Service/1.0",
+                    "User-Agent": "Finio-Search-Service/1.0",
                 },
             )
         return self._client

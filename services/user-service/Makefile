@@ -52,13 +52,13 @@ migrate-create: ## Create new migration (use name=your_migration_name)
 	alembic revision --autogenerate -m "$(name)"
 
 docker-build: ## Build Docker image
-	docker build -t qnt9-user-serivce:latest .
+	docker build -t finio-user-service:latest .
 
 docker-run: ## Run Docker container
 	docker run -p 8000:8000 \
 		-e DATABASE_URL=$${DATABASE_URL} \
 		-e REDIS_URL=$${REDIS_URL} \
-		qnt9-user-serivce:latest
+		finio-user-service:latest
 
 docker-compose-up: ## Start services with docker-compose
 	docker-compose up -d
@@ -67,10 +67,10 @@ docker-compose-down: ## Stop services
 	docker-compose down
 
 redis-start: ## Start local Redis (requires Docker)
-	docker run -d -p 6379:6379 --name qnt9-redis redis:7-alpine
+	docker run -d -p 6379:6379 --name finio-redis redis:7-alpine
 
 redis-stop: ## Stop local Redis
-	docker stop qnt9-redis && docker rm qnt9-redis
+	docker stop finio-redis && docker rm finio-redis
 
 logs: ## View logs (requires service running)
 	tail -f logs/user-serivce.log

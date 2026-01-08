@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/qnt9"
+        default="postgresql://postgres:postgres@localhost:5432/finio"
     )
 
     # Tier Limits

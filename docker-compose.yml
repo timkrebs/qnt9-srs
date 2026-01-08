@@ -6,7 +6,7 @@ services:
   # Prefect Server (Orchestration UI & API)
   prefect-server:
     image: prefecthq/prefect:2-latest
-    container_name: qnt9-prefect-server
+    container_name: finio-prefect-server
     command: prefect server start
     ports:
       - "4200:4200"
@@ -16,7 +16,7 @@ services:
       # Bind to all interfaces
       PREFECT_SERVER_API_HOST: 0.0.0.0
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:4200/api/health" ]
@@ -31,12 +31,13 @@ services:
     build:
       context: ./services/user-service
       dockerfile: Dockerfile
-    container_name: qnt9-user-service
+    container_name: finio-user-service
     environment:
       SERVICE_NAME: user-service
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 8011
       LOG_LEVEL: INFO
+      DEBUG: "true"
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_POOL_SIZE: 20
       DATABASE_POOL_MIN_SIZE: 5
@@ -53,7 +54,7 @@ services:
       retries: 3
       start_period: 20s
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
   # Auth Service (Authentication & Authorization)
@@ -61,7 +62,7 @@ services:
     build:
       context: ./services/auth-service
       dockerfile: Dockerfile
-    container_name: qnt9-auth-service
+    container_name: finio-auth-service
     environment:
       # Database Configuration
       DATABASE_URL: ${DATABASE_URL}
@@ -78,7 +79,7 @@ services:
       PASSWORD_HASH_ROUNDS: 12
 
       # Service Configuration
-      APP_NAME: QNT9 Auth Service
+      APP_NAME: Finio Auth Service
       DEBUG: "true"
       LOG_LEVEL: DEBUG
 
@@ -88,9 +89,9 @@ services:
       # Redis Configuration
       REDIS_URL: ${REDIS_URL}
       REDIS_MAX_CONNECTIONS: 50
-      CACHE_PREFIX: "qnt9:auth:cache:"
+      CACHE_PREFIX: "finio:auth:cache:"
       CACHE_DEFAULT_TTL: 300
-      RATE_LIMIT_PREFIX: "qnt9:auth:ratelimit:"
+      RATE_LIMIT_PREFIX: "finio:auth:ratelimit:"
       RATE_LIMIT_WINDOW_SECONDS: 60
       RATE_LIMIT_MAX_REQUESTS: 60
 
@@ -111,7 +112,7 @@ services:
       retries: 3
       start_period: 20s
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
   # Watchlist Service (User Watchlist Management)
@@ -119,7 +120,7 @@ services:
     build:
       context: ./services/watchlist-service
       dockerfile: Dockerfile
-    container_name: qnt9-watchlist-service
+    container_name: finio-watchlist-service
     environment:
       SERVICE_NAME: watchlist-service
       SERVICE_HOST: 0.0.0.0
@@ -142,7 +143,7 @@ services:
       retries: 3
       start_period: 20s
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
   # Data Service (Data Ingestion & ETL)
@@ -150,12 +151,13 @@ services:
     build:
       context: ./services/data-service
       dockerfile: Dockerfile
-    container_name: qnt9-data-service
+    container_name: finio-data-service
     environment:
       SERVICE_NAME: data-service
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 8013
       LOG_LEVEL: INFO
+      DEBUG: "true"
       DATABASE_URL: ${DATABASE_URL}
       MASSIVE_API_KEY: ${MASSIVE_API_KEY}
       MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
@@ -178,7 +180,7 @@ services:
       retries: 3
       start_period: 20s
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
   # ML Service (Model Training & Inference)
@@ -186,16 +188,17 @@ services:
     build:
       context: ./services/ml-service
       dockerfile: Dockerfile
-    container_name: qnt9-ml-service
+    container_name: finio-ml-service
     environment:
       SERVICE_NAME: ml-service
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 8014
       LOG_LEVEL: INFO
+      DEBUG: "true"
       DATABASE_URL: ${DATABASE_URL}
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_KEY: ${SUPABASE_KEY}
-      SUPABASE_BUCKET_MODELS: "qnt9-models"
+      SUPABASE_BUCKET_MODELS: "finio-models"
     ports:
       - "8014:8000"
     healthcheck:
@@ -205,7 +208,7 @@ services:
       retries: 3
       start_period: 20s
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
   # Search Service (Stock Search API)
@@ -213,7 +216,7 @@ services:
     build:
       context: ./services/search-service
       dockerfile: Dockerfile.dev
-    container_name: qnt9-search-service
+    container_name: finio-search-service
     environment:
       # Database Configuration
       DATABASE_URL: ${DATABASE_URL}
@@ -235,8 +238,8 @@ services:
       YAHOO_FINANCE_MAX_RETRIES: 3
       YAHOO_FINANCE_RATE_LIMIT: 5
 
-      # Massive API (formerly Polygon.io) Configuration
-      MASSIVE_API_KEY: ${MASSIVE_API_KEY:-E0aTGuCEv454Yrck2CCmFq4acCeTXdpC}
+      # Massive API Configuration
+      MASSIVE_API_KEY: ${MASSIVE_API_KEY}
       MASSIVE_USE_REALTIME: ${MASSIVE_USE_REALTIME:-false}
 
       # Cache Settings (PostgreSQL only - Redis removed)
@@ -268,7 +271,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
   # Notification Service (Email Notifications & Price Alerts)
@@ -276,19 +279,23 @@ services:
     build:
       context: ./services/notification-service
       dockerfile: Dockerfile
-    container_name: qnt9-notification-service
+    container_name: finio-notification-service
     environment:
       SERVICE_NAME: notification-service
       SERVICE_HOST: 0.0.0.0
       SERVICE_PORT: 8040
       LOG_LEVEL: INFO
+      DEBUG: "true"
       DATABASE_URL: ${DATABASE_URL}
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: HS256
       RESEND_API_KEY: ${RESEND_API_KEY}
-      RESEND_FROM_EMAIL: noreply@qnt9.com
-      RESEND_FROM_NAME: QNT9 Stock Research
+      RESEND_FROM_EMAIL: noreply@finio.cloud
+      RESEND_FROM_NAME: Finio Stock Research
       SEARCH_SERVICE_URL: http://search-service:8000
+      CORS_ORIGINS: http://localhost:8080,http://localhost:3000
       NOTIFICATION_CHECK_INTERVAL: 3600
       PRICE_ALERT_SEND_HOUR: 8
       ALERT_COOLDOWN_HOURS: 24
@@ -301,7 +308,7 @@ services:
       retries: 3
       start_period: 20s
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
   # ==================== FRONTEND ====================
@@ -311,7 +318,7 @@ services:
     build:
       context: ./services/webapp-service
       dockerfile: Dockerfile.dev
-    container_name: qnt9-webapp-service
+    container_name: finio-webapp-service
     environment:
       # API Service URLs (for client-side requests - browser makes direct requests)
       # NOTE: These must be accessible from the browser, not just from the container
@@ -351,11 +358,11 @@ services:
       ml-service:
         condition: service_healthy
     networks:
-      - qnt9-network
+      - finio-network
     restart: unless-stopped
 
 networks:
-  qnt9-network:
+  finio-network:
     driver: bridge
 
 volumes:

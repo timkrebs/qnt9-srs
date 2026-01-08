@@ -1,5 +1,5 @@
 """
-Financial Data Service for real-time stock data integration using Polygon.io API.
+Financial Data Service for real-time stock data integration using Massive API.
 
 Provides:
 - Real-time stock quotes
@@ -28,12 +28,12 @@ class APIKeyNotConfiguredError(Exception):
 
 
 class FinancialDataService:
-    """Service for fetching real-time financial data from Massive API (formerly Polygon.io)."""
+    """Service for fetching real-time financial data from Massive API."""
 
     def __init__(self):
         """Initialize the financial data service."""
         self.api_key = os.getenv("MASSIVE_API_KEY", "")
-        self.base_url = "https://api.polygon.io"
+        self.base_url = "https://api.massive.com"
         self.session: Optional[aiohttp.ClientSession] = None
 
         if not self.api_key:

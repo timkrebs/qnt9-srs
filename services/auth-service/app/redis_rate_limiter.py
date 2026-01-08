@@ -237,7 +237,7 @@ async def get_redis_rate_limiter() -> RedisRateLimiter:
         from .config import settings
 
         redis_url = getattr(settings, "REDIS_URL", "redis://localhost:6379/0")
-        rate_limit_prefix = getattr(settings, "RATE_LIMIT_PREFIX", "qnt9:ratelimit:")
+        rate_limit_prefix = getattr(settings, "RATE_LIMIT_PREFIX", "finio:ratelimit:")
         rate_limit_window = getattr(settings, "RATE_LIMIT_WINDOW_SECONDS", 60)
         rate_limit_max = getattr(settings, "RATE_LIMIT_MAX_REQUESTS", 60)
 

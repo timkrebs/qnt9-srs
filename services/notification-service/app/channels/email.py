@@ -11,6 +11,7 @@ from app.email_templates import (
     PRICE_ALERT_TEMPLATE,
     MARKETING_WELCOME_TEMPLATE,
     PRODUCT_UPDATE_TEMPLATE,
+    DAILY_SUMMARY_TEMPLATE,
 )
 
 logger = structlog.get_logger()
@@ -29,6 +30,7 @@ class ResendEmailChannel(NotificationChannel):
             NotificationType.WELCOME: MARKETING_WELCOME_TEMPLATE,
             NotificationType.PRODUCT_UPDATE: PRODUCT_UPDATE_TEMPLATE,
             NotificationType.MARKETING: MARKETING_WELCOME_TEMPLATE,
+            NotificationType.DAILY_SUMMARY: DAILY_SUMMARY_TEMPLATE,
         }
 
     def get_channel_name(self) -> str:
@@ -138,16 +140,41 @@ class ResendEmailChannel(NotificationChannel):
         """Get default email subject based on notification type."""
         subjects = {
             NotificationType.PRICE_ALERT: "Price Alert Triggered",
-            NotificationType.WELCOME: "Welcome to QNT9 Stock Research",
-            NotificationType.PRODUCT_UPDATE: "Product Update from QNT9",
-            NotificationType.MARKETING: "QNT9 Stock Research Update",
-            NotificationType.SECURITY_ALERT: "Security Alert from QNT9",
+            NotificationType.WELCOME: "Welcome to Finio Stock Research",
+            NotificationType.PRODUCT_UPDATE: "Product Update from Finio",
+            NotificationType.MARKETING: "Finio Stock Research Update",
+            NotificationType.DAILY_SUMMARY: "Your Daily Stock Summary",
         }
-        return subjects.get(notification_type, "Notification from QNT9")
+        return subjects.get(notification_type, "Notification from Finio")
+
+    async def send_daily_summary(
+        self,
+        recipient: str,
+        template_data: Dict[str, Any],
+    ) -> bool:
+        """
+        Send daily summary email.
+
+        Args:
+            recipient: Email address
+            template_data: Data for template rendering
+
+        Returns:
+            True if sent successfully
+        """
+        status, _ = await self.send(
+            recipient=recipient,
+            notification_type=NotificationType.DAILY_SUMMARY,
+            data={
+                "subject": "Your Daily Stock Summary",
+                **template_data,
+            },
+        )
+        return status == DeliveryStatus.SENT
 
     def _get_fallback_template(self, data: Dict[str, Any]) -> str:
         """Get fallback template when specific template is not found."""
-        message = data.get("message", "You have a new notification from QNT9.")
+        message = data.get("message", "You have a new notification from Finio.")
         return f"""
         <!DOCTYPE html>
         <html>
@@ -160,7 +187,7 @@ class ResendEmailChannel(NotificationChannel):
                 <p>{message}</p>
                 <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
                 <p style="font-size: 12px; color: #666;">
-                    QNT9 Stock Research Platform
+                    Finio Stock Research Platform
                 </p>
             </div>
         </body>

@@ -137,7 +137,7 @@ Prometheus metrics endpoint.
 
 ```bash
 # Database
-DATABASE_URL=postgresql://postgres:postgres@postgres-users:5432/qnt9_users
+DATABASE_URL=postgresql://postgres:postgres@postgres-users:5432/finio_users
 
 # Stripe
 STRIPE_SECRET_KEY=sk_test_xxx
@@ -357,7 +357,7 @@ spec:
 **Issue: Database connection failed**
 ```bash
 # Check database connectivity
-psql -U postgres -h postgres-users -d qnt9_users -c "SELECT 1"
+psql -U postgres -h postgres-users -d finio_users -c "SELECT 1"
 
 # Check environment variables
 echo $DATABASE_URL
@@ -383,9 +383,9 @@ curl -X POST http://localhost:8011/stripe/webhook \
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/your-org/qnt9-srs/issues
-- Documentation: https://docs.qnt9-srs.com/user-service
-- Email: support@qnt9-srs.com
+- GitHub Issues: https://github.com/your-org/finio/issues
+- Documentation: https://docs.finio.cloud/user-service
+- Email: support@finio.cloud
 
 ## License
 

@@ -40,7 +40,7 @@ def configure_opentelemetry(
     if otlp_endpoint is None:
         otlp_endpoint = os.getenv(
             "OTEL_EXPORTER_OTLP_ENDPOINT",
-            "grafana-agent.qnt9-monitoring.svc.cluster.local:4317",
+            "grafana-agent.finio-monitoring.svc.cluster.local:4317",
         )
 
     # Create resource with service information
@@ -49,7 +49,7 @@ def configure_opentelemetry(
             SERVICE_NAME: service_name,
             SERVICE_VERSION: service_version,
             "deployment.environment": os.getenv("ENVIRONMENT", "production"),
-            "k8s.cluster.name": "qnt9-aks",
+            "k8s.cluster.name": "finio-aks",
         }
     )
 

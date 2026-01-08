@@ -669,10 +669,16 @@ class SupabaseAuthService:
         try:
             logger.info(f"Password reset requested for: {email}")
 
+            # Use auth/callback route to handle the token exchange
+            # This is more reliable than direct redirect to reset-password
+            redirect_url = f"{settings.FRONTEND_URL}/auth/callback?type=recovery&next=/reset-password"
+            
+            logger.info(f"Password reset redirect URL: {redirect_url}")
+            
             # Supabase will send reset email
             self.supabase.auth.reset_password_for_email(
                 email.lower(),
-                {"redirect_to": f"{settings.FRONTEND_URL}/reset-password"},
+                {"redirect_to": redirect_url},
             )
 
             logger.info(f"Password reset email sent to: {email}")

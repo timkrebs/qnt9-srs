@@ -13,7 +13,7 @@ class TestHealthEndpoints:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["service"] == "QNT9 Stock Search Service"
+        assert data["service"] == "Finio Stock Search Service"
         assert data["status"] == "operational"
 
     def test_health_check(self, client):

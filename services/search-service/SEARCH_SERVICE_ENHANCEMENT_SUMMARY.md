@@ -2,7 +2,7 @@
 
 ## Overview
 
-The search-service has been successfully enhanced with Supabase authentication, tier-based access control, and user-centric features to align with the QNT9-SRS ML forecasting platform strategy.
+The search-service has been successfully enhanced with Supabase authentication, tier-based access control, and user-centric features to align with the Finio Stock Research ML forecasting platform strategy.
 
 ## Completed Implementation
 

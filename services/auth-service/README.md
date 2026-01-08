@@ -1,6 +1,6 @@
-# QNT9 Auth Service
+# Finio Auth Service
 
-Modern authentication service using **Supabase Auth** for the QNT9 Stock Recommendation System.
+Modern authentication service using **Supabase Auth** for the Finio Stock Research System.
 
 ## Features
 
@@ -498,14 +498,14 @@ async def protected_route(user = Depends(get_current_user)):
 
 ```bash
 # Build image
-docker build -t qnt9-auth-service:latest .
+docker build -t finio-auth-service:latest .
 
 # Run container
 docker run -d \
   --name auth-service \
   -p 8001:8001 \
   --env-file .env \
-  qnt9-auth-service:latest
+  finio-auth-service:latest
 ```
 
 ### Docker Compose
@@ -649,7 +649,7 @@ curl http://localhost:8001/health/database
 
 ## License
 
-This project is part of the QNT9 Stock Recommendation System.
+This project is part of the Finio Stock Research System.
 
 ## Support
 

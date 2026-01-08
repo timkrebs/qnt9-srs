@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Supabase Storage (Model Artifacts)
     SUPABASE_URL: str
     SUPABASE_KEY: str  # Service Role Key preferred for backend
-    SUPABASE_BUCKET_MODELS: str = "qnt9-models"
+    SUPABASE_BUCKET_MODELS: str = "finio-models"
     
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -14,7 +14,8 @@ import {
   type SignInRequest,
   type SignUpRequest,
 } from '@/lib/api/auth'
-import { ApiError, clearTokens, getRefreshToken } from '@/lib/api/client'
+import { ApiError, clearTokens, getRefreshToken, setTokens } from '@/lib/api/client'
+import { createSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase/client'
 
 interface AuthContextType {
   user: UserResponse | null
@@ -83,21 +84,82 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   useEffect(() => {
     const initAuth = async () => {
       console.log('[Auth] Initializing auth...')
+      
+      // First, check for existing localStorage token
       const token =
         typeof window !== 'undefined'
           ? localStorage.getItem('access_token')
           : null
-      console.log('[Auth] Token found:', !!token)
+      console.log('[Auth] localStorage token found:', !!token)
+      
       if (token) {
         await validateSession()
-      } else {
-        console.log('[Auth] No token, skipping validation')
+        setIsLoading(false)
+        return
       }
+      
+      // No localStorage token - check for Supabase OAuth session
+      if (isSupabaseConfigured) {
+        console.log('[Auth] Checking Supabase session...')
+        try {
+          const supabase = createSupabaseBrowserClient()
+          const { data: { session }, error } = await supabase.auth.getSession()
+          
+          if (error) {
+            console.error('[Auth] Supabase getSession error:', error)
+          } else if (session) {
+            console.log('[Auth] Found Supabase session for:', session.user?.email)
+            console.log('[Auth] Provider:', session.user?.app_metadata?.provider)
+            
+            // Store Supabase tokens in localStorage for auth-service calls
+            setTokens(session.access_token, session.refresh_token)
+            console.log('[Auth] Tokens stored, validating session...')
+            
+            // Now validate with auth-service (which accepts Supabase tokens)
+            await validateSession()
+            setIsLoading(false)
+            return
+          } else {
+            console.log('[Auth] No Supabase session found')
+          }
+        } catch (err) {
+          console.error('[Auth] Error checking Supabase session:', err)
+        }
+      }
+      
+      console.log('[Auth] No token or session, user is not authenticated')
       setIsLoading(false)
-      console.log('[Auth] Init complete, isLoading=false')
     }
 
     initAuth()
+    
+    // Subscribe to Supabase auth state changes (for OAuth callbacks)
+    if (isSupabaseConfigured) {
+      const supabase = createSupabaseBrowserClient()
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (event, session) => {
+          console.log('[Auth] Supabase auth state change:', event, session?.user?.email)
+          
+          if (event === 'SIGNED_IN' && session) {
+            // OAuth sign-in completed - store tokens and validate
+            console.log('[Auth] OAuth sign-in detected, storing tokens...')
+            setTokens(session.access_token, session.refresh_token)
+            await validateSession()
+          } else if (event === 'SIGNED_OUT') {
+            console.log('[Auth] Supabase sign-out detected')
+            clearTokens()
+            setUser(null)
+          } else if (event === 'TOKEN_REFRESHED' && session) {
+            console.log('[Auth] Supabase token refreshed')
+            setTokens(session.access_token, session.refresh_token)
+          }
+        }
+      )
+      
+      return () => {
+        subscription.unsubscribe()
+      }
+    }
   }, [validateSession])
 
   const login = useCallback(async (data: SignInRequest) => {
@@ -112,12 +174,24 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   const logout = useCallback(async () => {
     try {
+      // Sign out from auth-service
       await authService.signOut()
     } catch {
-      clearTokens()
-    } finally {
-      setUser(null)
+      // Ignore auth-service errors
     }
+    
+    try {
+      // Also sign out from Supabase (clears cookies)
+      if (isSupabaseConfigured) {
+        const supabase = createSupabaseBrowserClient()
+        await supabase.auth.signOut()
+      }
+    } catch {
+      // Ignore Supabase errors
+    }
+    
+    clearTokens()
+    setUser(null)
   }, [])
 
   const refreshSession = useCallback(async () => {

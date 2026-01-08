@@ -1,4 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
+"""Finio ML Service - Main FastAPI Application.
+
+Provides machine learning inference for stock predictions.
+"""
+
+import os
+
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import structlog
@@ -7,12 +14,21 @@ from app.database import get_db, engine, Base
 from app.services.inference import InferenceService
 from app.repositories.repos import FeatureRepository, ModelRegistryRepository
 
+# Configuration
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
 # Create Tables (for dev)
 Base.metadata.create_all(bind=engine)
 
 logger = structlog.get_logger()
 
-app = FastAPI(title="ML Service", version="0.1.0")
+app = FastAPI(
+    title="Finio ML Service",
+    description="Machine learning inference service for stock predictions",
+    version="1.0.0",
+    docs_url="/docs" if DEBUG else None,
+    redoc_url="/redoc" if DEBUG else None,
+)
 
 class PredictionRequest(BaseModel):
     symbol: str

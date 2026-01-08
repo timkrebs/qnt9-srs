@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Application metadata constants
-APP_TITLE = "QNT9 Stock Search Service"
+APP_TITLE = "Finio Stock Search Service"
 APP_DESCRIPTION = "Stock search microservice supporting ISIN, WKN, and symbol lookups"
 APP_VERSION = "1.0.0"
 

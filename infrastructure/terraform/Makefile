@@ -1,11 +1,11 @@
-# Makefile for QNT9-SRS Terraform Infrastructure Management
+# Makefile for Finio Stock Research Terraform Infrastructure Management
 # Supports local development and CI/CD integration with HCP Terraform Cloud
 
 .PHONY: help init plan apply destroy validate fmt clean aks-creds acr-login test-local
 
 # Environment configuration (default: dev)
 ENV ?= dev
-TF_WORKSPACE ?= qnt9-srs-$(ENV)
+TF_WORKSPACE ?= finio-srs-$(ENV)
 
 # Colors for output
 GREEN  := \033[0;32m
@@ -14,7 +14,7 @@ RED    := \033[0;31m
 NC     := \033[0m
 
 help: ## Show this help message
-	@echo "$(GREEN)QNT9-SRS Terraform Infrastructure Management$(NC)"
+	@echo "$(GREEN)Finio Stock Research Terraform Infrastructure Management$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Available targets:$(NC)"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
