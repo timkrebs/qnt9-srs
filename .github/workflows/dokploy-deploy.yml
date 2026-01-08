@@ -337,28 +337,128 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for deployment
+      - name: Wait for deployment to propagate
         run: |
-          echo "Waiting for deployment to complete..."
-          sleep 60
+          echo "Waiting for deployment to start rolling out..."
+          sleep 30
+
+      - name: Verify deployment health
+        id: health-check
+        run: |
+          DOMAIN="${{ needs.setup.outputs.domain }}"
+          API_DOMAIN="${{ needs.setup.outputs.api_domain }}"
+          MAX_RETRIES=10
+          RETRY_DELAY=15
           
+          echo "Starting deployment verification..."
+          
+          # Function to check service health with retries
+          check_health() {
+            local url=$1
+            local name=$2
+            local retries=0
+            
+            echo "Checking $name at $url"
+            while [ $retries -lt $MAX_RETRIES ]; do
+              if curl -sf --max-time 15 "$url" > /dev/null 2>&1; then
+                echo "finio $name is healthy"
+                return 0
+              fi
+              retries=$((retries + 1))
+              echo "finio Attempt $retries/$MAX_RETRIES - $name not ready, retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            done
+            echo "finio $name failed health check after $MAX_RETRIES attempts"
+            return 1
+          }
+          
+          FAILED_SERVICES=""
+          
+          # Check API health endpoint
+          if ! check_health "https://$API_DOMAIN/api/v1/health" "Search Service API"; then
+            FAILED_SERVICES="$FAILED_SERVICES search-service"
+          fi
+          
+          # Check Auth service
+          if ! check_health "https://$API_DOMAIN/api/v1/auth/health" "Auth Service"; then
+            # Try alternate health endpoint
+            if ! check_health "https://$API_DOMAIN/api/v1/users/health" "Auth Service (alt)"; then
+              FAILED_SERVICES="$FAILED_SERVICES auth-service"
+            fi
+          fi
+          
+          # Check Webapp
+          if ! check_health "https://$DOMAIN" "Webapp"; then
+            FAILED_SERVICES="$FAILED_SERVICES webapp"
+          fi
+          
+          if [ -n "$FAILED_SERVICES" ]; then
+            echo "failed_services=$FAILED_SERVICES" >> $GITHUB_OUTPUT
+            echo "health_status=failed" >> $GITHUB_OUTPUT
+          else
+            echo "health_status=passed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run smoke tests
+        if: steps.health-check.outputs.health_status == 'passed'
+        id: smoke-tests
+        run: |
           DOMAIN="${{ needs.setup.outputs.domain }}"
           API_DOMAIN="${{ needs.setup.outputs.api_domain }}"
           
-          echo "Checking service health..."
+          echo "Running smoke tests..."
+          SMOKE_FAILED=""
           
-          # Check webapp
-          if curl -sf --max-time 10 "https://$DOMAIN" > /dev/null; then
-            echo "Webapp is healthy at https://$DOMAIN"
+          # Smoke Test 1: Search API returns valid response
+          echo "finio Testing Search API..."
+          SEARCH_RESPONSE=$(curl -s --max-time 15 "https://$API_DOMAIN/api/v1/tickers/search?q=AAPL" || echo "CURL_FAILED")
+          if [[ "$SEARCH_RESPONSE" == "CURL_FAILED" ]] || [[ "$SEARCH_RESPONSE" == *"error"* && "$SEARCH_RESPONSE" != *"results"* ]]; then
+            echo "finio Search API smoke test failed"
+            SMOKE_FAILED="$SMOKE_FAILED search-api"
           else
-            echo "Webapp health check failed (may still be starting)"
+            echo "finio Search API smoke test passed"
           fi
           
-          # Check API
-          if curl -sf --max-time 10 "https://$API_DOMAIN/api/v1/health" > /dev/null; then
-            echo "API is healthy at https://$API_DOMAIN"
+          # Smoke Test 2: Webapp loads correctly (check for key elements)
+          echo "finio Testing Webapp..."
+          WEBAPP_RESPONSE=$(curl -s --max-time 15 "https://$DOMAIN" || echo "CURL_FAILED")
+          if [[ "$WEBAPP_RESPONSE" == "CURL_FAILED" ]] || [[ ! "$WEBAPP_RESPONSE" =~ "<!DOCTYPE html>" ]]; then
+            echo "finio Webapp smoke test failed"
+            SMOKE_FAILED="$SMOKE_FAILED webapp"
           else
-            echo "API health check failed (may still be starting)"
+            echo "finio Webapp smoke test passed"
+          fi
+          
+          # Smoke Test 3: Static assets load
+          echo "finio Testing static assets..."
+          if curl -sf --max-time 10 "https://$DOMAIN/_next/static/" > /dev/null 2>&1 || \
+             curl -sf --max-time 10 "https://$DOMAIN/favicon.ico" > /dev/null 2>&1; then
+            echo "finio Static assets smoke test passed"
+          else
+            echo "finio Static assets check inconclusive (non-critical)"
+          fi
+          
+          if [ -n "$SMOKE_FAILED" ]; then
+            echo "smoke_status=failed" >> $GITHUB_OUTPUT
+            echo "failed_tests=$SMOKE_FAILED" >> $GITHUB_OUTPUT
+          else
+            echo "smoke_status=passed" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report deployment status
+        if: always()
+        run: |
+          HEALTH_STATUS="${{ steps.health-check.outputs.health_status }}"
+          SMOKE_STATUS="${{ steps.smoke-tests.outputs.smoke_status }}"
+          
+          if [[ "$HEALTH_STATUS" == "failed" ]]; then
+            echo "::error::Deployment verification failed - services unhealthy: ${{ steps.health-check.outputs.failed_services }}"
+            exit 1
+          elif [[ "$SMOKE_STATUS" == "failed" ]]; then
+            echo "::error::Smoke tests failed: ${{ steps.smoke-tests.outputs.failed_tests }}"
+            exit 1
+          else
+            echo "finio Deployment verified successfully!"
           fi
 
       - name: Deployment Summary
@@ -401,10 +501,27 @@ jobs:
     steps:
       - name: Create failure summary
         run: |
-          echo "## Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "## finio Deployment Failed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Environment: **${{ needs.setup.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
-          echo "Branch: **${{ github.ref_name }}**" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Environment | **${{ needs.setup.outputs.environment }}** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | **${{ github.ref_name }}** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run | [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Please check the workflow logs for more details." >> $GITHUB_STEP_SUMMARY
+          echo "### finioRollback Instructions" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "If the deployment caused issues, you can rollback by:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to [Dokploy Admin](https://admin.finio.cloud)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Navigate to the affected compose project" >> $GITHUB_STEP_SUMMARY
+          echo "3. Change the image tag to the previous version" >> $GITHUB_STEP_SUMMARY
+          echo "4. Redeploy the compose project" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Alternatively, re-run a previous successful workflow from the Actions tab." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### finio Debugging Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Check the workflow logs above for specific errors" >> $GITHUB_STEP_SUMMARY
+          echo "2. SSH into the VPS and run \`docker logs <container-name>\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. Check Dokploy logs at https://admin.finio.cloud" >> $GITHUB_STEP_SUMMARY

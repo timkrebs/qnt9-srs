@@ -39,6 +39,7 @@ services:
       - "traefik.http.services.staging-auth-service.loadbalancer.server.port=8010"
       - "traefik.http.services.staging-auth-service.loadbalancer.healthcheck.path=/health"
       - "traefik.http.services.staging-auth-service.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.staging-auth-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
       interval: 30s
@@ -46,7 +47,25 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: '0.25'
@@ -81,6 +100,7 @@ services:
       - "traefik.http.services.staging-user-service.loadbalancer.server.port=8011"
       - "traefik.http.services.staging-user-service.loadbalancer.healthcheck.path=/health"
       - "traefik.http.services.staging-user-service.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.staging-user-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
       interval: 30s
@@ -88,7 +108,25 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: '0.25'
@@ -124,6 +162,7 @@ services:
       - "traefik.http.services.staging-watchlist-service.loadbalancer.server.port=8012"
       - "traefik.http.services.staging-watchlist-service.loadbalancer.healthcheck.path=/health"
       - "traefik.http.services.staging-watchlist-service.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.staging-watchlist-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
       test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
       interval: 30s
@@ -131,7 +170,25 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: '0.25'
@@ -172,14 +229,33 @@ services:
       - "traefik.http.services.staging-search-service.loadbalancer.server.port=8000"
       - "traefik.http.services.staging-search-service.loadbalancer.healthcheck.path=/api/v1/health"
       - "traefik.http.services.staging-search-service.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.staging-search-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/api/v1/health', timeout=5.0)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: '0.5'
@@ -213,6 +289,10 @@ services:
       - "traefik.http.routers.staging-webapp-service.entrypoints=websecure"
       - "traefik.http.routers.staging-webapp-service.tls.certResolver=letsencrypt"
       - "traefik.http.services.staging-webapp-service.loadbalancer.server.port=3000"
+      # Health check for Traefik
+      - "traefik.http.services.staging-webapp-service.loadbalancer.healthcheck.path=/"
+      - "traefik.http.services.staging-webapp-service.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.staging-webapp-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s
@@ -220,7 +300,25 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: '0.25'

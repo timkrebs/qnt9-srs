@@ -143,7 +143,7 @@ function ResetPasswordContent() {
             }
             
             if (data?.session?.access_token) {
-              console.log('✅ Got session from Supabase client')
+              console.log('finio Got session from Supabase client')
               setAccessToken(data.session.access_token)
               setIsLoading(false)
               // Clean up URL
@@ -158,7 +158,7 @@ function ResetPasswordContent() {
             // Check if this is from a recovery flow
             const user = sessionData.session.user
             if (user?.recovery_sent_at) {
-              console.log('✅ Found existing recovery session')
+              console.log('finio Found existing recovery session')
               setAccessToken(sessionData.session.access_token)
               setIsLoading(false)
               return
