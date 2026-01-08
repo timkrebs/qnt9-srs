@@ -223,6 +223,7 @@ services:
       - "traefik.http.services.dev-notification-service.loadbalancer.server.port=8040"
       - "traefik.http.services.dev-notification-service.loadbalancer.healthcheck.path=/health"
       - "traefik.http.services.dev-notification-service.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.dev-notification-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8040/health"]
       interval: 30s
@@ -230,7 +231,25 @@ services:
       retries: 3
       start_period: 20s
     restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
     deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: '0.25'
