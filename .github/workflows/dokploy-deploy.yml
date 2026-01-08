@@ -381,23 +381,19 @@ jobs:
           
           FAILED_SERVICES=""
           
-          # Check API health endpoint
+          # Check Search Service API health endpoint (publicly accessible)
           if ! check_health "https://$API_DOMAIN/api/v1/health" "Search Service API"; then
             FAILED_SERVICES="$FAILED_SERVICES search-service"
-          fi
-          
-          # Check Auth service
-          if ! check_health "https://$API_DOMAIN/api/v1/auth/health" "Auth Service"; then
-            # Try alternate health endpoint
-            if ! check_health "https://$API_DOMAIN/api/v1/users/health" "Auth Service (alt)"; then
-              FAILED_SERVICES="$FAILED_SERVICES auth-service"
-            fi
           fi
           
           # Check Webapp
           if ! check_health "https://$DOMAIN" "Webapp"; then
             FAILED_SERVICES="$FAILED_SERVICES webapp"
           fi
+          
+          # Note: auth-service, user-service, watchlist-service health endpoints
+          # are not exposed via Traefik (only /api/v1/auth, /api/v1/users, etc. paths are routed)
+          # Their health is verified by Traefik's internal healthchecks
           
           if [ -n "$FAILED_SERVICES" ]; then
             echo "failed_services=$FAILED_SERVICES" >> $GITHUB_OUTPUT

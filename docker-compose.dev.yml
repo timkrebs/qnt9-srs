@@ -206,9 +206,10 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       RESEND_API_KEY: ${RESEND_API_KEY}
-      RESEND_FROM_EMAIL: noreply@qnt9.com
-      RESEND_FROM_NAME: QNT9 Stock Research
+      RESEND_FROM_EMAIL: noreply@finio.cloud
+      RESEND_FROM_NAME: Finio Stock Research
       SEARCH_SERVICE_URL: http://search-service:8000
       NOTIFICATION_CHECK_INTERVAL: 3600
       PRICE_ALERT_SEND_HOUR: 8

@@ -20,8 +20,13 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     SUPABASE_URL: str
     SUPABASE_JWT_SECRET: Optional[str] = None
-    JWT_SECRET_KEY: str  # Used for validating auth-service JWTs
+    JWT_SECRET_KEY: Optional[str] = None  # Used for validating auth-service JWTs, falls back to SUPABASE_JWT_SECRET
     JWT_ALGORITHM: str = "HS256"
+
+    @property
+    def jwt_secret(self) -> str:
+        """Get JWT secret, preferring JWT_SECRET_KEY, falling back to SUPABASE_JWT_SECRET."""
+        return self.JWT_SECRET_KEY or self.SUPABASE_JWT_SECRET or ""
 
     # Email Configuration (Resend)
     RESEND_API_KEY: str
