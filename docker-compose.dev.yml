@@ -303,6 +303,56 @@ services:
           cpus: '0.05'
           memory: 64M
 
+  # ==================== DATA & ORCHESTRATION ====================
+
+  # Prefect Server (Workflow Orchestration & Monitoring)
+  prefect-server:
+    image: prefecthq/prefect:2-python3.11
+    container_name: finio-dev-prefect-server
+    command: prefect server start --host 0.0.0.0 --port 4200
+    environment:
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_SERVER_API_PORT: 4200
+      PREFECT_API_URL: https://prefect-dev.finio.cloud/api
+      PREFECT_SERVER_DATABASE_CONNECTION_URL: ${PREFECT_DATABASE_URL:-sqlite+aiosqlite:////root/.prefect/prefect.db}
+      PREFECT_UI_ENABLED: "true"
+      PREFECT_UI_API_URL: https://prefect-dev.finio.cloud/api
+      PREFECT_LOGGING_LEVEL: DEBUG
+      PREFECT_SERVER_CORS_ALLOWED_ORIGINS: '["https://prefect-dev.finio.cloud","https://dev.finio.cloud"]'
+    volumes:
+      - prefect-dev-data:/root/.prefect
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dev-prefect-server.rule=Host(`prefect-dev.finio.cloud`)"
+      - "traefik.http.routers.dev-prefect-server.entrypoints=websecure"
+      - "traefik.http.routers.dev-prefect-server.tls.certResolver=letsencrypt"
+      - "traefik.http.services.dev-prefect-server.loadbalancer.server.port=4200"
+      - "traefik.http.middlewares.dev-prefect-auth.basicauth.users=${PREFECT_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
+      - "traefik.http.routers.dev-prefect-server.middlewares=dev-prefect-auth"
+      - "traefik.http.services.dev-prefect-server.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.dev-prefect-server.loadbalancer.healthcheck.interval=30s"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+volumes:
+  prefect-dev-data:
+    driver: local
+
 networks:
   dokploy-network:
     external: true

@@ -13,6 +13,8 @@
 # - SUPABASE_JWT_SECRET: JWT secret from Supabase
 # - JWT_SECRET_KEY: Custom JWT secret for auth-service
 # - REDIS_URL: Redis connection string (optional, for caching)
+# - PREFECT_BASIC_AUTH: Basic auth for Prefect UI (generate with: htpasswd -nb admin yourpassword)
+#   Default: admin:admin (change in production!)
 
 services:
   # ==================== BACKEND SERVICES ====================
@@ -380,6 +382,87 @@ services:
         reservations:
           cpus: '0.1'
           memory: 128M
+
+  # ==================== DATA & ORCHESTRATION ====================
+
+  # Prefect Server (Workflow Orchestration & Monitoring)
+  prefect-server:
+    image: prefecthq/prefect:2-python3.11
+    container_name: finio-prefect-server
+    command: prefect server start --host 0.0.0.0 --port 4200
+    environment:
+      # Prefect Server Configuration
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_SERVER_API_PORT: 4200
+      PREFECT_API_URL: https://prefect.finio.cloud/api
+      
+      # Database Configuration (uses SQLite by default, or configure PostgreSQL)
+      PREFECT_SERVER_DATABASE_CONNECTION_URL: ${PREFECT_DATABASE_URL:-sqlite+aiosqlite:////root/.prefect/prefect.db}
+      
+      # UI Configuration
+      PREFECT_UI_ENABLED: "true"
+      PREFECT_UI_API_URL: https://prefect.finio.cloud/api
+      
+      # Logging
+      PREFECT_LOGGING_LEVEL: INFO
+      
+      # CORS for API access
+      PREFECT_SERVER_CORS_ALLOWED_ORIGINS: '["https://prefect.finio.cloud","https://finio.cloud"]'
+    volumes:
+      - prefect-data:/root/.prefect
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      # Prefect UI and API
+      - "traefik.http.routers.prefect-server.rule=Host(`prefect.finio.cloud`)"
+      - "traefik.http.routers.prefect-server.entrypoints=websecure"
+      - "traefik.http.routers.prefect-server.tls.certResolver=letsencrypt"
+      - "traefik.http.services.prefect-server.loadbalancer.server.port=4200"
+      # Basic Auth middleware for security
+      - "traefik.http.middlewares.prefect-auth.basicauth.users=${PREFECT_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
+      - "traefik.http.routers.prefect-server.middlewares=prefect-auth"
+      # Health check
+      - "traefik.http.services.prefect-server.loadbalancer.healthcheck.path=/api/health"
+      - "traefik.http.services.prefect-server.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.prefect-server.loadbalancer.healthcheck.timeout=10s"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 30s
+    init: true
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+volumes:
+  prefect-data:
+    driver: local
 
 networks:
   dokploy-network:

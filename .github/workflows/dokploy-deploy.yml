@@ -140,6 +140,7 @@ jobs:
       watchlist: ${{ steps.filter.outputs.watchlist }}
       search: ${{ steps.filter.outputs.search }}
       notification: ${{ steps.filter.outputs.notification }}
+      data: ${{ steps.filter.outputs.data }}
       any_service: ${{ steps.filter.outputs.any_service }}
     steps:
       - name: Checkout
@@ -162,6 +163,8 @@ jobs:
               - 'services/search-service/**'
             notification:
               - 'services/notification-service/**'
+            data:
+              - 'services/data-service/**'
             any_service:
               - 'services/**'
               - 'docker-compose.dokploy.yml'
@@ -206,6 +209,10 @@ jobs:
             context: ./services/notification-service
             dockerfile: ./services/notification-service/Dockerfile
             changed: ${{ needs.detect-changes.outputs.notification }}
+          - service: data-service
+            context: ./services/data-service
+            dockerfile: ./services/data-service/Dockerfile
+            changed: ${{ needs.detect-changes.outputs.data }}
     
     permissions:
       contents: read
