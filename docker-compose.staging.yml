@@ -349,14 +349,19 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      # Router configuration
       - "traefik.http.routers.staging-prefect-server.rule=Host(`prefect-staging.finio.cloud`)"
       - "traefik.http.routers.staging-prefect-server.entrypoints=websecure"
       - "traefik.http.routers.staging-prefect-server.tls.certResolver=letsencrypt"
-      - "traefik.http.services.staging-prefect-server.loadbalancer.server.port=4200"
-      - "traefik.http.middlewares.staging-prefect-auth.basicauth.users=${PREFECT_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
+      - "traefik.http.routers.staging-prefect-server.service=staging-prefect-server"
       - "traefik.http.routers.staging-prefect-server.middlewares=staging-prefect-auth"
+      # Service configuration
+      - "traefik.http.services.staging-prefect-server.loadbalancer.server.port=4200"
       - "traefik.http.services.staging-prefect-server.loadbalancer.healthcheck.path=/api/health"
       - "traefik.http.services.staging-prefect-server.loadbalancer.healthcheck.interval=30s"
+      # Basic Auth middleware
+      - "traefik.http.middlewares.staging-prefect-auth.basicauth.users=${PREFECT_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
     expose:
       - "4200"
     healthcheck:

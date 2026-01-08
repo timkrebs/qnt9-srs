@@ -325,14 +325,19 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      # Router configuration
       - "traefik.http.routers.dev-prefect-server.rule=Host(`prefect-dev.finio.cloud`)"
       - "traefik.http.routers.dev-prefect-server.entrypoints=websecure"
       - "traefik.http.routers.dev-prefect-server.tls.certResolver=letsencrypt"
-      - "traefik.http.services.dev-prefect-server.loadbalancer.server.port=4200"
-      - "traefik.http.middlewares.dev-prefect-auth.basicauth.users=${PREFECT_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
+      - "traefik.http.routers.dev-prefect-server.service=dev-prefect-server"
       - "traefik.http.routers.dev-prefect-server.middlewares=dev-prefect-auth"
+      # Service configuration
+      - "traefik.http.services.dev-prefect-server.loadbalancer.server.port=4200"
       - "traefik.http.services.dev-prefect-server.loadbalancer.healthcheck.path=/api/health"
       - "traefik.http.services.dev-prefect-server.loadbalancer.healthcheck.interval=30s"
+      # Basic Auth middleware
+      - "traefik.http.middlewares.dev-prefect-auth.basicauth.users=${PREFECT_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
     expose:
       - "4200"
     healthcheck:
