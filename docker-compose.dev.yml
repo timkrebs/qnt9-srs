@@ -333,11 +333,14 @@ services:
       - "traefik.http.routers.dev-prefect-server.middlewares=dev-prefect-auth"
       - "traefik.http.services.dev-prefect-server.loadbalancer.healthcheck.path=/api/health"
       - "traefik.http.services.dev-prefect-server.loadbalancer.healthcheck.interval=30s"
+    expose:
+      - "4200"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 60s
       start_period: 30s
     restart: unless-stopped
     deploy:

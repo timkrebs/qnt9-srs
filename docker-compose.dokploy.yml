@@ -426,12 +426,14 @@ services:
       - "traefik.http.services.prefect-server.loadbalancer.healthcheck.path=/api/health"
       - "traefik.http.services.prefect-server.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.prefect-server.loadbalancer.healthcheck.timeout=10s"
+    expose:
+      - "4200"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4200/api/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 30s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
     stop_grace_period: 30s
     init: true
