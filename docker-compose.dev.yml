@@ -288,11 +288,11 @@ services:
       - "traefik.http.routers.finio-dev-webapp.service=finio-dev-webapp"
       - "traefik.http.services.finio-dev-webapp.loadbalancer.server.port=3000"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 40s
     restart: unless-stopped
     deploy:
       resources:

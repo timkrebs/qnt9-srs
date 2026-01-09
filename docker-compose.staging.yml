@@ -294,11 +294,11 @@ services:
       - "traefik.http.services.staging-webapp-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.staging-webapp-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 40s
     restart: unless-stopped
     stop_grace_period: 30s
     init: true

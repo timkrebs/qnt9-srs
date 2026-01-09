@@ -354,15 +354,15 @@ jobs:
       - name: Wait for deployment to propagate
         run: |
           echo "Waiting for deployment to start rolling out..."
-          sleep 30
+          sleep 60
 
       - name: Verify deployment health
         id: health-check
         run: |
           DOMAIN="${{ needs.setup.outputs.domain }}"
           API_DOMAIN="${{ needs.setup.outputs.api_domain }}"
-          MAX_RETRIES=10
-          RETRY_DELAY=15
+          MAX_RETRIES=15
+          RETRY_DELAY=20
           
           echo "Starting deployment verification..."
           
