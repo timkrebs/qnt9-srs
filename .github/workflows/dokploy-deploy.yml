@@ -284,6 +284,7 @@ jobs:
             NEXT_PUBLIC_WATCHLIST_SERVICE_URL=https://${{ needs.setup.outputs.api_domain }}
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_SITE_URL=https://${{ needs.setup.outputs.domain }}
 
       - name: Skip message
         if: steps.should-build.outputs.build != 'true'
