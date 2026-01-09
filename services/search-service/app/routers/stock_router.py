@@ -185,12 +185,14 @@ async def get_stock_snapshot(
                 },
             )
         
-        # Determine current price (prefer last trade, fall back to day close)
+        # Determine current price (prefer last trade, fall back to day close, minute close, prev close)
         current_price = _decimal_to_float(snapshot.last_trade_price)
         if current_price is None:
             current_price = _decimal_to_float(snapshot.day_close)
         if current_price is None:
             current_price = _decimal_to_float(snapshot.minute_close)
+        if current_price is None:
+            current_price = _decimal_to_float(snapshot.prev_close)
         
         # Build response
         data = StockSnapshotData(
@@ -280,10 +282,13 @@ async def get_stock_price(
                 detail={"error": "not_found", "ticker": ticker.upper()},
             )
         
-        # Determine current price
+        # Determine current price with multiple fallbacks
+        # Priority: last_trade_price > day_close > prev_close
         price = _decimal_to_float(snapshot.last_trade_price)
         if price is None:
             price = _decimal_to_float(snapshot.day_close)
+        if price is None:
+            price = _decimal_to_float(snapshot.prev_close)
         
         return {
             "ticker": snapshot.ticker,
@@ -344,9 +349,12 @@ async def get_batch_prices(
             snapshot = await client.get_snapshot(ticker.upper())
             
             if snapshot:
+                # Determine current price with multiple fallbacks
                 price = _decimal_to_float(snapshot.last_trade_price)
                 if price is None:
                     price = _decimal_to_float(snapshot.day_close)
+                if price is None:
+                    price = _decimal_to_float(snapshot.prev_close)
                 
                 results[ticker.upper()] = {
                     "price": price,

@@ -150,7 +150,7 @@ services:
       JWT_ALGORITHM: HS256
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
-      FREE_TIER_WATCHLIST_LIMIT: 3
+      FREE_TIER_WATCHLIST_LIMIT: 10
       PAID_TIER_WATCHLIST_LIMIT: 999
       CORS_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud
     networks:

@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     )
 
     # Tier Limits
-    FREE_TIER_WATCHLIST_LIMIT: int = Field(default=3, ge=1)
+    FREE_TIER_WATCHLIST_LIMIT: int = Field(default=10, ge=1)
     PAID_TIER_WATCHLIST_LIMIT: int = Field(default=999, ge=1)
 
     # CORS
