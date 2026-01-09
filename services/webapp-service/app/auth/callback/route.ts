@@ -3,20 +3,35 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
- * Get the actual origin URL, respecting reverse proxy headers.
- * In production behind Traefik, request.url will be http://0.0.0.0:3000/...
- * but x-forwarded-* headers contain the real external URL.
+ * Get the actual origin URL for redirects.
+ * 
+ * Priority:
+ * 1. NEXT_PUBLIC_SITE_URL (most reliable - set at build time)
+ * 2. x-forwarded headers from reverse proxy
+ * 3. Fallback to request URL (only works in development)
  */
 function getOriginUrl(request: NextRequest): string {
+  // Primary: Use the configured site URL (set at build time)
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  if (siteUrl) {
+    console.log('[getOriginUrl] Using NEXT_PUBLIC_SITE_URL:', siteUrl)
+    return siteUrl
+  }
+  
+  // Secondary: Use forwarded headers from reverse proxy
   const forwardedProto = request.headers.get('x-forwarded-proto')
   const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
   
   if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`
+    const origin = `${forwardedProto}://${forwardedHost}`
+    console.log('[getOriginUrl] Using x-forwarded headers:', origin)
+    return origin
   }
   
-  // Fallback to request URL origin
-  return new URL(request.url).origin
+  // Fallback: Request URL origin (will be wrong behind proxy)
+  const fallback = new URL(request.url).origin
+  console.log('[getOriginUrl] WARNING: Using fallback (will be wrong in production):', fallback)
+  return fallback
 }
 
 /**
