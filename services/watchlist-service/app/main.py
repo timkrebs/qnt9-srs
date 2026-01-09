@@ -268,7 +268,15 @@ async def add_to_watchlist(
 
     Returns the created watchlist item.
     """
-    async with get_db_connection() as conn:
+    logger.info(
+        "Add to watchlist request received",
+        user_id=user.id,
+        user_email=user.email,
+        symbol=item.symbol,
+    )
+    
+    try:
+        async with get_db_connection() as conn:
         # Check current count
         count_row = await conn.fetchrow(
             "SELECT COUNT(*) as count FROM watchlists WHERE user_id = $1",
@@ -375,6 +383,23 @@ async def add_to_watchlist(
         )
 
         return watchlist_item
+    
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        logger.error(
+            "Unexpected error adding to watchlist",
+            user_id=user.id,
+            symbol=item.symbol,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add stock to watchlist: {str(e)}",
+        )
 
 
 @app.delete(

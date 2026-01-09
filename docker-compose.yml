@@ -130,6 +130,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-super-secret-key-change-in-production-min-32-chars}
       JWT_ALGORITHM: HS256
+      SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       FREE_TIER_WATCHLIST_LIMIT: 3
       PAID_TIER_WATCHLIST_LIMIT: 999

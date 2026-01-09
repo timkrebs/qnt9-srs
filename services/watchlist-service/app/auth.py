@@ -29,10 +29,10 @@ def decode_jwt_token(token: str) -> Optional[dict]:
     """
     Decode and validate JWT token.
 
-    Supports both Supabase JWT tokens (ES256) and legacy HS256 tokens.
-    For Supabase tokens, we decode without signature verification since
-    Supabase uses ES256 with key rotation and the token was already
-    validated when issued.
+    Supports Supabase JWT tokens (ES256/RS256) for OAuth (Google, GitHub, etc.)
+    and legacy HS256 tokens. For Supabase tokens, we decode without signature
+    verification since Supabase uses ES256 with key rotation and validates
+    tokens at issuance time. We validate issuer, audience, and expiration.
 
     Args:
         token: JWT token string
@@ -49,41 +49,79 @@ def decode_jwt_token(token: str) -> Optional[dict]:
 
         alg = jwt.get_unverified_header(token).get("alg", "")
 
-        # For Supabase tokens (ES256), validate structure and claims
+        # For Supabase tokens (ES256/RS256), validate structure and claims
         if alg in ["ES256", "RS256"]:
-            logger.debug("Detected Supabase JWT token (ES256/RS256)")
+            logger.debug("Detected Supabase JWT token", algorithm=alg)
+
+            # Verify issuer if SUPABASE_URL is configured
+            if settings.SUPABASE_URL:
+                expected_issuer = f"{settings.SUPABASE_URL}/auth/v1"
+                actual_issuer = unverified.get("iss")
+                if actual_issuer != expected_issuer:
+                    logger.warning(
+                        "Invalid token issuer",
+                        expected=expected_issuer,
+                        actual=actual_issuer,
+                    )
+                    return None
+            else:
+                logger.warning("SUPABASE_URL not configured - skipping issuer validation")
+
+            # Verify audience is authenticated (not anon or service_role)
+            aud = unverified.get("aud")
+            if aud != "authenticated":
+                logger.warning("Invalid audience in token", audience=aud)
+                return None
+
+            # Verify role is authenticated
+            role = unverified.get("role")
+            if role != "authenticated":
+                logger.warning("Invalid role in token", role=role)
+                return None
 
             # Verify required claims
             required_claims = ["sub", "iat"]
             for claim in required_claims:
                 if claim not in unverified:
-                    logger.warning(f"Token missing required claim: {claim}")
+                    logger.warning("Token missing required claim", claim=claim)
                     return None
 
             # Verify token is not expired
             exp = unverified.get("exp")
             if exp:
                 if datetime.fromtimestamp(exp, tz=timezone.utc) < datetime.now(tz=timezone.utc):
-                    logger.warning("JWT token expired")
+                    logger.warning("JWT token expired", exp=exp)
                     return None
+            else:
+                logger.warning("Token missing expiration")
+                return None
 
             # For Supabase tokens, extract user metadata
             # Supabase stores user data in user_metadata or app_metadata
             user_metadata = unverified.get("user_metadata", {})
             app_metadata = unverified.get("app_metadata", {})
 
+            # Get email from token - Supabase puts it at root level
+            email = unverified.get("email")
+            
+            # For OAuth users, email might also be in user_metadata
+            if not email and user_metadata:
+                email = user_metadata.get("email")
+            
             # Build a normalized payload
             payload = {
                 "sub": unverified.get("sub"),
-                "email": unverified.get("email"),
+                "email": email,
                 "tier": user_metadata.get("tier") or app_metadata.get("tier", "free"),
                 "exp": exp,
+                "provider": app_metadata.get("provider"),  # google, github, etc.
             }
 
             logger.debug(
                 "Supabase token validated",
                 user_id=payload.get("sub"),
                 email=payload.get("email"),
+                provider=payload.get("provider"),
             )
             return payload
 

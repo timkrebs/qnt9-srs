@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     )
     JWT_ALGORITHM: str = Field(default="HS256")
 
+    # Supabase Configuration (required for token validation)
+    SUPABASE_URL: str = Field(default="")
+
     # Database
     DATABASE_URL: str = Field(
         default="postgresql://postgres:postgres@localhost:5432/finio"

@@ -148,6 +148,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: HS256
+      SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
       FREE_TIER_WATCHLIST_LIMIT: 3
       PAID_TIER_WATCHLIST_LIMIT: 999
@@ -156,7 +157,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.staging-watchlist-service.rule=Host(`api-staging.finio.cloud`) && PathPrefix(`/api/v1/watchlist`)"
+      - "traefik.http.routers.staging-watchlist-service.rule=Host(`api-staging.finio.cloud`) && PathPrefix(`/api/watchlist`)"
       - "traefik.http.routers.staging-watchlist-service.entrypoints=websecure"
       - "traefik.http.routers.staging-watchlist-service.tls.certResolver=letsencrypt"
       - "traefik.http.services.staging-watchlist-service.loadbalancer.server.port=8012"
