@@ -9,6 +9,7 @@ datasources:
     url: http://finio-prometheus:9090
     isDefault: true
     editable: false
+    uid: prometheus
     jsonData:
       timeInterval: "15s"
       httpMethod: POST
@@ -19,6 +20,7 @@ datasources:
     access: proxy
     url: http://finio-loki:3100
     editable: false
+    uid: loki
     jsonData:
       maxLines: 1000
       derivedFields:
