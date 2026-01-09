@@ -29,7 +29,7 @@ class StockSearchService:
     0. Check In-Memory LRU (ultra-fast, ~1μs)
     1. Check Redis (fast in-memory, ~1ms)
     2. Check PostgreSQL (persistent cache, ~10ms)
-    3. Fetch from external API (Yahoo Finance, ~500ms)
+    3. Fetch from external API (Massive API, ~500ms)
     4. Save to all caches
     """
 

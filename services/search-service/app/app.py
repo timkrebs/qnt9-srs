@@ -17,8 +17,7 @@ from sqlalchemy.orm import Session
 
 from .cache import CacheManager
 from .database import get_db, init_db
-from .infrastructure.yahoo_finance_client import \
-    YahooFinanceClient as StockAPIClient
+from .infrastructure.massive_adapter import MassiveAPIAdapter, get_massive_adapter
 from .metrics import metrics_endpoint, track_request_metrics
 from .metrics_middleware import PrometheusMiddleware
 from .shutdown_handler import setup_graceful_shutdown
@@ -109,7 +108,7 @@ async def lifespan(app: FastAPI):
             PostgresSearchHistoryRepository,
         )
         from .repositories.redis_repository import RedisStockRepository
-        from .infrastructure.yahoo_finance_client import YahooFinanceClient
+        from .infrastructure.massive_adapter import MassiveAPIAdapter
         from .services.stock_service import StockSearchService
         from .dependencies import get_service_container
 
@@ -124,8 +123,8 @@ async def lifespan(app: FastAPI):
         redis_repo = RedisStockRepository(redis_client)
         history_repo = PostgresSearchHistoryRepository(db)
 
-        # Create API client
-        api_client = YahooFinanceClient()
+        # Create API client using Massive API
+        api_client = MassiveAPIAdapter()
 
         # Create and register service
         stock_service = StockSearchService(

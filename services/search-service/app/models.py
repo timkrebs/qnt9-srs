@@ -309,17 +309,16 @@ class UserFavorite(Base):
 
 class SymbolMapping(Base):
     """
-    Symbol mapping model for ISIN/WKN to Yahoo Finance symbol resolution.
+    Symbol mapping model for ISIN/WKN to ticker symbol resolution.
 
-    Stores mappings between international identifiers and Yahoo Finance symbols
-    to enable fast lookups without external API calls. Replaces hard-coded
-    mappings in YahooFinanceClient.
+    Stores mappings between international identifiers and stock ticker symbols
+    to enable fast lookups without external API calls.
 
     Attributes:
         id: Primary key identifier
         identifier_type: Type of identifier (isin, wkn, or name)
         identifier_value: The identifier value (e.g., US0378331005, 865985)
-        yahoo_symbol: Corresponding Yahoo Finance symbol (e.g., AAPL, TSLA)
+        yahoo_symbol: Corresponding ticker symbol (e.g., AAPL, TSLA)
         stock_name: Company name for reference
         exchange: Stock exchange (e.g., NASDAQ, NYSE, XETRA)
         priority: Priority for multiple mappings (higher = preferred)

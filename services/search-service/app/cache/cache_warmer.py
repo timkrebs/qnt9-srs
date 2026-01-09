@@ -186,7 +186,7 @@ class CacheWarmer:
             data_source=(
                 DataSource(stock_cache.data_source)
                 if stock_cache.data_source
-                else DataSource.YAHOO_FINANCE
+                else DataSource.MASSIVE
             ),
             last_updated=stock_cache.created_at,
         )

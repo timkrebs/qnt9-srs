@@ -282,13 +282,34 @@ async def get_stock_price(
                 detail={"error": "not_found", "ticker": ticker.upper()},
             )
         
+        # Log all available price fields for debugging
+        logger.info(
+            "Snapshot data for price lookup",
+            ticker=ticker.upper(),
+            last_trade_price=snapshot.last_trade_price,
+            day_close=snapshot.day_close,
+            day_open=snapshot.day_open,
+            minute_close=snapshot.minute_close,
+            prev_close=snapshot.prev_close,
+            todays_change=snapshot.todays_change,
+            todays_change_percent=snapshot.todays_change_percent,
+        )
+        
         # Determine current price with multiple fallbacks
-        # Priority: last_trade_price > day_close > prev_close
+        # Priority: last_trade_price > day_close > minute_close > prev_close
         price = _decimal_to_float(snapshot.last_trade_price)
         if price is None:
             price = _decimal_to_float(snapshot.day_close)
         if price is None:
+            price = _decimal_to_float(snapshot.minute_close)
+        if price is None:
             price = _decimal_to_float(snapshot.prev_close)
+        
+        logger.info(
+            "Final price determined",
+            ticker=ticker.upper(),
+            price=price,
+        )
         
         return {
             "ticker": snapshot.ticker,

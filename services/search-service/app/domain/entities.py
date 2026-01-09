@@ -25,7 +25,8 @@ class IdentifierType(str, Enum):
 class DataSource(str, Enum):
     """External data sources for stock information."""
 
-    YAHOO_FINANCE = "yahoo"
+    MASSIVE = "massive"
+    YAHOO_FINANCE = "yahoo"  # Deprecated - kept for backward compatibility
     ALPHA_VANTAGE = "alphavantage"
     CACHE = "cache"
 

@@ -541,32 +541,32 @@ class MassiveClient:
                 ticker=ticker_data.get("ticker", ticker.upper()),
                 name=None,  # Snapshot doesn't include name
                 
-                # Day data
-                day_open=Decimal(str(day.get("o", 0))) if day.get("o") else None,
-                day_high=Decimal(str(day.get("h", 0))) if day.get("h") else None,
-                day_low=Decimal(str(day.get("l", 0))) if day.get("l") else None,
-                day_close=Decimal(str(day.get("c", 0))) if day.get("c") else None,
+                # Day data - use 'is not None' to handle zero values correctly
+                day_open=Decimal(str(day.get("o"))) if day.get("o") is not None else None,
+                day_high=Decimal(str(day.get("h"))) if day.get("h") is not None else None,
+                day_low=Decimal(str(day.get("l"))) if day.get("l") is not None else None,
+                day_close=Decimal(str(day.get("c"))) if day.get("c") is not None else None,
                 day_volume=day.get("v"),
-                day_vwap=Decimal(str(day.get("vw", 0))) if day.get("vw") else None,
+                day_vwap=Decimal(str(day.get("vw"))) if day.get("vw") is not None else None,
                 
                 # Previous day
-                prev_close=Decimal(str(prev_day.get("c", 0))) if prev_day.get("c") else None,
+                prev_close=Decimal(str(prev_day.get("c"))) if prev_day.get("c") is not None else None,
                 prev_volume=prev_day.get("v"),
                 
                 # Change
-                todays_change=Decimal(str(ticker_data.get("todaysChange", 0))) if ticker_data.get("todaysChange") else None,
-                todays_change_percent=Decimal(str(ticker_data.get("todaysChangePerc", 0))) if ticker_data.get("todaysChangePerc") else None,
+                todays_change=Decimal(str(ticker_data.get("todaysChange"))) if ticker_data.get("todaysChange") is not None else None,
+                todays_change_percent=Decimal(str(ticker_data.get("todaysChangePerc"))) if ticker_data.get("todaysChangePerc") is not None else None,
                 
                 # Last trade
-                last_trade_price=Decimal(str(last_trade.get("p", 0))) if last_trade.get("p") else None,
+                last_trade_price=Decimal(str(last_trade.get("p"))) if last_trade.get("p") is not None else None,
                 last_trade_size=last_trade.get("s"),
                 last_trade_timestamp=last_trade.get("t"),
                 
                 # Minute bar
-                minute_open=Decimal(str(minute.get("o", 0))) if minute.get("o") else None,
-                minute_high=Decimal(str(minute.get("h", 0))) if minute.get("h") else None,
-                minute_low=Decimal(str(minute.get("l", 0))) if minute.get("l") else None,
-                minute_close=Decimal(str(minute.get("c", 0))) if minute.get("c") else None,
+                minute_open=Decimal(str(minute.get("o"))) if minute.get("o") is not None else None,
+                minute_high=Decimal(str(minute.get("h"))) if minute.get("h") is not None else None,
+                minute_low=Decimal(str(minute.get("l"))) if minute.get("l") is not None else None,
+                minute_close=Decimal(str(minute.get("c"))) if minute.get("c") is not None else None,
                 minute_volume=minute.get("v"),
                 
                 updated=ticker_data.get("updated"),
