@@ -347,7 +347,10 @@ services:
       - "traefik.http.middlewares.www-redirect.redirectregex.regex=^https://www\\.finio\\.cloud/(.*)"
       - "traefik.http.middlewares.www-redirect.redirectregex.replacement=https://finio.cloud/$${1}"
       - "traefik.http.middlewares.www-redirect.redirectregex.permanent=true"
-      - "traefik.http.routers.webapp-service.middlewares=www-redirect"
+      # Headers middleware to pass forwarded headers
+      - "traefik.http.middlewares.webapp-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.webapp-headers.headers.customrequestheaders.X-Forwarded-Host=finio.cloud"
+      - "traefik.http.routers.webapp-service.middlewares=www-redirect,webapp-headers"
       # Health check for Traefik
       - "traefik.http.services.webapp-service.loadbalancer.healthcheck.path=/"
       - "traefik.http.services.webapp-service.loadbalancer.healthcheck.interval=30s"

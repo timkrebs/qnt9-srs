@@ -11,14 +11,31 @@ export type OAuthProvider = 'google' | 'apple'
 
 /**
  * Get the OAuth callback URL for the current environment.
+ * 
+ * Priority:
+ * 1. In browser: use window.location.origin (most reliable)
+ * 2. On server: use NEXT_PUBLIC_SITE_URL
+ * 3. Fallback: use localhost (development only)
  */
 function getCallbackUrl(): string {
-  if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_SITE_URL
-      ? `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
-      : 'http://localhost:3000/auth/callback'
+  // In browser, always use the actual window location
+  if (typeof window !== 'undefined') {
+    const callbackUrl = `${window.location.origin}/auth/callback`
+    console.log('[OAuth] Browser callback URL:', callbackUrl)
+    return callbackUrl
   }
-  return `${window.location.origin}/auth/callback`
+  
+  // On server (SSR), use the configured site URL
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
+  if (siteUrl) {
+    const callbackUrl = `${siteUrl}/auth/callback`
+    console.log('[OAuth] Server callback URL:', callbackUrl)
+    return callbackUrl
+  }
+  
+  // Fallback for local development
+  console.log('[OAuth] Using localhost fallback')
+  return 'http://localhost:3000/auth/callback'
 }
 
 /**
