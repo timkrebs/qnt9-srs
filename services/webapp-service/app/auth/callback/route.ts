@@ -3,6 +3,23 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
+ * Get the actual origin URL, respecting reverse proxy headers.
+ * In production behind Traefik, request.url will be http://0.0.0.0:3000/...
+ * but x-forwarded-* headers contain the real external URL.
+ */
+function getOriginUrl(request: NextRequest): string {
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto}://${forwardedHost}`
+  }
+  
+  // Fallback to request URL origin
+  return new URL(request.url).origin
+}
+
+/**
  * Auth callback route for handling Supabase authentication flows.
  *
  * This handles:
@@ -14,6 +31,7 @@ import type { NextRequest } from 'next/server'
  * to the appropriate page with the session established.
  */
 export async function GET(request: NextRequest) {
+  const origin = getOriginUrl(request)
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
   const token_hash = requestUrl.searchParams.get('token_hash')
@@ -24,6 +42,7 @@ export async function GET(request: NextRequest) {
 
   console.log('=== AUTH CALLBACK ===')
   console.log('URL:', request.url)
+  console.log('Origin (with x-forwarded):', origin)
   console.log('code:', code ? 'present' : 'none')
   console.log('token_hash:', token_hash ? 'present' : 'none')
   console.log('type:', type)
@@ -33,7 +52,7 @@ export async function GET(request: NextRequest) {
   // Handle errors from Supabase/OAuth provider
   if (error) {
     console.error('Auth callback error:', error, error_description)
-    const redirectUrl = new URL('/login', requestUrl.origin)
+    const redirectUrl = new URL('/login', origin)
     redirectUrl.searchParams.set('error', error)
     if (error_description) {
       redirectUrl.searchParams.set('error_description', error_description)
@@ -46,11 +65,11 @@ export async function GET(request: NextRequest) {
 
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error('Supabase not configured')
-    return NextResponse.redirect(new URL('/login?error=configuration', requestUrl.origin))
+    return NextResponse.redirect(new URL('/login?error=configuration', origin))
   }
 
   // Create response that we'll modify with cookies
-  let response = NextResponse.redirect(new URL(next, requestUrl.origin))
+  let response = NextResponse.redirect(new URL(next, origin))
 
   // Create Supabase client with cookie handling for PKCE flow
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -74,7 +93,7 @@ export async function GET(request: NextRequest) {
 
       if (exchangeError) {
         console.error('Code exchange error:', exchangeError)
-        return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(exchangeError.message)}`, requestUrl.origin))
+        return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(exchangeError.message)}`, origin))
       }
 
       console.log('Session established for user:', data.user?.email)
@@ -82,9 +101,9 @@ export async function GET(request: NextRequest) {
 
       // For recovery type, redirect to reset-password with token in hash
       if (type === 'recovery') {
-        response = NextResponse.redirect(new URL('/reset-password', requestUrl.origin))
+        response = NextResponse.redirect(new URL('/reset-password', origin))
         // Pass the access token in hash for the reset page to use
-        const redirectUrl = new URL('/reset-password', requestUrl.origin)
+        const redirectUrl = new URL('/reset-password', origin)
         redirectUrl.hash = `access_token=${data.session?.access_token}&type=recovery`
         return NextResponse.redirect(redirectUrl)
       }
@@ -94,7 +113,7 @@ export async function GET(request: NextRequest) {
       return response
     } catch (err) {
       console.error('Auth callback error:', err)
-      return NextResponse.redirect(new URL('/login?error=callback_failed', requestUrl.origin))
+      return NextResponse.redirect(new URL('/login?error=callback_failed', origin))
     }
   }
 
@@ -108,14 +127,14 @@ export async function GET(request: NextRequest) {
 
       if (verifyError) {
         console.error('Token verification error:', verifyError)
-        return NextResponse.redirect(new URL(`/reset-password?error=${encodeURIComponent(verifyError.message)}`, requestUrl.origin))
+        return NextResponse.redirect(new URL(`/reset-password?error=${encodeURIComponent(verifyError.message)}`, origin))
       }
 
       console.log('OTP verified for user:', data.user?.email)
 
       // For recovery, redirect to reset-password with token
       if (type === 'recovery') {
-        const redirectUrl = new URL('/reset-password', requestUrl.origin)
+        const redirectUrl = new URL('/reset-password', origin)
         redirectUrl.hash = `access_token=${data.session?.access_token}&type=recovery`
         return NextResponse.redirect(redirectUrl)
       }
@@ -123,11 +142,11 @@ export async function GET(request: NextRequest) {
       return response
     } catch (err) {
       console.error('OTP verification error:', err)
-      return NextResponse.redirect(new URL('/reset-password?error=verification_failed', requestUrl.origin))
+      return NextResponse.redirect(new URL('/reset-password?error=verification_failed', origin))
     }
   }
 
   // No code or token_hash, redirect to home
   console.log('No code or token_hash provided, redirecting to home')
-  return NextResponse.redirect(new URL('/', requestUrl.origin))
+  return NextResponse.redirect(new URL('/', origin))
 }
