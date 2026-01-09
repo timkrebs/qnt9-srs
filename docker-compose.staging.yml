@@ -206,7 +206,7 @@ services:
       REDIS_URL: ${REDIS_URL:-}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       AUTH_SERVICE_URL: http://auth-service:8010
-      CORS_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud
+      CORS_ALLOWED_ORIGINS: https://staging.finio.cloud,https://api-staging.finio.cloud
       YAHOO_FINANCE_TIMEOUT: 5.0
       YAHOO_FINANCE_MAX_RETRIES: 3
       YAHOO_FINANCE_RATE_LIMIT: 5
@@ -223,7 +223,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.staging-search-service.rule=Host(`api-staging.finio.cloud`) && (PathPrefix(`/api/v1/search`) || PathPrefix(`/api/v1/stocks`) || PathPrefix(`/api/v1/health`))"
+      - "traefik.http.routers.staging-search-service.rule=Host(`api-staging.finio.cloud`) && (PathPrefix(`/api/v1/search`) || PathPrefix(`/api/v1/stocks`) || PathPrefix(`/api/v1/health`) || PathPrefix(`/api/v1/tickers`) || PathPrefix(`/api/v1/autocomplete`) || PathPrefix(`/api/v1/chart`))"
       - "traefik.http.routers.staging-search-service.entrypoints=websecure"
       - "traefik.http.routers.staging-search-service.tls.certResolver=letsencrypt"
       - "traefik.http.services.staging-search-service.loadbalancer.server.port=8000"
