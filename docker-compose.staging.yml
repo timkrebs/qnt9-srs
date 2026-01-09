@@ -41,7 +41,7 @@ services:
       - "traefik.http.services.staging-auth-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.staging-auth-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8010/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -102,7 +102,7 @@ services:
       - "traefik.http.services.staging-user-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.staging-user-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8011/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -164,7 +164,7 @@ services:
       - "traefik.http.services.staging-watchlist-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.staging-watchlist-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8012/health', timeout=5.0)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -231,7 +231,7 @@ services:
       - "traefik.http.services.staging-search-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.staging-search-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -365,7 +365,7 @@ services:
     expose:
       - "4200"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 5

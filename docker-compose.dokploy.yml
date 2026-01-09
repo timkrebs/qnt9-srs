@@ -56,7 +56,7 @@ services:
     labels:
       - "traefik.enable=true"
       # HTTP Router
-      - "traefik.http.routers.auth-service.rule=Host(`api.finio.cloud`) && PathPrefix(`/api/v1/auth`) || Host(`api.finio.cloud`) && PathPrefix(`/api/v1/users`)"
+      - "traefik.http.routers.auth-service.rule=Host(`api.finio.cloud`) && (PathPrefix(`/api/v1/auth`) || PathPrefix(`/api/v1/users`))"
       - "traefik.http.routers.auth-service.entrypoints=websecure"
       - "traefik.http.routers.auth-service.tls.certResolver=letsencrypt"
       - "traefik.http.services.auth-service.loadbalancer.server.port=8010"
@@ -65,7 +65,7 @@ services:
       - "traefik.http.services.auth-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.auth-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8010/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -118,7 +118,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.user-service.rule=Host(`api.finio.cloud`) && PathPrefix(`/api/v1/profile`) || Host(`api.finio.cloud`) && PathPrefix(`/api/v1/subscription`)"
+      - "traefik.http.routers.user-service.rule=Host(`api.finio.cloud`) && (PathPrefix(`/api/v1/profile`) || PathPrefix(`/api/v1/subscription`))"
       - "traefik.http.routers.user-service.entrypoints=websecure"
       - "traefik.http.routers.user-service.tls.certResolver=letsencrypt"
       - "traefik.http.services.user-service.loadbalancer.server.port=8011"
@@ -126,7 +126,7 @@ services:
       - "traefik.http.services.user-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.user-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8011/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8011/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -188,7 +188,7 @@ services:
       - "traefik.http.services.watchlist-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.watchlist-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8012/health', timeout=5.0)"]
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://127.0.0.1:8012/health', timeout=5.0)"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -276,7 +276,7 @@ services:
       - "traefik.http.services.search-service.loadbalancer.healthcheck.interval=30s"
       - "traefik.http.services.search-service.loadbalancer.healthcheck.timeout=10s"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -431,7 +431,7 @@ services:
     expose:
       - "4200"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4200/api/health')"]
       interval: 30s
       timeout: 10s
       retries: 5
