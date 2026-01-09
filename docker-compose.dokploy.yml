@@ -316,6 +316,9 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/webapp-service:${IMAGE_TAG:-latest}
     container_name: finio-webapp-service
     environment:
+      # Site URL (for OAuth callbacks)
+      NEXT_PUBLIC_SITE_URL: https://finio.cloud
+      
       # API Service URLs (client-side - must be public URLs)
       NEXT_PUBLIC_AUTH_SERVICE_URL: https://api.finio.cloud
       NEXT_PUBLIC_SEARCH_SERVICE_URL: https://api.finio.cloud

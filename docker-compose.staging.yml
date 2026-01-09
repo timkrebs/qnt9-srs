@@ -271,6 +271,8 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/webapp-service:${IMAGE_TAG:-staging}
     container_name: finio-staging-webapp-service
     environment:
+      # Site URL (for OAuth callbacks)
+      NEXT_PUBLIC_SITE_URL: https://staging.finio.cloud
       NEXT_PUBLIC_AUTH_SERVICE_URL: https://api-staging.finio.cloud
       NEXT_PUBLIC_SEARCH_SERVICE_URL: https://api-staging.finio.cloud
       NEXT_PUBLIC_WATCHLIST_SERVICE_URL: https://api-staging.finio.cloud
