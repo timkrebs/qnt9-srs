@@ -314,6 +314,7 @@ services:
   # Webapp Service (Next.js Modern Frontend)
   webapp-service:
     image: ghcr.io/${GITHUB_REPOSITORY:-timkrebs/qnt9-srs}/webapp-service:${IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: finio-webapp-service
     environment:
       # Site URL (for OAuth callbacks)
