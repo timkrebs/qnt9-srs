@@ -1,0 +1,28 @@
+# Grafana Datasources Provisioning
+apiVersion: 1
+
+datasources:
+  # Prometheus for Metrics
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://finio-prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"
+      httpMethod: POST
+
+  # Loki for Logs
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://finio-loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: prometheus
+          matcherRegex: "request_id=([a-zA-Z0-9-]+)"
+          name: RequestId
+          url: '$${__value.raw}'

@@ -1,0 +1,147 @@
+# Alert Rules for finio Services
+groups:
+  # ==================== SERVICE HEALTH ====================
+  - name: service_health
+    interval: 30s
+    rules:
+      # Service Down Alert
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute."
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_requests_total[5m])) by (job)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} has error rate above 5% for the last 5 minutes."
+
+      # Service Response Time
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow response time on {{ $labels.job }}"
+          description: "{{ $labels.job }} 95th percentile response time is above 2 seconds."
+
+  # ==================== AUTH SERVICE ====================
+  - name: auth_service
+    interval: 30s
+    rules:
+      # High Authentication Failures
+      - alert: HighAuthFailureRate
+        expr: |
+          sum(rate(auth_login_total{status="failure"}[5m]))
+          /
+          sum(rate(auth_login_total[5m])) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failure rate is above 30%."
+
+      # Rate Limit Hits
+      - alert: HighRateLimitHits
+        expr: sum(rate(auth_rate_limit_hits_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate limit hits"
+          description: "Rate limiting is being triggered frequently."
+
+  # ==================== WATCHLIST SERVICE ====================
+  - name: watchlist_service
+    interval: 30s
+    rules:
+      # Tier Limit Exceeded
+      - alert: FrequentTierLimitExceeded
+        expr: sum(rate(watchlist_tier_limit_exceeded_total[5m])) > 5
+        for: 5m
+        labels:
+          severity: info
+        annotations:
+          summary: "Frequent tier limit exceeded"
+          description: "Users are frequently hitting watchlist tier limits."
+
+      # Database Operation Failures
+      - alert: WatchlistDBFailures
+        expr: |
+          sum(rate(watchlist_db_operations_total{status="failure"}[5m])) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchlist database operation failures"
+          description: "Watchlist service is experiencing database failures."
+
+  # ==================== SEARCH SERVICE ====================
+  - name: search_service
+    interval: 30s
+    rules:
+      # Cache Miss Rate
+      - alert: HighCacheMissRate
+        expr: |
+          (
+            sum(rate(search_cache_misses_total[5m]))
+            /
+            (sum(rate(search_cache_hits_total[5m])) + sum(rate(search_cache_misses_total[5m])))
+          ) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High cache miss rate"
+          description: "Search service cache miss rate is above 80%."
+
+      # External API Failures
+      - alert: ExternalAPIFailures
+        expr: sum(rate(search_external_api_errors_total[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "External API failures"
+          description: "Search service is experiencing external API failures."
+
+  # ==================== INFRASTRUCTURE ====================
+  - name: infrastructure
+    interval: 60s
+    rules:
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.container_name }}"
+          description: "Container {{ $labels.container_name }} is using more than 90% of allocated memory."
+
+      # Container Restarts
+      - alert: ContainerRestarting
+        expr: increase(container_restart_count[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.container_name }} is restarting"
+          description: "Container {{ $labels.container_name }} has restarted more than 3 times in the last hour."

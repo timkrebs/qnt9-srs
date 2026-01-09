@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Ebene_1" data-name="Ebene 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 1000">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: url(#Unbenannter_Verlauf_25);
+      }
+
+      .cls-2 {
+        fill: url(#Unbenannter_Verlauf_32);
+      }
+
+      .cls-3 {
+        fill: url(#Unbenannter_Verlauf_11);
+      }
+    </style>
+    <linearGradient id="Unbenannter_Verlauf_11" data-name="Unbenannter Verlauf 11" x1="278.12" y1="782.12" x2="334.14" y2="403.28" gradientTransform="translate(471.79 -18.03) rotate(33.27)" gradientUnits="userSpaceOnUse">
+      <stop offset=".2" stop-color="#2e60c5"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+    <linearGradient id="Unbenannter_Verlauf_32" data-name="Unbenannter Verlauf 32" x1="320.99" y1="376.53" x2="859.19" y2="976.37" gradientUnits="userSpaceOnUse">
+      <stop offset=".4" stop-color="#2e60c5"/>
+      <stop offset=".47" stop-color="#2a59b7"/>
+      <stop offset=".59" stop-color="#224894"/>
+      <stop offset=".76" stop-color="#152c5b"/>
+      <stop offset=".97" stop-color="#03060d"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+    <linearGradient id="Unbenannter_Verlauf_25" data-name="Unbenannter Verlauf 25" x1="474.1" y1="55.9" x2="705.79" y2="830.66" gradientUnits="userSpaceOnUse">
+      <stop offset=".26" stop-color="#2e60c5"/>
+      <stop offset="1" stop-color="#000"/>
+    </linearGradient>
+  </defs>
+  <circle class="cls-3" cx="293.9" cy="767.56" r="191.46" transform="translate(-456.67 432.63) rotate(-45)"/>
+  <path class="cls-2" d="M622.6,642.25c-65.36,22.38-86.62,18.75-200.93,38.65-144.14,25.1-196.32,44.5-227.45,64.02-8.02,5.03-15.38,10.74-15.38,10.74-32.41,24.34-53.51,51.43-66.78,71.89-3.14-10.28-6.95-24.98-9.26-42.91-7.97-61.99,8.69-110.64,18.34-137.83,12.84-36.18,41.35-116.5,117.16-165.52,46.46-30.04,106.83-46.15,131.91-52.44,56.43-14.16,84.14-16.64,232.74-39.15,83.34-12.63,94.86-15.02,110.5-19.25,68.82-18.61,121.27-46.8,154.87-67.76-2.49,39.11-10.75,91.3-34.8,147.91-13.93,32.79-32.99,77.66-76.13,118.68-12.1,11.51-47.52,43.09-134.79,72.98Z"/>
+  <path class="cls-1" d="M735.6,295.83c-47.38,27.66-126.18,40.62-283.79,66.55-96.68,15.9-166.57,15.36-242.83,74.75-35.2,27.42-60.07,57.96-75.95,80.22-4.6-37.2-8.47-104.71,14.86-178.78,37.48-118.98,120.04-175.1,153.25-196.9,55.27-36.28,135.23-46.8,295.49-63.16,70.45-7.19,141.92-9.21,245.95-39.4,40.94-11.88,74.01-24.38,95.64-33.13-61.96,177.53-140.48,253.58-202.62,289.85Z"/>
+</svg>

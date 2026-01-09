@@ -191,7 +191,7 @@ export default function Header() {
 
             <Link href="/" className="flex items-center gap-2">
               <Image 
-                src="/logo.png" 
+                src="/finio_logo_blau.svg" 
                 alt="finio" 
                 width={36} 
                 height={36} 
@@ -252,7 +252,7 @@ export default function Header() {
             <div className="flex items-center justify-between">
               <SheetTitle className="flex items-center gap-2">
                 <Image 
-                  src="/logo.png" 
+                  src="/finio_logo_blau.svg" 
                   alt="finio" 
                   width={32} 
                   height={32} 

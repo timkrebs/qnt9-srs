@@ -1,0 +1,181 @@
+# Docker Compose for Grafana Monitoring Stack
+# For Dokploy Production Environment
+#
+# This stack includes:
+# - Grafana: Visualization and dashboards
+# - Prometheus: Metrics collection and storage
+# - Loki: Log aggregation
+# - Promtail: Log collection agent
+#
+# Deployment in Dokploy:
+# 1. Create a new "Compose" application in Dokploy
+# 2. Copy this file content
+# 3. Configure environment variables
+# 4. Deploy
+
+version: "3.8"
+
+services:
+  # ==================== GRAFANA ====================
+  grafana:
+    image: grafana/grafana-enterprise:10.2.3
+    container_name: finio-grafana
+    environment:
+      # Admin credentials (change in production!)
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      
+      # Server configuration
+      GF_SERVER_ROOT_URL: https://grafana.finio.cloud
+      GF_SERVER_DOMAIN: grafana.finio.cloud
+      
+      # Database (use SQLite for simplicity, can switch to PostgreSQL)
+      GF_DATABASE_TYPE: sqlite3
+      
+      # Authentication
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: "true"
+      
+      # Plugins
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource,grafana-piechart-panel
+      
+      # Logging
+      GF_LOG_MODE: console
+      GF_LOG_LEVEL: info
+      
+      # Alerting (use unified alerting only - legacy is deprecated)
+      GF_ALERTING_ENABLED: "false"
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - /opt/dokploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/dokploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.finio.cloud`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certResolver=letsencrypt"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # ==================== PROMETHEUS ====================
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    container_name: finio-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - prometheus-storage:/prometheus
+      - /opt/dokploy/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /opt/dokploy/monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.finio.cloud`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certResolver=letsencrypt"
+      # Basic auth middleware for Prometheus (generate with: htpasswd -nb admin password | sed 's/\$/\$\$/g')
+      - "traefik.http.routers.prometheus.middlewares=prometheus-auth"
+      - "traefik.http.middlewares.prometheus-auth.basicauth.users=${PROMETHEUS_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 1G
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+
+  # ==================== LOKI (Log Aggregation) ====================
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: finio-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - loki-storage:/loki
+      - /opt/dokploy/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+    networks:
+      - dokploy-network
+    # Loki doesn't need external exposure - only accessed by Grafana and Promtail
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # ==================== PROMTAIL (Log Collection) ====================
+  promtail:
+    image: grafana/promtail:3.0.0
+    container_name: finio-promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/dokploy/monitoring/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+    networks:
+      - dokploy-network
+    depends_on:
+      - loki
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+volumes:
+  grafana-storage:
+    driver: local
+  prometheus-storage:
+    driver: local
+  loki-storage:
+    driver: local
+
+networks:
+  dokploy-network:
+    external: true

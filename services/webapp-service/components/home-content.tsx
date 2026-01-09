@@ -686,8 +686,10 @@ export default function HomeContent() {
   return (
     <main className="flex-1 pt-14">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-gray-50 via-white to-gray-100">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50 via-transparent to-transparent opacity-60" />
+      <section className="relative z-20 bg-gradient-to-br from-gray-50 via-white to-gray-100 pb-32">
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-50 via-transparent to-transparent opacity-60" />
+        </div>
         <div className="relative max-w-6xl mx-auto px-4 md:px-8 py-12 md:py-20">
           <div className="flex flex-col items-center text-center">
             <h1 className="text-3xl md:text-4xl lg:text-5xl font-semibold tracking-tight text-gray-900 mb-4">
@@ -825,7 +827,7 @@ export default function HomeContent() {
       </section>
 
       {/* Market Overview Section */}
-      <section className="bg-white border-y border-gray-100">
+      <section className="relative z-10 -mt-20 bg-white border-y border-gray-100">
         <div className="max-w-6xl mx-auto px-6 md:px-8 py-12">
           <div className="flex items-center justify-between mb-8">
             <div>

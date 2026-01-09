@@ -14,11 +14,11 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: '/logo.png',
-        type: 'image/png',
+        url: '/finio_logo_blau.svg',
+        type: 'image/svg+xml',
       },
     ],
-    apple: '/logo.png',
+    apple: '/finio_logo_blau.svg',
   },
 }
 
@@ -32,6 +32,12 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://rsms.me/" />
         <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+        {/* Umami Analytics */}
+        <script
+          defer
+          src="https://analytics.finio.cloud/script.js"
+          data-website-id="32bab9a3-8459-40c9-be17-dac01ffcf3e5"
+        />
       </head>
       <body className="font-sans antialiased">
         <AuthProvider>

@@ -1,0 +1,102 @@
+# Promtail Configuration for finio Log Collection
+# Collects logs from Docker containers
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://finio-loki:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 1048576
+    timeout: 10s
+
+scrape_configs:
+  # Docker container logs
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Only collect logs from finio containers
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(finio-.+)'
+        action: keep
+      
+      # Extract container name
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container
+      
+      # Add service label based on container name
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/finio-(.*?)(-.*)?'
+        target_label: service
+      
+      # Add compose service label if available
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: compose_service
+      
+      # Add log stream identifier
+      - source_labels: ['__meta_docker_container_id']
+        target_label: container_id
+
+    pipeline_stages:
+      # Parse JSON logs from Python services
+      - match:
+          selector: '{service=~"auth-service|user-service|watchlist-service|search-service"}'
+          stages:
+            - json:
+                expressions:
+                  level: level
+                  message: message
+                  timestamp: timestamp
+                  logger: logger
+                  request_id: request_id
+            - labels:
+                level:
+                logger:
+            - timestamp:
+                source: timestamp
+                format: RFC3339Nano
+                fallback_formats:
+                  - RFC3339
+                  - "2006-01-02T15:04:05.999999"
+
+      # Parse Next.js logs (webapp)
+      - match:
+          selector: '{service="webapp"}'
+          stages:
+            - regex:
+                expression: '^(?P<level>info|warn|error|debug)?\s*(?P<message>.*)$'
+            - labels:
+                level:
+
+      # Add environment label
+      - static_labels:
+          environment: production
+          cluster: finio-dokploy
+
+      # Drop health check logs to reduce noise
+      - match:
+          selector: '{service=~".+"}'
+          stages:
+            - drop:
+                expression: '.*(GET /health|GET /metrics|healthcheck).*'
+                drop_counter_reason: healthcheck_logs
+
+  # System logs (optional)
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          host: dokploy
+          __path__: /var/log/*.log
+    pipeline_stages:
+      - static_labels:
+          environment: production
