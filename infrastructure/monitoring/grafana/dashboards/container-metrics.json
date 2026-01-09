@@ -57,7 +57,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "count(container_last_seen{name=~\"finio-.*\"})",
+          "expr": "count(container_last_seen{id=~\".*/docker-.*\"})",
           "refId": "A"
         }
       ],
@@ -95,7 +95,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{name=~\"finio-.*\"}[5m])) * 100",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{id=~\".*/docker-.*\"}[5m])) * 100",
           "refId": "A"
         }
       ],
@@ -133,7 +133,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(container_memory_usage_bytes{name=~\"finio-.*\"})",
+          "expr": "sum(container_memory_usage_bytes{id=~\".*/docker-.*\"})",
           "refId": "A"
         }
       ],
@@ -169,7 +169,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(container_network_receive_bytes_total{name=~\"finio-.*\"}[5m]))",
+          "expr": "sum(rate(container_network_receive_bytes_total{id=~\".*/docker-.*\"}[5m]))",
           "refId": "A"
         }
       ],
@@ -205,7 +205,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(container_network_transmit_bytes_total{name=~\"finio-.*\"}[5m]))",
+          "expr": "sum(rate(container_network_transmit_bytes_total{id=~\".*/docker-.*\"}[5m]))",
           "refId": "A"
         }
       ],
@@ -238,8 +238,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\"finio-.*\"}[5m]) * 100",
-          "legendFormat": "{{name}}",
+          "expr": "rate(container_cpu_usage_seconds_total{id=~\".*/docker-.*\", image!=\"\"}[5m]) * 100",
+          "legendFormat": "{{image}}",
           "refId": "A"
         }
       ],
@@ -272,8 +272,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_memory_usage_bytes{name=~\"finio-.*\"}",
-          "legendFormat": "{{name}}",
+          "expr": "container_memory_usage_bytes{id=~\".*/docker-.*\", image!=\"\"}",
+          "legendFormat": "{{image}}",
           "refId": "A"
         }
       ],
@@ -302,55 +302,43 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_memory_usage_bytes{name=~\"finio-.*\"}",
-          "legendFormat": "{{name}}",
+          "expr": "topk(10, container_memory_usage_bytes{id=~\".*/docker-.*\", image!=\"\"})",
+          "legendFormat": "{{image}}",
           "refId": "A"
         }
       ],
-      "title": "Memory Distribution",
+      "title": "Top 10 Memory Usage",
       "type": "piechart"
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "thresholds" },
-          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false },
+          "color": { "mode": "palette-classic" },
+          "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false } },
           "mappings": [],
-          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 80 }] }
+          "unit": "percent"
         },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "Memory" }, "properties": [{ "id": "unit", "value": "bytes" }, { "id": "custom.cellOptions", "value": { "mode": "gradient", "type": "gauge" } }] },
-          { "matcher": { "id": "byName", "options": "CPU %" }, "properties": [{ "id": "unit", "value": "percent" }, { "id": "custom.cellOptions", "value": { "mode": "gradient", "type": "gauge" } }] }
-        ]
+        "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
       "id": 9,
-      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [] },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"] },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_memory_usage_bytes{name=~\"finio-.*\"}",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "refId": "Memory"
-        },
-        {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_cpu_usage_seconds_total{name=~\"finio-.*\"}[5m]) * 100",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "refId": "CPU"
+          "expr": "topk(10, rate(container_cpu_usage_seconds_total{id=~\".*/docker-.*\", image!=\"\"}[5m]) * 100)",
+          "legendFormat": "{{image}}",
+          "refId": "A"
         }
       ],
-      "title": "Container Resources Table",
-      "transformations": [
-        { "id": "seriesToColumns", "options": { "byField": "name" } },
-        { "id": "organize", "options": { "excludeByName": { "Time": true, "Time 1": true, "Time 2": true, "__name__": true, "__name__ 1": true, "__name__ 2": true, "id": true, "id 1": true, "id 2": true, "image": true, "image 1": true, "image 2": true, "instance": true, "instance 1": true, "instance 2": true, "job": true, "job 1": true, "job 2": true }, "indexByName": {}, "renameByName": { "Value #CPU": "CPU %", "Value #Memory": "Memory", "name": "Container" } } }
-      ],
-      "type": "table"
+      "title": "Top 10 CPU Usage",
+      "type": "piechart"
     },
     {
       "collapsed": false,
@@ -378,8 +366,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_network_receive_bytes_total{name=~\"finio-.*\"}[5m])",
-          "legendFormat": "{{name}}",
+          "expr": "rate(container_network_receive_bytes_total{id=~\".*/docker-.*\", image!=\"\"}[5m])",
+          "legendFormat": "{{image}}",
           "refId": "A"
         }
       ],
@@ -404,8 +392,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_network_transmit_bytes_total{name=~\"finio-.*\"}[5m])",
-          "legendFormat": "{{name}}",
+          "expr": "rate(container_network_transmit_bytes_total{id=~\".*/docker-.*\", image!=\"\"}[5m])",
+          "legendFormat": "{{image}}",
           "refId": "A"
         }
       ],
@@ -422,6 +410,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "finio - Container Metrics",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

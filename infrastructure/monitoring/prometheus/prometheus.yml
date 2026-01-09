@@ -99,10 +99,6 @@ scrape_configs:
     scrape_interval: 15s
     scrape_timeout: 10s
     metric_relabel_configs:
-      # Keep only finio containers
-      - source_labels: [container_label_com_docker_compose_project]
-        regex: '.*'
-        action: keep
       # Drop high-cardinality metrics to reduce storage
       - source_labels: [__name__]
         regex: 'container_tasks_state|container_memory_failures_total'
