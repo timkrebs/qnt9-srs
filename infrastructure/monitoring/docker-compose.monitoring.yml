@@ -13,8 +13,6 @@
 # 3. Configure environment variables
 # 4. Deploy
 
-version: "3.8"
-
 services:
   # ==================== GRAFANA ====================
   grafana:
@@ -52,12 +50,8 @@ services:
       - /opt/dokploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks:
       - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.finio.cloud`)"
-      - "traefik.http.routers.grafana.entrypoints=websecure"
-      - "traefik.http.routers.grafana.tls.certResolver=letsencrypt"
-      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    # Note: Traefik labels are managed by Dokploy - configure domain in Dokploy UI
+    # Set port to 3000 in Dokploy domain settings
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
       interval: 30s
@@ -92,15 +86,8 @@ services:
       - /opt/dokploy/monitoring/prometheus/alerts:/etc/prometheus/alerts:ro
     networks:
       - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.prometheus.rule=Host(`prometheus.finio.cloud`)"
-      - "traefik.http.routers.prometheus.entrypoints=websecure"
-      - "traefik.http.routers.prometheus.tls.certResolver=letsencrypt"
-      # Basic auth middleware for Prometheus (generate with: htpasswd -nb admin password | sed 's/\$/\$\$/g')
-      - "traefik.http.routers.prometheus.middlewares=prometheus-auth"
-      - "traefik.http.middlewares.prometheus-auth.basicauth.users=${PROMETHEUS_BASIC_AUTH:-admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/}"
-      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    # Note: Traefik labels are managed by Dokploy - configure domain in Dokploy UI
+    # Set port to 9090 in Dokploy domain settings
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 30s
@@ -196,21 +183,21 @@ services:
 
   # ==================== CADVISOR (Container Metrics) ====================
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: finio-cadvisor
     privileged: true
     command:
-      - '--docker_only=true'
-      - '--store_container_labels=true'
-      - '--whitelisted_container_labels=com.docker.compose.project,com.docker.compose.service'
+      - '--housekeeping_interval=10s'
+      - '--max_housekeeping_interval=15s'
+      - '--disable_metrics=percpu,sched,tcp,udp,hugetlb,referenced_memory,resctrl,advtcp,memory_numa'
     devices:
       - /dev/kmsg:/dev/kmsg
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
-      - /cgroup:/cgroup:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
     networks:
       - dokploy-network
     restart: unless-stopped

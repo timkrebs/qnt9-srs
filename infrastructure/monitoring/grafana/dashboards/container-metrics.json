@@ -36,9 +36,7 @@
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null }
-            ]
+            "steps": [{ "color": "green", "value": null }]
           },
           "unit": "short"
         },
@@ -57,7 +55,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "count(container_last_seen{id=~\".*/docker-.*\"})",
+          "expr": "count(container_memory_usage_bytes{id=~\"/system.slice/docker-.*\"})",
           "refId": "A"
         }
       ],
@@ -95,7 +93,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(container_cpu_usage_seconds_total{id=~\".*/docker-.*\"}[5m])) * 100",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{id=~\"/system.slice/docker-.*\"}[5m])) * 100",
           "refId": "A"
         }
       ],
@@ -133,7 +131,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(container_memory_usage_bytes{id=~\".*/docker-.*\"})",
+          "expr": "sum(container_memory_usage_bytes{id=~\"/system.slice/docker-.*\"})",
           "refId": "A"
         }
       ],
@@ -146,12 +144,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null }
-            ]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "Bps"
         },
         "overrides": []
@@ -169,7 +162,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(container_network_receive_bytes_total{id=~\".*/docker-.*\"}[5m]))",
+          "expr": "sum(rate(container_network_receive_bytes_total{id=~\"/system.slice/docker-.*\"}[5m]))",
           "refId": "A"
         }
       ],
@@ -182,12 +175,7 @@
         "defaults": {
           "color": { "mode": "thresholds" },
           "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null }
-            ]
-          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
           "unit": "Bps"
         },
         "overrides": []
@@ -205,7 +193,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum(rate(container_network_transmit_bytes_total{id=~\".*/docker-.*\"}[5m]))",
+          "expr": "sum(rate(container_network_transmit_bytes_total{id=~\"/system.slice/docker-.*\"}[5m]))",
           "refId": "A"
         }
       ],
@@ -238,8 +226,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_cpu_usage_seconds_total{id=~\".*/docker-.*\", image!=\"\"}[5m]) * 100",
-          "legendFormat": "{{image}}",
+          "expr": "label_replace(rate(container_cpu_usage_seconds_total{id=~\"/system.slice/docker-.*\"}[5m]) * 100, \"container_id\", \"$1\", \"id\", \".*/docker-([a-f0-9]{12}).*\")",
+          "legendFormat": "{{container_id}}",
           "refId": "A"
         }
       ],
@@ -272,8 +260,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "container_memory_usage_bytes{id=~\".*/docker-.*\", image!=\"\"}",
-          "legendFormat": "{{image}}",
+          "expr": "label_replace(container_memory_usage_bytes{id=~\"/system.slice/docker-.*\"}, \"container_id\", \"$1\", \"id\", \".*/docker-([a-f0-9]{12}).*\")",
+          "legendFormat": "{{container_id}}",
           "refId": "A"
         }
       ],
@@ -302,8 +290,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "topk(10, container_memory_usage_bytes{id=~\".*/docker-.*\", image!=\"\"})",
-          "legendFormat": "{{image}}",
+          "expr": "topk(10, label_replace(container_memory_usage_bytes{id=~\"/system.slice/docker-.*\"}, \"container_id\", \"$1\", \"id\", \".*/docker-([a-f0-9]{12}).*\"))",
+          "legendFormat": "{{container_id}}",
           "refId": "A"
         }
       ],
@@ -332,8 +320,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "topk(10, rate(container_cpu_usage_seconds_total{id=~\".*/docker-.*\", image!=\"\"}[5m]) * 100)",
-          "legendFormat": "{{image}}",
+          "expr": "topk(10, label_replace(rate(container_cpu_usage_seconds_total{id=~\"/system.slice/docker-.*\"}[5m]) * 100, \"container_id\", \"$1\", \"id\", \".*/docker-([a-f0-9]{12}).*\"))",
+          "legendFormat": "{{container_id}}",
           "refId": "A"
         }
       ],
@@ -366,8 +354,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_network_receive_bytes_total{id=~\".*/docker-.*\", image!=\"\"}[5m])",
-          "legendFormat": "{{image}}",
+          "expr": "label_replace(rate(container_network_receive_bytes_total{id=~\"/system.slice/docker-.*\"}[5m]), \"container_id\", \"$1\", \"id\", \".*/docker-([a-f0-9]{12}).*\")",
+          "legendFormat": "{{container_id}}",
           "refId": "A"
         }
       ],
@@ -392,8 +380,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "rate(container_network_transmit_bytes_total{id=~\".*/docker-.*\", image!=\"\"}[5m])",
-          "legendFormat": "{{image}}",
+          "expr": "label_replace(rate(container_network_transmit_bytes_total{id=~\"/system.slice/docker-.*\"}[5m]), \"container_id\", \"$1\", \"id\", \".*/docker-([a-f0-9]{12}).*\")",
+          "legendFormat": "{{container_id}}",
           "refId": "A"
         }
       ],
@@ -410,6 +398,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "finio - Container Metrics",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
