@@ -83,14 +83,27 @@ scrape_configs:
     metrics_path: /metrics
     scrape_interval: 30s
 
-  # Docker containers via cAdvisor (optional - requires cAdvisor deployment)
-  # - job_name: 'cadvisor'
-  #   static_configs:
-  #     - targets: ['cadvisor:8080']
-  #   scrape_interval: 30s
+  # ==================== HOST & CONTAINER METRICS ====================
 
-  # Node Exporter (optional - requires node_exporter deployment)
-  # - job_name: 'node'
-  #   static_configs:
-  #     - targets: ['node-exporter:9100']
-  #   scrape_interval: 30s
+  # Node Exporter - Host metrics (CPU, Memory, Disk, Network)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['finio-node-exporter:9100']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # cAdvisor - Container metrics (per-container CPU, Memory, Network)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['finio-cadvisor:8080']
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metric_relabel_configs:
+      # Keep only finio containers
+      - source_labels: [container_label_com_docker_compose_project]
+        regex: '.*'
+        action: keep
+      # Drop high-cardinality metrics to reduce storage
+      - source_labels: [__name__]
+        regex: 'container_tasks_state|container_memory_failures_total'
+        action: drop
