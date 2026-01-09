@@ -186,12 +186,13 @@ async def get_stock_snapshot(
             )
         
         # Determine current price (prefer last trade, fall back to day close, minute close, prev close)
+        # Note: API returns 0 for day values when market is closed, so we treat 0 as "no data"
         current_price = _decimal_to_float(snapshot.last_trade_price)
-        if current_price is None:
+        if current_price is None or current_price == 0:
             current_price = _decimal_to_float(snapshot.day_close)
-        if current_price is None:
+        if current_price is None or current_price == 0:
             current_price = _decimal_to_float(snapshot.minute_close)
-        if current_price is None:
+        if current_price is None or current_price == 0:
             current_price = _decimal_to_float(snapshot.prev_close)
         
         # Build response
@@ -297,12 +298,13 @@ async def get_stock_price(
         
         # Determine current price with multiple fallbacks
         # Priority: last_trade_price > day_close > minute_close > prev_close
+        # Note: API returns 0 for day values when market is closed, so we treat 0 as "no data"
         price = _decimal_to_float(snapshot.last_trade_price)
-        if price is None:
+        if price is None or price == 0:
             price = _decimal_to_float(snapshot.day_close)
-        if price is None:
+        if price is None or price == 0:
             price = _decimal_to_float(snapshot.minute_close)
-        if price is None:
+        if price is None or price == 0:
             price = _decimal_to_float(snapshot.prev_close)
         
         logger.info(
@@ -371,10 +373,13 @@ async def get_batch_prices(
             
             if snapshot:
                 # Determine current price with multiple fallbacks
+                # Note: API returns 0 for day values when market is closed
                 price = _decimal_to_float(snapshot.last_trade_price)
-                if price is None:
+                if price is None or price == 0:
                     price = _decimal_to_float(snapshot.day_close)
-                if price is None:
+                if price is None or price == 0:
+                    price = _decimal_to_float(snapshot.minute_close)
+                if price is None or price == 0:
                     price = _decimal_to_float(snapshot.prev_close)
                 
                 results[ticker.upper()] = {
