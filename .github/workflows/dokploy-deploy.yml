@@ -285,6 +285,7 @@ jobs:
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
             NEXT_PUBLIC_SITE_URL=https://${{ needs.setup.outputs.domain }}
+            NEXT_PUBLIC_INTERCOM_APP_ID=${{ secrets.NEXT_PUBLIC_INTERCOM_APP_ID }}
 
       - name: Skip message
         if: steps.should-build.outputs.build != 'true'

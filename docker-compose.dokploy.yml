@@ -331,6 +331,9 @@ services:
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_KEY}
       
+      # Intercom Customer Support (set via GitHub Secrets at build time)
+      # NEXT_PUBLIC_INTERCOM_APP_ID is embedded at build time, not runtime
+      
       # Next.js Configuration
       NODE_ENV: production
       PORT: 3000
