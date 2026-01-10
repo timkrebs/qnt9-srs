@@ -16,6 +16,7 @@ const FOOTER_LINKS = {
   legal: [
     { label: "Privacy Policy", href: "/privacy" },
     { label: "Terms of Service", href: "/terms" },
+    { label: "Legal Notice", href: "/legal-notice" },
   ],
 }
 
@@ -105,6 +106,12 @@ export default function Footer() {
               className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
             >
               Terms
+            </Link>
+            <Link
+              href="/legal-notice"
+              className="text-sm text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              Impressum
             </Link>
             <Link
               href="/docs"

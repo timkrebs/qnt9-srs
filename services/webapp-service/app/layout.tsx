@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 
 import { AuthProvider } from '@/lib/auth/auth-context'
+import { IntercomProvider } from '@/components/intercom-provider'
 import { Toaster } from '@/components/ui/toaster'
 
 export const metadata: Metadata = {
@@ -41,8 +42,10 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <AuthProvider>
-          {children}
-          <Toaster />
+          <IntercomProvider>
+            {children}
+            <Toaster />
+          </IntercomProvider>
         </AuthProvider>
         <Analytics />
       </body>
